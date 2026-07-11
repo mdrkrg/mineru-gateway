@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -36,7 +34,3 @@ class Database:
 
     async def dispose(self) -> None:
         await self.engine.dispose()
-
-    async def session(self) -> AsyncIterator[AsyncSession]:
-        async with self.session_factory() as session:
-            yield session

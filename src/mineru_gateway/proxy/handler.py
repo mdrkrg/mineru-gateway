@@ -32,6 +32,10 @@ _BOOL_FIELDS = {
 _INT_FIELDS = {"start_page_id", "end_page_id"}
 
 
+_STR_FIELDS = {"parse_method", "effort"}
+_LIST_FIELDS = {"lang_list"}
+
+
 def _coerce(name: str, value: str):
     if name in _BOOL_FIELDS:
         return value.lower() in ("1", "true", "yes", "on")
@@ -41,6 +45,18 @@ def _coerce(name: str, value: str):
         except ValueError:
             return None
     return value
+
+
+def _parse_params(data: dict) -> dict:
+    """Extract known parse parameters from the multipart form into TaskRecord fields."""
+    params: dict = {}
+    for name in _BOOL_FIELDS | _INT_FIELDS | _STR_FIELDS:
+        if name in data:
+            params[name] = _coerce(name, data[name])
+    for name in _LIST_FIELDS:
+        if name in data:
+            params[name] = [v for v in data[name].split(",") if v]
+    return params
 
 
 async def _extract_multipart(
@@ -57,10 +73,10 @@ async def _extract_multipart(
         if isinstance(value, UploadFile):
             content = await value.read()
             total_bytes += len(content)
-            if len(content) > max_upload_size:
+            if len(content) > max_upload_size or total_bytes > max_upload_size:
                 raise HTTPException(
                     status_code=413,
-                    detail=f"File exceeds max upload size ({max_upload_size} bytes)",
+                    detail=f"Upload exceeds max size ({max_upload_size} bytes)",
                 )
             filename = value.filename or field
             file_names.append(filename)
@@ -136,7 +152,7 @@ async def handle_task_submission(
         file_count=len(file_names),
         file_total_bytes=total_bytes,
         backend=data.get("backend", "hybrid-engine"),
-        parse_method=data.get("parse_method"),
+        **_parse_params(data),
     )
 
     return JSONResponse(
@@ -197,7 +213,7 @@ async def handle_file_parse(
             file_count=len(file_names),
             file_total_bytes=total_bytes,
             backend=data.get("backend", "hybrid-engine"),
-            parse_method=data.get("parse_method"),
+            **_parse_params(data),
         )
 
     return _relay_response(upstream_resp)

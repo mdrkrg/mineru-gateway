@@ -31,6 +31,7 @@ def settings(tmp_path) -> Settings:
         allow_anonymous=False,
         gateway_url="http://testserver",
         rate_limit_per_key=10,
+        max_upload_size=1024,
     )
 
 

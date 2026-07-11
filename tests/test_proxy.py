@@ -35,6 +35,51 @@ async def test_submit_authenticated_creates_task_and_superset_response(
     assert resp.headers["X-MinerU-Task-Id"] == body["task_id"]
 
 
+async def test_submit_records_parse_parameters(client, api_key, sample_files):
+    resp = await client.post(
+        "/tasks",
+        headers={"X-API-Key": api_key},
+        files=sample_files,
+        data={
+            "backend": "pipeline",
+            "formula_enable": "true",
+            "table_enable": "0",
+            "start_page_id": "2",
+            "lang_list": "en,ch",
+        },
+    )
+    assert resp.status_code == 202
+    task_id = resp.json()["task_id"]
+
+    from mineru_gateway.models import TaskRecord
+
+    async with client._transport.app.state.db.session_factory() as session:
+        task = await session.get(TaskRecord, task_id)
+        assert task.backend == "pipeline"
+        assert task.formula_enable is True
+        assert task.table_enable is False
+        assert task.start_page_id == 2
+        assert task.lang_list == ["en", "ch"]
+
+
+async def test_submit_rejects_when_total_exceeds_max_size(
+    client, admin_headers, sample_files
+):
+    # Issue a key on an app whose settings we can inspect; use the shared app but
+    # drive many files so the cumulative size trips the per-request limit.
+    raw = (
+        await client.post("/auth/keys", json={"label": "sz"}, headers=admin_headers)
+    ).json()["api_key"]
+    max_size = client._transport.app.state.settings.max_upload_size
+    half = b"x" * (max_size // 2 + 1)
+    files = [
+        ("files", ("a.pdf", half, "application/pdf")),
+        ("files", ("b.pdf", half, "application/pdf")),
+    ]
+    resp = await client.post("/tasks", headers={"X-API-Key": raw}, files=files)
+    assert resp.status_code == 413
+
+
 async def test_submit_upstream_non_202_surfaces_error(client, api_key, sample_files):
     mock_state.submit_status = 500
     resp = await client.post(

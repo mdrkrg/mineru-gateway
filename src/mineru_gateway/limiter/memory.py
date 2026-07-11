@@ -27,11 +27,12 @@ class MemoryTokenBucket:
             self._state[key] = (tokens, now)
             return False
 
-    def prune(self) -> None:
+    async def prune(self) -> None:
         """Reclaim long-idle keys to bound _state growth."""
-        now = time.monotonic()
-        stale = [
-            k for k, (_, last) in self._state.items() if now - last > self.idle_ttl
-        ]
-        for k in stale:
-            del self._state[k]
+        async with self._lock:
+            now = time.monotonic()
+            stale = [
+                k for k, (_, last) in self._state.items() if now - last > self.idle_ttl
+            ]
+            for k in stale:
+                del self._state[k]

@@ -32,7 +32,7 @@ async def test_prune_removes_idle_keys():
     bucket = MemoryTokenBucket(rate=1, burst=1, idle_ttl=-1)
     await bucket.acquire("stale")
     assert "stale" in bucket._state
-    bucket.prune()
+    await bucket.prune()
     assert "stale" not in bucket._state
 
 
