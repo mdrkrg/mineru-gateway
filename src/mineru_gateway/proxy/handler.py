@@ -1,0 +1,203 @@
+"""Core proxy handlers for POST /tasks and POST /file_parse.
+
+Phase 1 scope: authentication gating, simple health-slot gating, task recording
+(authenticated), and response relay. File caching + crash retry are Phase 3.
+"""
+
+from __future__ import annotations
+
+from fastapi import HTTPException, Request, Response
+from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.datastructures import UploadFile
+
+from ..config import Settings
+from ..limiter.memory import MemoryTokenBucket
+from ..models import ApiKey
+from ..tasks import service as task_service
+from ..upstream.client import UpstreamClient
+from ..upstream.health import check_free_slot
+
+_BOOL_FIELDS = {
+    "formula_enable",
+    "table_enable",
+    "image_analysis",
+    "return_md",
+    "return_middle_json",
+    "return_model_output",
+    "return_content_list",
+    "return_images",
+    "response_format_zip",
+}
+_INT_FIELDS = {"start_page_id", "end_page_id"}
+
+
+def _coerce(name: str, value: str):
+    if name in _BOOL_FIELDS:
+        return value.lower() in ("1", "true", "yes", "on")
+    if name in _INT_FIELDS:
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return value
+
+
+async def _extract_multipart(
+    request: Request, max_upload_size: int
+) -> tuple[dict, list[tuple[str, tuple[str, bytes, str]]], list[str], int]:
+    """Read the incoming multipart form into (data, files, file_names, total_bytes)."""
+    form = await request.form()
+    data: dict = {}
+    files: list[tuple[str, tuple[str, bytes, str]]] = []
+    file_names: list[str] = []
+    total_bytes = 0
+
+    for field, value in form.multi_items():
+        if isinstance(value, UploadFile):
+            content = await value.read()
+            total_bytes += len(content)
+            if len(content) > max_upload_size:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File exceeds max upload size ({max_upload_size} bytes)",
+                )
+            filename = value.filename or field
+            file_names.append(filename)
+            files.append(
+                (
+                    field,
+                    (filename, content, value.content_type or "application/octet-stream"),
+                )
+            )
+        else:
+            data[field] = value
+
+    return data, files, file_names, total_bytes
+
+
+def _relay_response(resp) -> Response:
+    """Relay an upstream httpx.Response byte-for-byte."""
+    excluded = {"content-length", "content-encoding", "transfer-encoding", "connection"}
+    headers = {k: v for k, v in resp.headers.items() if k.lower() not in excluded}
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        headers=headers,
+        media_type=resp.headers.get("content-type"),
+    )
+
+
+async def handle_task_submission(
+    request: Request,
+    api_key: ApiKey | None,
+    session: AsyncSession,
+    upstream: UpstreamClient,
+    limiter: MemoryTokenBucket,
+    settings: Settings,
+) -> Response:
+    # Defensive: anonymous only allowed when configured.
+    if api_key is None and not settings.allow_anonymous:
+        raise HTTPException(status_code=401, detail="API key required")
+
+    if api_key and not await limiter.acquire(str(api_key.id)):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded",
+            headers={"Retry-After": "60"},
+        )
+
+    await check_free_slot(upstream)
+
+    data, files, file_names, total_bytes = await _extract_multipart(
+        request, settings.max_upload_size
+    )
+
+    # Anonymous: pure passthrough, no record.
+    if api_key is None:
+        upstream_resp = await upstream.submit_task(data, files)
+        return _relay_response(upstream_resp)
+
+    # Authenticated: forward, then record.
+    upstream_resp = await upstream.submit_task(data, files)
+    if upstream_resp.status_code != 202:
+        raise HTTPException(
+            status_code=upstream_resp.status_code, detail=upstream_resp.text
+        )
+    payload = upstream_resp.json()
+
+    task = await task_service.create(
+        session,
+        api_key_id=api_key.id,
+        status="pending",
+        upstream_url=settings.upstream_url,
+        upstream_task_id=payload.get("task_id"),
+        file_names=payload.get("file_names", file_names),
+        file_count=len(file_names),
+        file_total_bytes=total_bytes,
+        backend=data.get("backend", "hybrid-engine"),
+        parse_method=data.get("parse_method"),
+    )
+
+    return JSONResponse(
+        status_code=202,
+        content={
+            "task_id": str(task.id),
+            "status": "pending",
+            "backend": task.backend,
+            "file_names": task.file_names,
+            "created_at": task.created_at.isoformat(),
+            "status_url": f"{settings.gateway_url}/tasks/{task.id}",
+            "result_url": f"{settings.gateway_url}/tasks/{task.id}/result",
+            "message": "Task submitted successfully",
+        },
+        headers={
+            "X-MinerU-Task-Id": str(task.id),
+            "X-MinerU-Task-Status": "pending",
+            "X-MinerU-Task-Status-Url": f"{settings.gateway_url}/tasks/{task.id}",
+            "X-MinerU-Task-Result-Url": f"{settings.gateway_url}/tasks/{task.id}/result",
+        },
+    )
+
+
+async def handle_file_parse(
+    request: Request,
+    api_key: ApiKey | None,
+    session: AsyncSession,
+    upstream: UpstreamClient,
+    limiter: MemoryTokenBucket,
+    settings: Settings,
+) -> Response:
+    if api_key is None and not settings.allow_anonymous:
+        raise HTTPException(status_code=401, detail="API key required")
+
+    if api_key and not await limiter.acquire(str(api_key.id)):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded",
+            headers={"Retry-After": "60"},
+        )
+
+    await check_free_slot(upstream)
+
+    data, files, file_names, total_bytes = await _extract_multipart(
+        request, settings.max_upload_size
+    )
+
+    upstream_resp = await upstream.parse_file(data, files)
+
+    # Authenticated: record the (synchronous) task for history/ownership.
+    if api_key is not None and upstream_resp.status_code == 200:
+        await task_service.create(
+            session,
+            api_key_id=api_key.id,
+            status="completed",
+            upstream_url=settings.upstream_url,
+            file_names=file_names,
+            file_count=len(file_names),
+            file_total_bytes=total_bytes,
+            backend=data.get("backend", "hybrid-engine"),
+            parse_method=data.get("parse_method"),
+        )
+
+    return _relay_response(upstream_resp)
