@@ -1,7 +1,40 @@
 [project]
 name = "mineru-gateway"
 version = "0.1.0"
-description = "Add your description here"
+description = "API-Key gateway in front of mineru-api / mineru-router"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "alembic>=1.18.5",
+    "fastapi>=0.139.0",
+    "httpx>=0.28.1",
+    "pydantic-settings>=2.14.2",
+    "python-multipart>=0.0.32",
+    "sqlalchemy[asyncio]>=2.0.51",
+    "uvicorn[standard]>=0.51.0",
+]
+
+[project.scripts]
+mineru-gateway = "mineru_gateway.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mineru_gateway"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "anyio>=4.14.1",
+    "asgi-lifespan>=2.1.0",
+    "pre-commit>=4.6.0",
+    "pytest>=8.0",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.15.21",
+]
