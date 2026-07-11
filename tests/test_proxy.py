@@ -1,4 +1,10 @@
-"""Tests for authenticated + anonymous proxying of POST /tasks and /file_parse."""
+"""Tests for authenticated + anonymous proxying of POST /tasks and /file_parse.
+
+Spec: mvp-implementation.md §3.3 (透明代理 / 认证策略), §5.1-5.2 (已有端点 +
+响应头), §6.2 (透传核心 handle_task_submission), §3.5 (并发控制与保护).
+Plan: Phase 1 — "POST /tasks (异步) + POST /file_parse (同步) 流式透传"; 提前落地
+的持久化 (Phase 2) 与保护 (Phase 4) 一并覆盖。
+"""
 
 from __future__ import annotations
 
@@ -13,6 +19,7 @@ from .mock_upstream import create_mock_upstream, state as mock_state
 
 
 async def test_submit_requires_key_when_anonymous_disabled(client, sample_files):
+    """§3.3: 默认禁止匿名 (ALLOW_ANONYMOUS=false) → 无 Key 提交被拒 (401)."""
     resp = await client.post("/tasks", files=sample_files)
     assert resp.status_code == 401
 
@@ -20,6 +27,7 @@ async def test_submit_requires_key_when_anonymous_disabled(client, sample_files)
 async def test_submit_authenticated_creates_task_and_superset_response(
     client, api_key, sample_files
 ):
+    """§6.2 / §5.2: 认证提交返回 Gateway task_id 的兼容超集响应 + X-MinerU-* 头."""
     resp = await client.post(
         "/tasks", headers={"X-API-Key": api_key}, files=sample_files
     )
@@ -36,6 +44,7 @@ async def test_submit_authenticated_creates_task_and_superset_response(
 
 
 async def test_submit_records_parse_parameters(client, api_key, sample_files):
+    """§4 (TaskRecord 解析参数) / §6.2 步骤6: 表单解析参数落库并类型正确."""
     resp = await client.post(
         "/tasks",
         headers={"X-API-Key": api_key},
@@ -65,6 +74,7 @@ async def test_submit_records_parse_parameters(client, api_key, sample_files):
 async def test_submit_rejects_when_total_exceeds_max_size(
     client, admin_headers, sample_files
 ):
+    """§3.5: 文件大小限制按请求累计生效 — 多个小文件合计超限也应 413."""
     # Issue a key on an app whose settings we can inspect; use the shared app but
     # drive many files so the cumulative size trips the per-request limit.
     raw = (
@@ -81,6 +91,7 @@ async def test_submit_rejects_when_total_exceeds_max_size(
 
 
 async def test_submit_upstream_non_202_surfaces_error(client, api_key, sample_files):
+    """§6.2 步骤5: 上游非 202 提交失败时向客户端透出上游状态码."""
     mock_state.submit_status = 500
     resp = await client.post(
         "/tasks", headers={"X-API-Key": api_key}, files=sample_files
@@ -89,6 +100,7 @@ async def test_submit_upstream_non_202_surfaces_error(client, api_key, sample_fi
 
 
 async def test_submit_503_when_no_free_slots(client, api_key, sample_files):
+    """§3.5 / §6.2 步骤2: 健康感知门控, free_slots<=0 → 503 + Retry-After."""
     mock_state.processing = mock_state.max_concurrent
     resp = await client.post(
         "/tasks", headers={"X-API-Key": api_key}, files=sample_files
@@ -98,6 +110,7 @@ async def test_submit_503_when_no_free_slots(client, api_key, sample_files):
 
 
 async def test_file_parse_authenticated_relays_result(client, api_key, sample_files):
+    """§3.3 / §5.1 POST /file_parse: 同步端点直接透传上游解析结果 (200)."""
     resp = await client.post(
         "/file_parse", headers={"X-API-Key": api_key}, files=sample_files
     )
@@ -106,11 +119,13 @@ async def test_file_parse_authenticated_relays_result(client, api_key, sample_fi
 
 
 async def test_file_parse_requires_key_when_anonymous_disabled(client, sample_files):
+    """§3.3: /file_parse 同样默认禁止匿名 → 无 Key 401."""
     resp = await client.post("/file_parse", files=sample_files)
     assert resp.status_code == 401
 
 
 async def test_file_parse_503_when_no_free_slots(client, api_key, sample_files):
+    """§3.5: /file_parse 也受健康门控约束 — 无空闲 slot → 503 + Retry-After."""
     mock_state.processing = mock_state.max_concurrent
     resp = await client.post(
         "/file_parse", headers={"X-API-Key": api_key}, files=sample_files
@@ -120,6 +135,7 @@ async def test_file_parse_503_when_no_free_slots(client, api_key, sample_files):
 
 
 async def test_file_parse_rejects_when_total_exceeds_max_size(client, api_key):
+    """§3.5: /file_parse 同样执行文件大小限制 → 超限 413."""
     max_size = client._transport.app.state.settings.max_upload_size
     files = [("files", ("big.pdf", b"x" * (max_size + 1), "application/pdf"))]
     resp = await client.post(
@@ -129,6 +145,7 @@ async def test_file_parse_rejects_when_total_exceeds_max_size(client, api_key):
 
 
 async def test_file_parse_429_when_rate_limited(client, admin_headers, sample_files):
+    """§3.5: /file_parse 也走按 Key 内存限流 — 耗尽突发预算后 429 + Retry-After."""
     raw = (
         await client.post("/auth/keys", json={"label": "fp-rl"}, headers=admin_headers)
     ).json()["api_key"]
@@ -164,6 +181,10 @@ async def _anon_client(tmp_path):
 
 
 async def test_anonymous_passthrough_no_record(tmp_path):
+    """§3.3 / §4 (约束): ALLOW_ANONYMOUS=true 时无 Key 为纯透传, 不写 tasks 表.
+
+    验证 api_key_id NOT NULL 的前提 — 匿名请求不入库, 保留上游 task_id 原样透传.
+    """
     app, settings = await _anon_client(tmp_path)
     async with LifespanManager(app):
         transport = httpx.ASGITransport(app=app)

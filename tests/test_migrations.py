@@ -1,5 +1,9 @@
 """Verify the Alembic migration produces the schema the ORM models expect.
 
+Spec: mvp-implementation.md §4 (数据模型 ApiKey/TaskRecord), §4「约束与索引」
+((api_key_id, status, created_at) 复合索引), §2 (Alembic 为迁移工具).
+Plan: Phase 1 — "SQLAlchemy 模型 ... + Alembic 迁移".
+
 Runs `alembic upgrade head` against a throwaway SQLite database (via subprocess,
 matching how migrations run in production) and asserts the expected tables and
 the (api_key_id, status, created_at) composite index are created.
@@ -18,6 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_upgrade_head_creates_expected_schema(tmp_path):
+    """§4: alembic upgrade head 建出模型所有表及命名复合索引, 迁移与模型一致."""
     db_file = tmp_path / "migrated.db"
     env = {**os.environ, "GATEWAY_DATABASE_URL": f"sqlite+aiosqlite:///{db_file}"}
     result = subprocess.run(
