@@ -110,6 +110,40 @@ async def test_file_parse_requires_key_when_anonymous_disabled(client, sample_fi
     assert resp.status_code == 401
 
 
+async def test_file_parse_503_when_no_free_slots(client, api_key, sample_files):
+    mock_state.processing = mock_state.max_concurrent
+    resp = await client.post(
+        "/file_parse", headers={"X-API-Key": api_key}, files=sample_files
+    )
+    assert resp.status_code == 503
+    assert resp.headers.get("Retry-After") == "5"
+
+
+async def test_file_parse_rejects_when_total_exceeds_max_size(client, api_key):
+    max_size = client._transport.app.state.settings.max_upload_size
+    files = [("files", ("big.pdf", b"x" * (max_size + 1), "application/pdf"))]
+    resp = await client.post(
+        "/file_parse", headers={"X-API-Key": api_key}, files=files
+    )
+    assert resp.status_code == 413
+
+
+async def test_file_parse_429_when_rate_limited(client, admin_headers, sample_files):
+    raw = (
+        await client.post("/auth/keys", json={"label": "fp-rl"}, headers=admin_headers)
+    ).json()["api_key"]
+    hit_429 = False
+    for _ in range(40):
+        resp = await client.post(
+            "/file_parse", headers={"X-API-Key": raw}, files=sample_files
+        )
+        if resp.status_code == 429:
+            hit_429 = True
+            assert resp.headers.get("Retry-After") == "60"
+            break
+    assert hit_429
+
+
 # --- Anonymous mode (ALLOW_ANONYMOUS=true): pure passthrough, no task record ---
 
 

@@ -23,6 +23,8 @@ async def test_task_routes_stubbed(client, api_key, method, path):
     "method,path",
     [
         ("get", "/tasks"),
+        ("get", "/tasks/abc"),
+        ("get", "/tasks/abc/result"),
         ("delete", "/tasks/abc"),
     ],
 )
