@@ -33,6 +33,7 @@ async def require_admin_token(
 
 
 async def require_api_key(
+    request: Request,
     x_api_key: str | None = Header(default=None),
     settings: Settings = Depends(get_settings_dep),
     session: AsyncSession = Depends(get_session),
@@ -50,4 +51,5 @@ async def require_api_key(
     api_key = await service.verify_key(session, x_api_key)
     if api_key is None:
         raise HTTPException(status_code=401, detail="Invalid API key")
+    request.state.api_key_id = str(api_key.id)
     return api_key

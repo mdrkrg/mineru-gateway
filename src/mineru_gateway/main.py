@@ -15,6 +15,7 @@ from .db import Database
 from .health.routes import router as health_router
 from .limiter.memory import MemoryTokenBucket
 from .logging_config import configure_logging
+from .middleware import RequestLoggingMiddleware
 from .proxy.routes import router as proxy_router
 from .tasks.cache import FileCache
 from .tasks.routes import router as tasks_router
@@ -98,13 +99,14 @@ def create_app(
             for task in tasks:
                 try:
                     await task
-                except (asyncio.CancelledError, Exception):
+                except (asyncio.CancelledError, Exception):  # fmt: skip
                     pass
             if owns_upstream_client:
                 await client.aclose()
             await db.dispose()
 
     app = FastAPI(title="mineru-gateway", version="0.1.0", lifespan=lifespan)
+    app.add_middleware(RequestLoggingMiddleware)
     app.include_router(auth_router)
     app.include_router(proxy_router)
     app.include_router(tasks_router)
