@@ -9,6 +9,7 @@ GET /tasks 列表 (分页、筛选); DELETE /tasks/{id} 取消".
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 
 from .mock_upstream import state as mock_state
 
@@ -34,6 +35,7 @@ async def test_get_task_detail_returns_db_state(client, api_key):
     assert body["task_id"] == task_id
     assert body["status"] == "pending"
     assert body["file_names"] == ["doc.pdf"]
+    assert body["file_count"] == 1
     assert "created_at" in body
     assert body["retry_count"] == 0
 
@@ -120,6 +122,30 @@ async def test_list_filter_by_file_name_fuzzy(client, api_key):
     assert resp.json()["total"] == 0
 
 
+async def test_list_filter_by_date_range(client, api_key):
+    """§5.3: 支持按 date_from/date_to 过滤 (ISO date)."""
+    await _submit(client, api_key)
+    today = date.today().isoformat()
+    future = (date.today() + timedelta(days=1)).isoformat()
+    past = (date.today() - timedelta(days=1)).isoformat()
+
+    # Today's task falls within [past, today].
+    resp = await client.get(
+        "/tasks",
+        headers={"X-API-Key": api_key},
+        params={"date_from": past, "date_to": today},
+    )
+    assert resp.json()["total"] == 1
+
+    # A future-only window excludes it.
+    resp = await client.get(
+        "/tasks",
+        headers={"X-API-Key": api_key},
+        params={"date_from": future},
+    )
+    assert resp.json()["total"] == 0
+
+
 async def test_list_pagination(client, api_key):
     """§5.3: 分页 page/page_size; total 反映全量, items 受页大小限制."""
     for _ in range(5):
@@ -152,8 +178,18 @@ async def test_list_page_size_capped_at_200(client, api_key):
 
 
 async def test_list_sorted_by_created_desc(client, api_key):
-    """§3.2: 列表按日期排序 (最新在前)."""
-    ids = [await _submit(client, api_key) for _ in range(3)]
+    """§3.2: 列表按日期排序 (最新在前).
+
+    Sleep between submissions so created_at timestamps are strictly distinct
+    (the id-based tiebreaker is UUID, not time-ordered), making the exact
+    reverse-submission order deterministic.
+    """
+    import asyncio
+
+    ids = []
+    for _ in range(3):
+        ids.append(await _submit(client, api_key))
+        await asyncio.sleep(0.01)
     resp = await client.get("/tasks", headers={"X-API-Key": api_key})
     returned = [it["task_id"] for it in resp.json()["items"]]
     assert returned == list(reversed(ids))
@@ -186,6 +222,31 @@ async def test_get_result_enforces_ownership(client, admin_headers, api_key):
     assert resp.status_code == 404
 
 
+async def test_get_result_409_when_no_upstream_task_id(client, api_key):
+    """§5.1: 任务尚无 upstream_task_id (提交未成功映射) 时无法取结果 → 409."""
+    from sqlalchemy import select
+
+    from mineru_gateway.models import ApiKey
+    from mineru_gateway.tasks import service
+
+    db = client._transport.app.state.db
+    async with db.session_factory() as session:
+        key = (await session.execute(select(ApiKey))).scalars().first()
+        task = await service.create(
+            session,
+            api_key_id=key.id,
+            status="pending",
+            upstream_url="http://mock-upstream",
+            upstream_task_id=None,
+            file_names=["x.pdf"],
+            file_count=1,
+        )
+        task_id = task.id
+
+    resp = await client.get(f"/tasks/{task_id}/result", headers={"X-API-Key": api_key})
+    assert resp.status_code == 409
+
+
 # ===== DELETE /tasks/{id} — cancel (§3.2, §5.3) =====
 
 
@@ -197,6 +258,7 @@ async def test_cancel_pending_task(client, api_key):
     body = resp.json()
     assert body["task_id"] == task_id
     assert body["status"] == "cancelled"
+    assert body["message"]
 
     # State persisted.
     detail = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
@@ -224,12 +286,20 @@ async def test_cancel_enforces_ownership(client, admin_headers, api_key):
 
 
 async def test_cancel_succeeds_when_upstream_unreachable(client, api_key):
-    """§5.3: 上游不可连通时仍在本地标记 cancelled (best-effort 转发)."""
+    """§5.3: 上游不可连通时仍在本地标记 cancelled (best-effort 转发).
+
+    cancel_raises makes the mock's DELETE /tasks/{id} raise, exercising the
+    best-effort `except Exception: pass` branch in the route.
+    """
     task_id = await _submit(client, api_key)
-    mock_state.health_raises = True
+    mock_state.cancel_raises = True
     resp = await client.delete(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
     assert resp.status_code == 200
     assert resp.json()["status"] == "cancelled"
+
+    # State persisted despite upstream forward failing.
+    detail = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+    assert detail.json()["status"] == "cancelled"
 
 
 async def test_cancel_requires_auth(client, api_key):

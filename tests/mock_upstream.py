@@ -24,6 +24,7 @@ class MockState:
     submit_status: int = 202  # status code returned by POST /tasks
     submit_malformed: bool = False  # return 202 without a task_id
     parse_status: int = 200  # status code returned by POST /file_parse
+    cancel_raises: bool = False  # simulate DELETE /tasks/{id} being unreachable
     submitted: list[dict] = field(default_factory=list)
 
     def reset(self) -> None:
@@ -35,6 +36,7 @@ class MockState:
         self.submit_status = 202
         self.submit_malformed = False
         self.parse_status = 200
+        self.cancel_raises = False
         self.submitted.clear()
 
 
@@ -101,6 +103,8 @@ def create_mock_upstream() -> FastAPI:
 
     @app.delete("/tasks/{task_id}")
     async def cancel_task(task_id: str):
+        if state.cancel_raises:
+            raise RuntimeError("upstream unreachable")
         return {"task_id": task_id, "status": "cancelled"}
 
     return app
