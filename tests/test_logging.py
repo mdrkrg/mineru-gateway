@@ -74,6 +74,40 @@ def test_json_formatter_serializes_exception():
     assert "ValueError: boom" in payload["exc_info"]
 
 
+async def test_request_logging_middleware_emits_access_record(client, caplog):
+    """§3.6: 每个请求产生一条访问日志, 含 method/path/status_code/duration_ms."""
+    with caplog.at_level(logging.INFO, logger="mineru_gateway.access"):
+        resp = await client.get("/health")
+    assert resp.status_code == 200
+    records = [r for r in caplog.records if r.name == "mineru_gateway.access"]
+    assert records, "expected an access log record"
+    record = records[-1]
+    assert record.method == "GET"
+    assert record.path == "/health"
+    assert record.status_code == 200
+    assert isinstance(record.duration_ms, float)
+    assert record.request_id
+
+
+async def test_request_logging_sets_request_id_header(client):
+    """§3.6: 响应头带 X-Request-Id, 便于关联日志."""
+    resp = await client.get("/health")
+    assert resp.headers.get("x-request-id")
+
+
+async def test_request_logging_captures_api_key_id(client, api_key, caplog):
+    """§3.6: 认证请求的访问日志携带 api_key_id."""
+    with caplog.at_level(logging.INFO, logger="mineru_gateway.access"):
+        await client.get("/tasks", headers={"X-API-Key": api_key})
+    records = [
+        r
+        for r in caplog.records
+        if r.name == "mineru_gateway.access" and r.path == "/tasks"
+    ]
+    assert records
+    assert records[-1].api_key_id
+
+
 def test_configure_logging_installs_json_handler():
     """§3.6: configure_logging(json_logs=True) 安装 JSON 格式化的 handler.
 
