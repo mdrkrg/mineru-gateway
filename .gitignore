@@ -13,3 +13,6 @@ wheels/
 *.db
 .pytest_cache/
 gateway-cache/
+
+# Credentials
+.env
