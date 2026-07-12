@@ -643,3 +643,32 @@ volumes:
 | 无幂等/磁盘配额/统计端点 | 功能面收敛 | 见 `plans/future-enhancements.md` |
 | 无 Web UI | 管理靠 API | 后续可加管理面板 |
 | 匿名用户不享受持久化 | 未登录 = 纯透传 | 默认禁止匿名；开启后为纯透传保证兼容 |
+
+## 8.1 实现澄清与当前差距
+
+以下为规约意图与**当前实现**之间需要澄清的点，随实现推进逐项收敛。
+
+### 差距（实现落后于规约）
+
+| # | 项 | 现状 | 影响 | 去向 |
+|---|----|------|------|------|
+| G1 | 逐请求结构化日志 | `JsonFormatter` / `configure_logging` 已就绪，但**无请求级中间件**，只有后台循环写日志 | §3.6 承诺的每请求日志（含 `duration_ms`）尚未产生 | 增加请求日志中间件，或收敛文档措辞 |
+| G2 | `duration_ms` 字段 | 已在 formatter 支持，但**无处填充** | 观测性缺口 | 随 G1 一并补齐 |
+| G3 | 双套建表路径 | 应用启动 `db.create_all()`（`create_tables=True`）与 Docker entrypoint 的 `alembic upgrade head` 并存 | 开发（自动建表）与生产（迁移）可能漂移 | 生产以 Alembic 为唯一来源；非测试环境默认 `create_tables=False` |
+
+### 行为澄清（实现正确，但规约未明确）
+
+| # | 项 | 澄清 |
+|---|----|------|
+| C1 | 全局并发上限作用域 | 仅约束**认证的 `POST /tasks`**；`POST /file_parse` 与匿名透传**不计入、不受限**（§3.5 的 `pending+processing+retry_pending` 计数只统计已入库任务）|
+| C2 | 取消范围 | `DELETE /tasks/{id}` **仅取消 `pending`**；`processing` / `retry_pending` 返回 409，无法取消上游正在处理的任务（§5.3）|
+| C3 | 上传为全量内存缓冲 | `_extract_multipart` 逐文件 `read()` 进内存后再落暂存盘，大小限制在读入后校验；非流式，单请求常驻内存可达 `MAX_UPLOAD_SIZE` |
+| C4 | `retry_pending` 占用并发额度 | 待重提任务在被重提/判失败前持续计入全局并发；由 `retry_interval` 约束时长 |
+| C5 | 匿名为实例级全开关 | `GATEWAY_ALLOW_ANONYMOUS` 全局生效，无按端点/路径的匿名控制 |
+| C6 | 单实例为**强制**约束 | 内存限流与三个后台循环依赖进程内状态；`--workers>1` 会静默双计限流并重复处理重提。compose/Dockerfile 固定 `workers 1`，但无运行时守卫 |
+
+### 已知竞态 / 数据质量
+
+| # | 项 | 说明 |
+|---|----|------|
+| R1 | 同步与取消竞态 | `sync_once` 取快照后逐任务处理；若期间任务经 API 取消，上游 `completed` 可能覆盖本地 `cancelled` 状态。窗口窄，`cache_dir` 已清空故无重复释放；暂不处理 |
