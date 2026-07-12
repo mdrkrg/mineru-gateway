@@ -8,7 +8,6 @@ Plan: Phase 1 — "POST /tasks (异步) + POST /file_parse (同步) 流式透传
 
 from __future__ import annotations
 
-import pytest
 
 from mineru_gateway.config import Settings
 from mineru_gateway.main import create_app
@@ -138,9 +137,7 @@ async def test_file_parse_rejects_when_total_exceeds_max_size(client, api_key):
     """§3.5: /file_parse 同样执行文件大小限制 → 超限 413."""
     max_size = client._transport.app.state.settings.max_upload_size
     files = [("files", ("big.pdf", b"x" * (max_size + 1), "application/pdf"))]
-    resp = await client.post(
-        "/file_parse", headers={"X-API-Key": api_key}, files=files
-    )
+    resp = await client.post("/file_parse", headers={"X-API-Key": api_key}, files=files)
     assert resp.status_code == 413
 
 

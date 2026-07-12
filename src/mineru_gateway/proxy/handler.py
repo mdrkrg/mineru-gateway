@@ -83,7 +83,11 @@ async def _extract_multipart(
             files.append(
                 (
                     field,
-                    (filename, content, value.content_type or "application/octet-stream"),
+                    (
+                        filename,
+                        content,
+                        value.content_type or "application/octet-stream",
+                    ),
                 )
             )
         else:

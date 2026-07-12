@@ -6,7 +6,6 @@ Plan: Phase 1 — "Admin Token 签发/列出/吊销 API Key".
 
 from __future__ import annotations
 
-import pytest
 
 
 async def test_create_key_requires_admin_token(client):
@@ -62,16 +61,12 @@ async def test_revoke_key_disables_it(client, admin_headers, sample_files):
     key_id, raw = created["key_id"], created["api_key"]
 
     # Key works before revocation.
-    ok = await client.post(
-        "/tasks", headers={"X-API-Key": raw}, files=sample_files
-    )
+    ok = await client.post("/tasks", headers={"X-API-Key": raw}, files=sample_files)
     assert ok.status_code == 202
 
     del_resp = await client.delete(f"/auth/keys/{key_id}", headers=admin_headers)
     assert del_resp.status_code == 204
 
     # Key rejected after revocation.
-    denied = await client.post(
-        "/tasks", headers={"X-API-Key": raw}, files=sample_files
-    )
+    denied = await client.post("/tasks", headers={"X-API-Key": raw}, files=sample_files)
     assert denied.status_code == 401

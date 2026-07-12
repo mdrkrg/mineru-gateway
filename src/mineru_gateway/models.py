@@ -35,9 +35,15 @@ class ApiKey(Base):
     key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     key_prefix: Mapped[str] = mapped_column(String(8))
     label: Mapped[str] = mapped_column(String(255), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
-    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Reserved for future user system / OAuth: owner_id (nullable, FK)
 
@@ -75,7 +81,9 @@ class TaskRecord(Base):
 
     # Upstream mapping
     upstream_url: Mapped[str] = mapped_column(String(500))
-    upstream_task_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    upstream_task_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     consecutive_poll_failures: Mapped[int] = mapped_column(Integer, default=0)
 
@@ -83,9 +91,15 @@ class TaskRecord(Base):
     cache_dir: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     upstream_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 

@@ -98,4 +98,3 @@ async def mark_cancelled(session: AsyncSession, task: TaskRecord) -> TaskRecord:
     await session.commit()
     await session.refresh(task)
     return task
-

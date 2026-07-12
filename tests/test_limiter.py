@@ -9,7 +9,6 @@ once the burst budget is exhausted (missing `await` would make it always truthy)
 
 from __future__ import annotations
 
-import pytest
 
 from mineru_gateway.limiter.memory import MemoryTokenBucket
 

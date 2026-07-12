@@ -38,3 +38,6 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "ruff>=0.15.21",
 ]
+
+[tool.ruff]
+exclude = ["alembic/versions"]

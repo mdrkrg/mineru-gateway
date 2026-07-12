@@ -39,18 +39,14 @@ def test_upgrade_head_creates_expected_schema(tmp_path):
     try:
         tables = {
             row[0]
-            for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
         model_tables = set(Base.metadata.tables.keys())
         assert model_tables <= tables
 
         indexes = {
             row[0]
-            for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='index'"
-            )
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")
         }
         assert "ix_tasks_key_status_created" in indexes
     finally:
