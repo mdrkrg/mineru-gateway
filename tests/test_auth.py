@@ -69,3 +69,64 @@ async def test_revoke_key_disables_it(client, admin_headers, sample_files):
     # Key rejected after revocation.
     denied = await client.post("/tasks", headers={"X-API-Key": raw}, files=sample_files)
     assert denied.status_code == 401
+
+
+async def test_revoke_unknown_key_is_idempotent(client, admin_headers):
+    """§5.3 DELETE /auth/keys/{id}: 吊销不存在的 Key 幂等返回 204 (无副作用)."""
+    resp = await client.delete("/auth/keys/does-not-exist", headers=admin_headers)
+    assert resp.status_code == 204
+
+
+async def test_expired_key_is_rejected(client, admin_headers, sample_files):
+    """§4 / §5.3: 带过去 expires_at 的 Key 立即失效 (401)."""
+    from datetime import datetime, timedelta, timezone
+
+    past = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    raw = (
+        await client.post(
+            "/auth/keys",
+            json={"label": "expired", "expires_at": past},
+            headers=admin_headers,
+        )
+    ).json()["api_key"]
+
+    resp = await client.post("/tasks", headers={"X-API-Key": raw}, files=sample_files)
+    assert resp.status_code == 401
+
+
+async def test_future_expiry_key_works(client, admin_headers, sample_files):
+    """§4 / §5.3: 带未来 expires_at 的 Key 当前有效."""
+    from datetime import datetime, timedelta, timezone
+
+    future = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    raw = (
+        await client.post(
+            "/auth/keys",
+            json={"label": "future", "expires_at": future},
+            headers=admin_headers,
+        )
+    ).json()["api_key"]
+
+    resp = await client.post("/tasks", headers={"X-API-Key": raw}, files=sample_files)
+    assert resp.status_code == 202
+
+
+async def test_last_used_at_updated_on_use(client, admin_headers, sample_files, app):
+    """§4: 使用 Key 后 last_used_at 被更新 (初始为 None)."""
+
+    from mineru_gateway.models import ApiKey
+
+    created = (
+        await client.post("/auth/keys", json={"label": "lu"}, headers=admin_headers)
+    ).json()
+    key_id, raw = created["key_id"], created["api_key"]
+
+    async with app.state.db.session_factory() as session:
+        before = await session.get(ApiKey, key_id)
+        assert before.last_used_at is None
+
+    await client.post("/tasks", headers={"X-API-Key": raw}, files=sample_files)
+
+    async with app.state.db.session_factory() as session:
+        after = await session.get(ApiKey, key_id)
+        assert after.last_used_at is not None

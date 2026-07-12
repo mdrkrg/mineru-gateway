@@ -117,6 +117,27 @@ async def test_file_parse_authenticated_relays_result(client, api_key, sample_fi
     assert resp.json()["markdown"] == "# parsed"
 
 
+async def test_file_parse_authenticated_records_task(
+    client, api_key, sample_files, app
+):
+    """§3.3: 认证 /file_parse 记录一条 completed 任务 (供历史/所有权)."""
+    from sqlalchemy import func, select
+
+    from mineru_gateway.models import TaskRecord
+
+    resp = await client.post(
+        "/file_parse", headers={"X-API-Key": api_key}, files=sample_files
+    )
+    assert resp.status_code == 200
+
+    async with app.state.db.session_factory() as session:
+        count = await session.scalar(select(func.count()).select_from(TaskRecord))
+        assert count == 1
+        task = (await session.execute(select(TaskRecord))).scalar_one()
+        assert task.status == "completed"
+        assert task.file_names == ["doc.pdf"]
+
+
 async def test_file_parse_requires_key_when_anonymous_disabled(client, sample_files):
     """§3.3: /file_parse 同样默认禁止匿名 → 无 Key 401."""
     resp = await client.post("/file_parse", files=sample_files)
@@ -170,6 +191,7 @@ async def _anon_client(tmp_path):
         gateway_url="http://testserver",
         file_cache_dir=str(tmp_path / "cache"),
         enable_background=False,
+        json_logs=False,
     )
     upstream = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=create_mock_upstream()),
@@ -198,6 +220,28 @@ async def test_anonymous_passthrough_no_record(tmp_path):
 
         # No task rows written for anonymous requests.
         from sqlalchemy import func, select
+        from mineru_gateway.models import TaskRecord
+
+        async with app.state.db.session_factory() as session:
+            count = await session.scalar(select(func.count()).select_from(TaskRecord))
+            assert count == 0
+
+
+async def test_anonymous_file_parse_passthrough_no_record(tmp_path):
+    """§3.3: ALLOW_ANONYMOUS=true 时无 Key 的 /file_parse 也为纯透传, 不入库."""
+    app, settings = await _anon_client(tmp_path)
+    async with LifespanManager(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as c:
+            files = [("files", ("a.pdf", b"data", "application/pdf"))]
+            resp = await c.post("/file_parse", files=files)
+            assert resp.status_code == 200
+            assert resp.json()["markdown"] == "# parsed"
+
+        from sqlalchemy import func, select
+
         from mineru_gateway.models import TaskRecord
 
         async with app.state.db.session_factory() as session:

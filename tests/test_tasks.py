@@ -302,6 +302,28 @@ async def test_cancel_succeeds_when_upstream_unreachable(client, api_key):
     assert detail.json()["status"] == "cancelled"
 
 
+async def test_cancel_releases_cache(client, api_key, app):
+    """§3.4: 取消 (终态) 后删除该任务的暂存文件并清空 cache_dir."""
+    import os
+
+    task_id = await _submit(client, api_key)
+
+    from mineru_gateway.tasks import service
+
+    async with app.state.db.session_factory() as session:
+        task = await service.get(session, task_id)
+        cache_dir = task.cache_dir
+    assert cache_dir and os.path.isdir(cache_dir)
+
+    resp = await client.delete(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+    assert resp.status_code == 200
+
+    assert not os.path.exists(cache_dir)
+    async with app.state.db.session_factory() as session:
+        task = await service.get(session, task_id)
+        assert task.cache_dir is None
+
+
 async def test_cancel_requires_auth(client, api_key):
     """§3.2: 取消需要 X-API-Key (401)."""
     task_id = await _submit(client, api_key)

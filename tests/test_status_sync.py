@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from mineru_gateway.background import status_sync
 from mineru_gateway.tasks import service
+from mineru_gateway.tasks.cache import FileCache
 from mineru_gateway.upstream.client import UpstreamClient
 
 from .mock_upstream import state as mock_state
@@ -148,3 +149,31 @@ async def test_sync_ignores_terminal_tasks(app, upstream_client):
     async with db.session_factory() as session:
         refreshed = await service.get(session, task_id)
         assert refreshed.status == "completed"
+
+
+async def test_sync_releases_cache_on_terminal_state(app, upstream_client, tmp_path):
+    """§3.4: 任务经状态同步进入终态时, 暂存文件被删除且 cache_dir 清空."""
+    import os
+
+    db = app.state.db
+    upstream = UpstreamClient(upstream_client)
+    cache = FileCache(str(tmp_path))
+    cache_dir = await cache.store(
+        {"backend": "pipeline"},
+        [("files", ("a.pdf", b"%PDF-1.4 data", "application/pdf"))],
+    )
+    assert os.path.isdir(cache_dir)
+
+    async with db.session_factory() as session:
+        key_id = await _seed_key(session)
+        task = await _make_task(session, key_id, cache_dir=cache_dir)
+        task_id = task.id
+
+    mock_state.task_status = "completed"
+    await status_sync.sync_once(db, upstream, poll_failure_threshold=3, cache=cache)
+
+    assert not os.path.exists(cache_dir)
+    async with db.session_factory() as session:
+        refreshed = await service.get(session, task_id)
+        assert refreshed.status == "completed"
+        assert refreshed.cache_dir is None
