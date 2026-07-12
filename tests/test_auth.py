@@ -7,7 +7,6 @@ Plan: Phase 1 — "Admin Token 签发/列出/吊销 API Key".
 from __future__ import annotations
 
 
-
 async def test_create_key_requires_admin_token(client):
     """§3.1: 创建 Key 需要 X-Admin-Token; 缺失时拒绝 (401)."""
     resp = await client.post("/auth/keys", json={"label": "x"})

@@ -25,6 +25,9 @@ class MockState:
     submit_malformed: bool = False  # return 202 without a task_id
     parse_status: int = 200  # status code returned by POST /file_parse
     cancel_raises: bool = False  # simulate DELETE /tasks/{id} being unreachable
+    submit_raises: bool = False  # simulate POST /tasks connection failure
+    status_raises: bool = False  # simulate GET /tasks/{id} failure
+    task_status: str = "processing"  # status reported by GET /tasks/{id}
     submitted: list[dict] = field(default_factory=list)
 
     def reset(self) -> None:
@@ -37,6 +40,9 @@ class MockState:
         self.submit_malformed = False
         self.parse_status = 200
         self.cancel_raises = False
+        self.submit_raises = False
+        self.status_raises = False
+        self.task_status = "processing"
         self.submitted.clear()
 
 
@@ -59,6 +65,8 @@ def create_mock_upstream() -> FastAPI:
 
     @app.post("/tasks")
     async def submit_task(request: Request):
+        if state.submit_raises:
+            raise RuntimeError("upstream unreachable")
         form = await request.form()
         file_names = [
             v.filename
@@ -95,7 +103,9 @@ def create_mock_upstream() -> FastAPI:
 
     @app.get("/tasks/{task_id}")
     async def task_status(task_id: str):
-        return {"task_id": task_id, "status": "processing"}
+        if state.status_raises:
+            raise RuntimeError("status query failed")
+        return {"task_id": task_id, "status": state.task_status}
 
     @app.get("/tasks/{task_id}/result")
     async def task_result(task_id: str):

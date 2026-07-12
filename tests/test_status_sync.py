@@ -1,0 +1,107 @@
+"""Tests for Phase 3 background status synchronization.
+
+Spec: mvp-implementation.md §3.4 (上游状态同步), §6.3 (status_sync_loop).
+Plan: Phase 3 — "后台状态同步循环".
+
+Each test drives the single-pass `sync_once` directly (the loop is just
+`while True: sleep; sync_once`), so no timing/sleep is involved.
+"""
+
+from __future__ import annotations
+
+
+from mineru_gateway.background import status_sync
+from mineru_gateway.tasks import service
+from mineru_gateway.upstream.client import UpstreamClient
+
+from .mock_upstream import state as mock_state
+
+
+async def _make_task(session, api_key_id, **overrides):
+    fields = dict(
+        api_key_id=api_key_id,
+        status="pending",
+        upstream_url="http://mock-upstream",
+        upstream_task_id="up-123",
+        file_names=["a.pdf"],
+        file_count=1,
+    )
+    fields.update(overrides)
+    return await service.create(session, **fields)
+
+
+async def _seed_key(session):
+    from mineru_gateway.auth import service as auth_service
+
+    record, _ = await auth_service.create_key(session, label="bg")
+    return record.id
+
+
+async def test_sync_updates_status_from_upstream(app, upstream_client):
+    """§6.3: 非终态任务被拉取上游状态并写回 DB."""
+    db = app.state.db
+    upstream = UpstreamClient(upstream_client)
+    async with db.session_factory() as session:
+        key_id = await _seed_key(session)
+        task = await _make_task(session, key_id)
+        task_id = task.id
+
+    mock_state.task_status = "completed"
+    await status_sync.sync_once(db, upstream, poll_failure_threshold=3)
+
+    async with db.session_factory() as session:
+        refreshed = await service.get(session, task_id)
+        assert refreshed.status == "completed"
+
+
+async def test_sync_increments_poll_failures_on_error(app, upstream_client):
+    """§6.3: 单任务状态查询失败 → 持久化递增 consecutive_poll_failures."""
+    db = app.state.db
+    upstream = UpstreamClient(upstream_client)
+    async with db.session_factory() as session:
+        key_id = await _seed_key(session)
+        task = await _make_task(session, key_id)
+        task_id = task.id
+
+    mock_state.status_raises = True
+    await status_sync.sync_once(db, upstream, poll_failure_threshold=3)
+
+    async with db.session_factory() as session:
+        refreshed = await service.get(session, task_id)
+        assert refreshed.consecutive_poll_failures == 1
+
+
+async def test_sync_marks_retryable_at_threshold(app, upstream_client):
+    """§6.3: 连续失败达阈值 → 标记为可重试 (retry_pending)."""
+    db = app.state.db
+    upstream = UpstreamClient(upstream_client)
+    async with db.session_factory() as session:
+        key_id = await _seed_key(session)
+        task = await _make_task(
+            session, key_id, consecutive_poll_failures=2, cache_dir="/tmp/x"
+        )
+        task_id = task.id
+
+    mock_state.status_raises = True
+    await status_sync.sync_once(db, upstream, poll_failure_threshold=3)
+
+    async with db.session_factory() as session:
+        refreshed = await service.get(session, task_id)
+        assert refreshed.status == "retry_pending"
+
+
+async def test_sync_ignores_terminal_tasks(app, upstream_client):
+    """§6.3: 终态任务不参与状态同步."""
+    db = app.state.db
+    upstream = UpstreamClient(upstream_client)
+    async with db.session_factory() as session:
+        key_id = await _seed_key(session)
+        task = await _make_task(session, key_id, status="completed")
+        task_id = task.id
+
+    mock_state.task_status = "processing"
+    await status_sync.sync_once(db, upstream, poll_failure_threshold=3)
+
+    async with db.session_factory() as session:
+        refreshed = await service.get(session, task_id)
+        assert refreshed.status == "completed"

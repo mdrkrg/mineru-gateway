@@ -168,6 +168,8 @@ async def _anon_client(tmp_path):
         admin_token="test-admin-token",
         allow_anonymous=True,
         gateway_url="http://testserver",
+        file_cache_dir=str(tmp_path / "cache"),
+        enable_background=False,
     )
     upstream = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=create_mock_upstream()),

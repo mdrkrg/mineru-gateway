@@ -32,6 +32,8 @@ def settings(tmp_path) -> Settings:
         gateway_url="http://testserver",
         rate_limit_per_key=10,
         max_upload_size=1024,
+        file_cache_dir=str(tmp_path / "cache"),
+        enable_background=False,
     )
 
 
