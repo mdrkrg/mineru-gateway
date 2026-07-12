@@ -130,7 +130,7 @@
 
 | 功能 | 说明 |
 |------|------|
-| 结构化日志 | JSON 日志，含 `task_id`、`api_key_id`、`duration_ms` 等字段 |
+| 结构化日志 | JSON 日志，含 `task_id`、`api_key_id`、`duration_ms` 等字段。请求级访问日志由 ASGI 中间件（`middleware.py`）逐请求产生，含 `request_id`/`method`/`path`/`status_code`/`duration_ms`，认证请求附带 `api_key_id`；响应回填 `X-Request-Id` 头 |
 | 健康检查 | Gateway `/health` + 聚合上游状态 |
 
 ---
@@ -652,8 +652,6 @@ volumes:
 
 | # | 项 | 现状 | 影响 | 去向 |
 |---|----|------|------|------|
-| G1 | 逐请求结构化日志 | `JsonFormatter` / `configure_logging` 已就绪，但**无请求级中间件**，只有后台循环写日志 | §3.6 承诺的每请求日志（含 `duration_ms`）尚未产生 | 增加请求日志中间件，或收敛文档措辞 |
-| G2 | `duration_ms` 字段 | 已在 formatter 支持，但**无处填充** | 观测性缺口 | 随 G1 一并补齐 |
 | G3 | 双套建表路径 | 应用启动 `db.create_all()`（`create_tables=True`）与 Docker entrypoint 的 `alembic upgrade head` 并存 | 开发（自动建表）与生产（迁移）可能漂移 | 生产以 Alembic 为唯一来源；非测试环境默认 `create_tables=False` |
 
 ### 行为澄清（实现正确，但规约未明确）
