@@ -177,3 +177,21 @@ async def test_sync_releases_cache_on_terminal_state(app, upstream_client, tmp_p
         refreshed = await service.get(session, task_id)
         assert refreshed.status == "completed"
         assert refreshed.cache_dir is None
+
+
+async def test_sync_sets_completed_at_on_upstream_cancelled(app, upstream_client):
+    """§4/§6.3: 经上游轮询检测到 cancelled 终态时, 也应写入 completed_at."""
+    db = app.state.db
+    upstream = UpstreamClient(upstream_client)
+    async with db.session_factory() as session:
+        key_id = await _seed_key(session)
+        task = await _make_task(session, key_id)
+        task_id = task.id
+
+    mock_state.task_status = "cancelled"
+    await status_sync.sync_once(db, upstream, poll_failure_threshold=3)
+
+    async with db.session_factory() as session:
+        refreshed = await service.get(session, task_id)
+        assert refreshed.status == "cancelled"
+        assert refreshed.completed_at is not None

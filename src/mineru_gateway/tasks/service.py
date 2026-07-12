@@ -178,7 +178,7 @@ async def update_from_upstream(
     now = datetime.now(timezone.utc)
     if mapped == "processing" and task.started_at is None:
         task.started_at = now
-    if mapped in ("completed", "failed") and task.completed_at is None:
+    if mapped in TERMINAL_STATES and task.completed_at is None:
         task.completed_at = now
     if mapped == "failed":
         task.upstream_error = upstream_status.get("error") or task.upstream_error
