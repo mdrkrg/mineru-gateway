@@ -1,0 +1,28 @@
+# Upstream mineru-router / mineru-api are external services (not managed here);
+# set GATEWAY_UPSTREAM_URL to their address.
+services:
+  mineru-gateway:
+    build:
+      context: .
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      GATEWAY_UPSTREAM_URL: ${GATEWAY_UPSTREAM_URL:?set upstream router/api URL}
+      GATEWAY_DATABASE_URL: sqlite+aiosqlite:////data/gateway.db
+      GATEWAY_ADMIN_TOKEN: ${GATEWAY_ADMIN_TOKEN:?set in .env}
+      GATEWAY_ALLOW_ANONYMOUS: "false"
+      GATEWAY_GATEWAY_URL: ${GATEWAY_GATEWAY_URL:-http://localhost:8000}
+      GATEWAY_FILE_CACHE_DIR: /cache
+      GATEWAY_MAX_UPLOAD_SIZE: "524288000"          # 500MB
+      GATEWAY_RATE_LIMIT_PER_KEY: "10"              # per key, per second
+      GATEWAY_MAX_CONCURRENT_TASKS: "0"             # 0 disables the global cap
+      GATEWAY_TASK_RETENTION_DAYS: "90"
+      GATEWAY_JSON_LOGS: "true"
+    volumes:
+      - gateway_data:/data
+      - gateway_cache:/cache
+
+volumes:
+  gateway_data:
+  gateway_cache:
