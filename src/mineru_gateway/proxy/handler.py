@@ -145,6 +145,19 @@ async def handle_task_submission(
 
     # Authenticated: stage the original multipart for crash recovery, then
     # forward. Release the cache if the upstream rejects the submission.
+    # Global concurrency cap (§3.5): reject when too many tasks are in flight.
+    if settings.max_concurrent_tasks > 0:
+        in_flight = await task_service.count_in_flight(session)
+        if in_flight >= settings.max_concurrent_tasks:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"Global concurrency limit reached "
+                    f"({in_flight}/{settings.max_concurrent_tasks})"
+                ),
+                headers={"Retry-After": "10"},
+            )
+
     cache_dir = await cache.store(data, files)
     upstream_resp = await upstream.submit_task(data, files)
     if upstream_resp.status_code != 202:

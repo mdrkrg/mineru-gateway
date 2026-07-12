@@ -14,6 +14,7 @@ from .config import Settings, get_settings
 from .db import Database
 from .health.routes import router as health_router
 from .limiter.memory import MemoryTokenBucket
+from .logging_config import configure_logging
 from .proxy.routes import router as proxy_router
 from .tasks.cache import FileCache
 from .tasks.routes import router as tasks_router
@@ -27,6 +28,8 @@ def create_app(
 ) -> FastAPI:
     settings = settings or get_settings()
     owns_upstream_client = upstream_client is None
+
+    configure_logging(level=settings.log_level, json_logs=settings.json_logs)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

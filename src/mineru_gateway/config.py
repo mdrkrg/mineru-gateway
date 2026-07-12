@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     rate_limit_per_key: int = 10
     task_retention_days: int = 90
 
+    # --- Phase 4: protection ---
+    # Global cap on in-flight (pending + processing) tasks across all keys.
+    # 0 disables the cap.
+    max_concurrent_tasks: int = 0
+    log_level: str = "INFO"
+    json_logs: bool = True
+
     # --- Phase 3: disaster recovery ---
     file_cache_dir: str = "/tmp/gateway-cache"
     enable_background: bool = True

@@ -131,6 +131,16 @@ async def get_non_terminal(session: AsyncSession) -> list[TaskRecord]:
     return list(result.scalars().all())
 
 
+async def count_in_flight(session: AsyncSession) -> int:
+    """Count tasks occupying a global concurrency slot (pending + processing)."""
+    total = await session.scalar(
+        select(func.count())
+        .select_from(TaskRecord)
+        .where(TaskRecord.status.in_(("pending", "processing", "retry_pending")))
+    )
+    return int(total or 0)
+
+
 async def get_retryable(session: AsyncSession) -> list[TaskRecord]:
     """Tasks flagged for resubmission after an upstream crash."""
     result = await session.execute(
