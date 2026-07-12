@@ -75,8 +75,18 @@ def test_json_formatter_serializes_exception():
 
 
 def test_configure_logging_installs_json_handler():
-    """§3.6: configure_logging(json_logs=True) 安装 JSON 格式化的 handler."""
-    configure_logging(level="INFO", json_logs=True)
+    """§3.6: configure_logging(json_logs=True) 安装 JSON 格式化的 handler.
+
+    Saves/restores the root logger state so this test does not leak a JSON
+    handler onto other tests.
+    """
     root = logging.getLogger()
-    assert root.handlers
-    assert any(isinstance(h.formatter, JsonFormatter) for h in root.handlers)
+    original_handlers = list(root.handlers)
+    original_level = root.level
+    try:
+        configure_logging(level="INFO", json_logs=True)
+        assert root.handlers
+        assert any(isinstance(h.formatter, JsonFormatter) for h in root.handlers)
+    finally:
+        root.handlers = original_handlers
+        root.setLevel(original_level)

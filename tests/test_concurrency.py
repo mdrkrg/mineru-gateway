@@ -97,3 +97,28 @@ async def test_cap_frees_after_terminal_state(tmp_path):
 
             second = await c.post("/tasks", headers={"X-API-Key": key}, files=_files())
             assert second.status_code == 202
+
+
+async def test_retry_pending_task_occupies_slot(tmp_path):
+    """§3.5: retry_pending 任务仍占用并发额度 (count_in_flight 计入)."""
+    app = await _client_with_cap(tmp_path, cap=1)
+    async with LifespanManager(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as c:
+            key = await _issue_key(c)
+            first = await c.post("/tasks", headers={"X-API-Key": key}, files=_files())
+            task_id = first.json()["task_id"]
+
+        # Move the task into retry_pending directly.
+        from mineru_gateway.tasks import service
+
+        async with app.state.db.session_factory() as session:
+            await service.update(session, task_id, {"status": "retry_pending"})
+
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as c:
+            second = await c.post("/tasks", headers={"X-API-Key": key}, files=_files())
+            assert second.status_code == 503

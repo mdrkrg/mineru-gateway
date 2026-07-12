@@ -34,6 +34,7 @@ def settings(tmp_path) -> Settings:
         max_upload_size=1024,
         file_cache_dir=str(tmp_path / "cache"),
         enable_background=False,
+        json_logs=False,
     )
 
 
