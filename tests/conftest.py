@@ -35,6 +35,7 @@ def settings(tmp_path) -> Settings:
         file_cache_dir=str(tmp_path / "cache"),
         enable_background=False,
         json_logs=False,
+        create_tables=True,
     )
 
 

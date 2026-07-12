@@ -25,10 +25,12 @@ from .upstream.client import UpstreamClient
 def create_app(
     settings: Settings | None = None,
     upstream_client: httpx.AsyncClient | None = None,
-    create_tables: bool = True,
+    create_tables: bool | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     owns_upstream_client = upstream_client is None
+    if create_tables is None:
+        create_tables = settings.create_tables
 
     configure_logging(level=settings.log_level, json_logs=settings.json_logs)
 

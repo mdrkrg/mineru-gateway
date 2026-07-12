@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     rate_limit_per_key: int = 10
     task_retention_days: int = 90
 
+    # Schema is managed by Alembic in production; auto-create is opt-in
+    # (tests / local one-shot setups) to avoid drift between the two paths.
+    create_tables: bool = False
+
     # --- Phase 4: protection ---
     # Global cap on in-flight (pending + processing) tasks across all keys.
     # 0 disables the cap.

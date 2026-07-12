@@ -86,6 +86,7 @@ async def test_protected_lifecycle_with_concurrency_cap(tmp_path):
         enable_background=False,
         json_logs=False,
         max_concurrent_tasks=1,
+        create_tables=True,
     )
     upstream = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=create_mock_upstream()),

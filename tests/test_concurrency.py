@@ -27,6 +27,7 @@ async def _client_with_cap(tmp_path, cap):
         enable_background=False,
         json_logs=False,
         max_concurrent_tasks=cap,
+        create_tables=True,
     )
     upstream = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=create_mock_upstream()),
