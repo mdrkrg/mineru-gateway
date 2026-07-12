@@ -7,12 +7,13 @@ Plan: Phase 3 — "过期任务 + 缓存清理".
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
-
 
 from mineru_gateway.background import cleanup
 from mineru_gateway.limiter.memory import MemoryTokenBucket
 from mineru_gateway.tasks import service
+from mineru_gateway.tasks.cache import FileCache
 
 
 async def _seed_key(session):
@@ -67,3 +68,33 @@ async def test_cleanup_prunes_limiter(app):
 
     await cleanup.cleanup_once(db, limiter, retention_days=90)
     assert "stale" not in limiter._state
+
+
+async def test_cleanup_releases_cache_of_expired_records(app, tmp_path):
+    """§3.4: 过期记录被删除时, 其暂存文件目录一并清理."""
+    db = app.state.db
+    cache = FileCache(str(tmp_path))
+    cache_dir = await cache.store(
+        {"backend": "pipeline"},
+        [("files", ("a.pdf", b"%PDF-1.4 data", "application/pdf"))],
+    )
+    assert os.path.isdir(cache_dir)
+
+    async with db.session_factory() as session:
+        key_id = await _seed_key(session)
+        old = await service.create(
+            session,
+            api_key_id=key_id,
+            status="completed",
+            upstream_url="http://mock-upstream",
+            file_names=["a.pdf"],
+            file_count=1,
+            cache_dir=cache_dir,
+        )
+        old.created_at = datetime.now(timezone.utc) - timedelta(days=100)
+        await session.commit()
+
+    limiter = MemoryTokenBucket()
+    await cleanup.cleanup_once(db, limiter, retention_days=90, cache=cache)
+
+    assert not os.path.exists(cache_dir)

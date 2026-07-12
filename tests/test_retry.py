@@ -9,6 +9,7 @@ exists. Each test drives `retry_once` directly.
 
 from __future__ import annotations
 
+import os
 
 from mineru_gateway.background import retry
 from mineru_gateway.tasks import service
@@ -102,8 +103,6 @@ async def test_retry_marks_failed_after_max_retries(app, upstream_client, tmp_pa
         assert refreshed.status == "failed"
         assert refreshed.error_message
 
-    import os
-
     assert not os.path.exists(cache_dir)
 
 
@@ -123,3 +122,5 @@ async def test_retry_marks_failed_on_malformed_response(app, upstream_client, tm
     async with db.session_factory() as session:
         refreshed = await service.get(session, task_id)
         assert refreshed.status == "failed"
+        # Non-transient failure must NOT consume a retry.
+        assert refreshed.retry_count == 0

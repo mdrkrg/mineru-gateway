@@ -90,6 +90,49 @@ async def test_sync_marks_retryable_at_threshold(app, upstream_client):
         assert refreshed.status == "retry_pending"
 
 
+async def test_sync_does_not_mark_retryable_without_cache_dir(app, upstream_client):
+    """§3.4: 无暂存文件 (cache_dir=None) 的任务即使超阈值也不标记可重试.
+
+    只有暂存文件仍在的任务才能重提；无 cache_dir 的任务保持原状态待下轮同步。
+    """
+    db = app.state.db
+    upstream = UpstreamClient(upstream_client)
+    async with db.session_factory() as session:
+        key_id = await _seed_key(session)
+        task = await _make_task(
+            session, key_id, consecutive_poll_failures=2, cache_dir=None
+        )
+        task_id = task.id
+
+    mock_state.status_raises = True
+    await status_sync.sync_once(db, upstream, poll_failure_threshold=3)
+
+    async with db.session_factory() as session:
+        refreshed = await service.get(session, task_id)
+        assert refreshed.status != "retry_pending"
+        # Failure count still recorded for observability.
+        assert refreshed.consecutive_poll_failures == 3
+
+
+async def test_sync_marks_all_retryable_when_upstream_unreachable(app, upstream_client):
+    """§6.3: 上游整体不可达时, 对所有非终态且有暂存文件的任务批量标记可重试."""
+    db = app.state.db
+    upstream = UpstreamClient(upstream_client)
+    async with db.session_factory() as session:
+        key_id = await _seed_key(session)
+        t1 = await _make_task(session, key_id, cache_dir="/tmp/a")
+        t2 = await _make_task(session, key_id, cache_dir="/tmp/b")
+        ids = [t1.id, t2.id]
+
+    mock_state.health_raises = True
+    await status_sync.sync_once(db, upstream, poll_failure_threshold=3)
+
+    async with db.session_factory() as session:
+        for task_id in ids:
+            refreshed = await service.get(session, task_id)
+            assert refreshed.status == "retry_pending"
+
+
 async def test_sync_ignores_terminal_tasks(app, upstream_client):
     """§6.3: 终态任务不参与状态同步."""
     db = app.state.db
