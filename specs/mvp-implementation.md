@@ -628,6 +628,11 @@ volumes:
 | `GATEWAY_MAX_UPLOAD_SIZE` | `524288000` | 单文件上限（字节） |
 | `GATEWAY_RATE_LIMIT_PER_KEY` | `10` | 每 Key 每秒请求数 |
 | `GATEWAY_TASK_RETENTION_DAYS` | `90` | 任务记录保留天数 |
+| `GATEWAY_CREATE_TABLES` | `false` | 启动时是否 `create_all` 自动建表；**生产保持 `false`**，Schema 由 Alembic 迁移管理（见下）。仅测试/本地便捷场景置 `true` |
+
+### 7.4 Schema 管理（Alembic 为唯一来源）
+
+生产环境的数据库 Schema **只由 Alembic 迁移管理**：Docker entrypoint 在启动前执行 `alembic upgrade head`，应用自身默认不建表（`GATEWAY_CREATE_TABLES=false`）。这样避免「应用 `create_all` 自动建表」与「Alembic 迁移」两条独立路径产生漂移，也保证迁移缺陷不会被自动建表掩盖。`create_tables=true`（或在 `create_app(create_tables=True)` 显式传入）仅用于测试与本地一次性起库的便捷场景。
 
 ---
 
@@ -650,9 +655,7 @@ volumes:
 
 ### 差距（实现落后于规约）
 
-| # | 项 | 现状 | 影响 | 去向 |
-|---|----|------|------|------|
-| G3 | 双套建表路径 | 应用启动 `db.create_all()`（`create_tables=True`）与 Docker entrypoint 的 `alembic upgrade head` 并存 | 开发（自动建表）与生产（迁移）可能漂移 | 生产以 Alembic 为唯一来源；非测试环境默认 `create_tables=False` |
+（当前无未闭合差距。）
 
 ### 行为澄清（实现正确，但规约未明确）
 
