@@ -25,6 +25,7 @@ async def _client_with_cap(tmp_path, cap):
         gateway_url="http://testserver",
         file_cache_dir=str(tmp_path / "cache"),
         enable_background=False,
+        json_logs=False,
         max_concurrent_tasks=cap,
     )
     upstream = httpx.AsyncClient(
