@@ -38,3 +38,5 @@
 - 内存令牌桶限流。
 - 文件大小限制。
 - 结构化日志、Docker 构建 + compose、OpenAPI/README、端到端集成测试。
+
+> **实现说明**：健康门控、按 Key 限流、文件大小限制在 Phase 1 已落地；本阶段新增全局并发上限（DB 中 `pending+processing+retry_pending` 计数，`GATEWAY_MAX_CONCURRENT_TASKS=0` 关闭）与结构化 JSON 日志（`JsonFormatter`，含 `task_id`/`api_key_id`/`duration_ms` 等上下文字段），并补齐 Dockerfile（entrypoint 先 `alembic upgrade head` 再单 worker 启动）、docker-compose、README 与端到端集成测试。
