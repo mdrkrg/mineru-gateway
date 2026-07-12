@@ -123,7 +123,7 @@
 |------|------|
 | 健康感知提交门控 | 读取上游 `/health`，`free_slots < 1` → 503 + `Retry-After` |
 | 按 Key 内存限流 | 进程内令牌桶，可配置每 Key 每秒请求数（单实例单 worker 有效） |
-| 全局并发限制 | DB 中 `pending + processing` 上限，超出 503 |
+| 全局并发限制 | DB 中 `pending + processing + retry_pending` 上限，超出 503（`retry_pending` 为待重提的在制任务，同样占用额度）|
 | 文件大小限制 | 单文件最大 `MAX_UPLOAD_SIZE`（默认 500MB） |
 
 ### 3.6 可观测性
