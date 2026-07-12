@@ -53,3 +53,6 @@ class UpstreamClient:
 
     async def get_task_result(self, upstream_task_id: str) -> httpx.Response:
         return await self._client.get(f"/tasks/{upstream_task_id}/result")
+
+    async def cancel_task(self, upstream_task_id: str) -> httpx.Response:
+        return await self._client.delete(f"/tasks/{upstream_task_id}")

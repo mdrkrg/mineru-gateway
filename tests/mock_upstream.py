@@ -99,4 +99,8 @@ def create_mock_upstream() -> FastAPI:
     async def task_result(task_id: str):
         return PlainTextResponse("# result content")
 
+    @app.delete("/tasks/{task_id}")
+    async def cancel_task(task_id: str):
+        return {"task_id": task_id, "status": "cancelled"}
+
     return app
