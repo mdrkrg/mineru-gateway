@@ -42,7 +42,7 @@ class RequestLoggingMiddleware:
         try:
             await self.app(scope, receive, send_wrapper)
         finally:
-            duration_ms = round((time.perf_counter() - start) * 1000, 2)
+            duration_ms = float(round((time.perf_counter() - start) * 1000, 2))
             state = scope.get("state") or {}
             logger.info(
                 "request",
