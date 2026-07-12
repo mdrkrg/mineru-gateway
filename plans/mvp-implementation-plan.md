@@ -30,6 +30,8 @@
 - 上游故障检测 + 简单重提（固定 `MAX_RETRIES`）。
 - 过期任务 + 缓存清理。
 
+> **实现说明**：三个后台循环（`status_sync`/`retry`/`cleanup`）均拆分出可单测的 `*_once` 单趟函数，循环体仅为 `while True: sleep; *_once`。崩溃可重试任务用中间态 `retry_pending`（`status_sync` 在上游不可达或连续轮询失败达阈值时打标），`retry` 循环在上游恢复健康后从暂存目录重提，耗尽 `MAX_RETRIES` 即 `failed`。后台循环由 `GATEWAY_ENABLE_BACKGROUND` 开关控制（测试中关闭，直接驱动 `*_once`）。
+
 ## Phase 4：保护 + 加固
 
 - 健康感知提交门控 + 全局并发上限。
