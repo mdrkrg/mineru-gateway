@@ -92,12 +92,15 @@ async def list_tasks(
     return list(result.scalars().all()), int(total or 0)
 
 
-async def mark_cancelled(session: AsyncSession, task: TaskRecord) -> TaskRecord:
+async def mark_cancelled(session: AsyncSession, task: TaskRecord) -> str | None:
+    """Mark a task cancelled. Returns its cache_dir (now orphaned) to release."""
     task.status = "cancelled"
     task.completed_at = datetime.now(timezone.utc)
+    released = task.cache_dir
+    task.cache_dir = None
     await session.commit()
     await session.refresh(task)
-    return task
+    return released
 
 
 # --- Phase 3: background recovery helpers ---
@@ -160,10 +163,15 @@ async def update(session: AsyncSession, task_id: str, fields: dict) -> None:
 
 async def update_from_upstream(
     session: AsyncSession, task_id: str, upstream_status: dict
-) -> None:
+) -> str | None:
+    """Mirror upstream status onto the task.
+
+    Returns the cache_dir to release when the task has just reached a terminal
+    state (staged files are no longer needed, §3.4); otherwise None.
+    """
     task = await session.get(TaskRecord, task_id)
     if task is None:
-        return
+        return None
     raw = (upstream_status.get("status") or "").lower()
     mapped = _UPSTREAM_STATUS_MAP.get(raw, task.status)
 
@@ -177,7 +185,14 @@ async def update_from_upstream(
 
     task.status = mapped
     task.consecutive_poll_failures = 0
+
+    released: str | None = None
+    if mapped in TERMINAL_STATES and task.cache_dir:
+        released = task.cache_dir
+        task.cache_dir = None
+
     await session.commit()
+    return released
 
 
 async def mark_retryable(session: AsyncSession, task_id: str) -> None:
@@ -199,6 +214,8 @@ async def mark_failed(session: AsyncSession, task_id: str, error: str) -> None:
     task.status = "failed"
     task.error_message = error
     task.completed_at = datetime.now(timezone.utc)
+    # Staged files are released by the caller; clear the pointer.
+    task.cache_dir = None
     await session.commit()
 
 

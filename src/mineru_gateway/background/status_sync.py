@@ -15,13 +15,18 @@ import logging
 
 from ..db import Database
 from ..tasks import service
+from ..tasks.cache import FileCache
 from ..upstream.client import UpstreamClient
 
 logger = logging.getLogger(__name__)
 
 
 async def sync_once(
-    db: Database, upstream: UpstreamClient, *, poll_failure_threshold: int
+    db: Database,
+    upstream: UpstreamClient,
+    *,
+    poll_failure_threshold: int,
+    cache: FileCache | None = None,
 ) -> None:
     async with db.session_factory() as session:
         tasks = await service.get_non_terminal(session)
@@ -58,7 +63,12 @@ async def sync_once(
             continue
 
         async with db.session_factory() as session:
-            await service.update_from_upstream(session, task.id, upstream_status)
+            released = await service.update_from_upstream(
+                session, task.id, upstream_status
+            )
+        # Release staged files once the task reaches a terminal state (§3.4).
+        if released and cache is not None:
+            await cache.release(released)
 
 
 async def status_sync_loop(
@@ -67,10 +77,16 @@ async def status_sync_loop(
     *,
     interval: float,
     poll_failure_threshold: int,
+    cache: FileCache | None = None,
 ) -> None:
     while True:
         await asyncio.sleep(interval)
         try:
-            await sync_once(db, upstream, poll_failure_threshold=poll_failure_threshold)
+            await sync_once(
+                db,
+                upstream,
+                poll_failure_threshold=poll_failure_threshold,
+                cache=cache,
+            )
         except Exception:  # pragma: no cover - loop must not die
             logger.exception("status_sync pass failed")

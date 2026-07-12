@@ -16,6 +16,7 @@ from ..auth.dependencies import get_session, require_api_key
 from ..models import ApiKey
 from ..upstream.client import UpstreamClient
 from . import service
+from .cache import FileCache
 from .schemas import (
     TaskCancelResponse,
     TaskDetail,
@@ -28,6 +29,10 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 async def _upstream(request: Request) -> UpstreamClient:
     return request.app.state.upstream
+
+
+async def _cache(request: Request) -> FileCache:
+    return request.app.state.file_cache
 
 
 def _require_key(api_key: ApiKey | None) -> ApiKey:
@@ -135,6 +140,7 @@ async def cancel_task(
     api_key: ApiKey | None = Depends(require_api_key),
     session: AsyncSession = Depends(get_session),
     upstream: UpstreamClient = Depends(_upstream),
+    cache: FileCache = Depends(_cache),
 ) -> TaskCancelResponse:
     key = _require_key(api_key)
     task = await service.get_owned(session, task_id, key.id)
@@ -153,7 +159,9 @@ async def cancel_task(
         except Exception:
             pass
 
-    await service.mark_cancelled(session, task)
+    released = await service.mark_cancelled(session, task)
+    # Staged files are no longer needed once the task is terminal (§3.4).
+    await cache.release(released)
     return TaskCancelResponse(
         task_id=task.id, status="cancelled", message="Task cancelled"
     )

@@ -63,6 +63,7 @@ def create_app(
                         upstream,
                         interval=settings.status_sync_interval,
                         poll_failure_threshold=settings.poll_failure_threshold,
+                        cache=file_cache,
                     )
                 )
             )
