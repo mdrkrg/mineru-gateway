@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     rate_limit_per_key: int = 10
     task_retention_days: int = 90
 
+    # --- Phase 3: disaster recovery ---
+    file_cache_dir: str = "/tmp/gateway-cache"
+    enable_background: bool = True
+    status_sync_interval: float = 5.0
+    retry_interval: float = 10.0
+    cleanup_interval: float = 3600.0
+    max_retries: int = 3
+    poll_failure_threshold: int = 3
+
 
 @lru_cache
 def get_settings() -> Settings:

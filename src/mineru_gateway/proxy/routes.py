@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth.dependencies import get_session, require_api_key
 from ..config import Settings
 from ..models import ApiKey
+from ..tasks.cache import FileCache
 from ..upstream.client import UpstreamClient
 from .handler import handle_file_parse, handle_task_submission
 
@@ -26,6 +27,10 @@ async def _limiter(req: Request):
     return req.app.state.rate_limiter
 
 
+async def _cache(req: Request) -> FileCache:
+    return req.app.state.file_cache
+
+
 @router.post("/tasks")
 async def submit_task(
     request: Request,
@@ -33,6 +38,7 @@ async def submit_task(
     session: AsyncSession = Depends(get_session),
     upstream: UpstreamClient = Depends(_upstream),
     limiter=Depends(_limiter),
+    cache: FileCache = Depends(_cache),
     settings: Settings = Depends(_settings),
 ):
     return await handle_task_submission(
@@ -41,6 +47,7 @@ async def submit_task(
         session=session,
         upstream=upstream,
         limiter=limiter,
+        cache=cache,
         settings=settings,
     )
 

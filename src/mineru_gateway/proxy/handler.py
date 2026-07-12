@@ -1,7 +1,10 @@
 """Core proxy handlers for POST /tasks and POST /file_parse.
 
-Phase 1 scope: authentication gating, simple health-slot gating, task recording
-(authenticated), and response relay. File caching + crash retry are Phase 3.
+Authenticated `POST /tasks` stages the original multipart to the file cache
+(for crash recovery, §6.2/§6.4) before forwarding, records the task with its
+cache_dir, and returns the Gateway-flavored response. Anonymous requests are a
+pure passthrough. `POST /file_parse` is synchronous and not cached (no async
+recovery path).
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from ..config import Settings
 from ..limiter.memory import MemoryTokenBucket
 from ..models import ApiKey
 from ..tasks import service as task_service
+from ..tasks.cache import FileCache
 from ..upstream.client import UpstreamClient
 from ..upstream.health import check_free_slot
 
@@ -114,6 +118,7 @@ async def handle_task_submission(
     session: AsyncSession,
     upstream: UpstreamClient,
     limiter: MemoryTokenBucket,
+    cache: FileCache,
     settings: Settings,
 ) -> Response:
     # Defensive: anonymous only allowed when configured.
@@ -133,14 +138,17 @@ async def handle_task_submission(
         request, settings.max_upload_size
     )
 
-    # Anonymous: pure passthrough, no record.
+    # Anonymous: pure passthrough, no caching, no record.
     if api_key is None:
         upstream_resp = await upstream.submit_task(data, files)
         return _relay_response(upstream_resp)
 
-    # Authenticated: forward, then record.
+    # Authenticated: stage the original multipart for crash recovery, then
+    # forward. Release the cache if the upstream rejects the submission.
+    cache_dir = await cache.store(data, files)
     upstream_resp = await upstream.submit_task(data, files)
     if upstream_resp.status_code != 202:
+        await cache.release(cache_dir)
         raise HTTPException(
             status_code=upstream_resp.status_code, detail=upstream_resp.text
         )
@@ -156,6 +164,7 @@ async def handle_task_submission(
         file_count=len(file_names),
         file_total_bytes=total_bytes,
         backend=data.get("backend", "hybrid-engine"),
+        cache_dir=cache_dir,
         **_parse_params(data),
     )
 

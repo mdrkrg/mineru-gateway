@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI
 
 from .auth.routes import router as auth_router
+from .background import cleanup, retry, status_sync
 from .config import Settings, get_settings
 from .db import Database
 from .health.routes import router as health_router
 from .limiter.memory import MemoryTokenBucket
 from .proxy.routes import router as proxy_router
+from .tasks.cache import FileCache
 from .tasks.routes import router as tasks_router
 from .upstream.client import UpstreamClient
 
@@ -35,16 +38,64 @@ def create_app(
             base_url=settings.upstream_url, timeout=30.0
         )
 
-        app.state.settings = settings
-        app.state.db = db
-        app.state.upstream = UpstreamClient(client)
-        app.state.rate_limiter = MemoryTokenBucket(
+        upstream = UpstreamClient(client)
+        limiter = MemoryTokenBucket(
             rate=settings.rate_limit_per_key,
             burst=max(settings.rate_limit_per_key * 3, 1),
         )
+        file_cache = FileCache(settings.file_cache_dir)
+
+        app.state.settings = settings
+        app.state.db = db
+        app.state.upstream = upstream
+        app.state.rate_limiter = limiter
+        app.state.file_cache = file_cache
+
+        tasks: list[asyncio.Task] = []
+        if settings.enable_background:
+            tasks.append(
+                asyncio.create_task(
+                    status_sync.status_sync_loop(
+                        db,
+                        upstream,
+                        interval=settings.status_sync_interval,
+                        poll_failure_threshold=settings.poll_failure_threshold,
+                    )
+                )
+            )
+            tasks.append(
+                asyncio.create_task(
+                    retry.retry_loop(
+                        db,
+                        upstream,
+                        file_cache,
+                        interval=settings.retry_interval,
+                        max_retries=settings.max_retries,
+                    )
+                )
+            )
+            tasks.append(
+                asyncio.create_task(
+                    cleanup.cleanup_loop(
+                        db,
+                        limiter,
+                        interval=settings.cleanup_interval,
+                        retention_days=settings.task_retention_days,
+                        cache=file_cache,
+                    )
+                )
+            )
+
         try:
             yield
         finally:
+            for task in tasks:
+                task.cancel()
+            for task in tasks:
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
             if owns_upstream_client:
                 await client.aclose()
             await db.dispose()
