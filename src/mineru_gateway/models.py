@@ -91,6 +91,7 @@ class TaskRecord(Base):
     )
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     consecutive_poll_failures: Mapped[int] = mapped_column(Integer, default=0)
+    queued_ahead: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # File cache
     cache_dir: Mapped[str | None] = mapped_column(String(500), nullable=True)

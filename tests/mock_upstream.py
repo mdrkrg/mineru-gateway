@@ -86,6 +86,7 @@ def create_mock_upstream() -> FastAPI:
                 "task_id": f"up-{uuid.uuid4().hex[:12]}",
                 "status": "pending",
                 "file_names": file_names,
+                "queued_ahead": None,
             },
         )
 

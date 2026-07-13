@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 2c3f587a8079
+Revision ID: 5804b88e530d
 Revises: 
-Create Date: 2026-07-12 22:54:25.002561
+Create Date: 2026-07-13 21:48:04.452903
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '2c3f587a8079'
+revision: str = '5804b88e530d'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -62,6 +62,7 @@ def upgrade() -> None:
     sa.Column('upstream_task_id', sa.String(length=64), nullable=True),
     sa.Column('retry_count', sa.Integer(), nullable=False),
     sa.Column('consecutive_poll_failures', sa.Integer(), nullable=False),
+    sa.Column('queued_ahead', sa.Integer(), nullable=True),
     sa.Column('cache_dir', sa.String(length=500), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('started_at', sa.DateTime(timezone=True), nullable=True),

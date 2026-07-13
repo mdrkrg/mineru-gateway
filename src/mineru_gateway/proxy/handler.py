@@ -169,6 +169,9 @@ async def handle_task_submission(
         )
     payload = upstream_resp.json()
 
+    qa = payload.get("queued_ahead")
+    queued_ahead: int | None = qa if isinstance(qa, int) else None
+
     task = await task_service.create(
         session,
         api_key_id=api_key.id,
@@ -180,6 +183,7 @@ async def handle_task_submission(
         file_total_bytes=total_bytes,
         backend=data.get("backend", "hybrid-engine"),
         cache_dir=cache_dir,
+        queued_ahead=queued_ahead,
         **_parse_params(data),
     )
 

@@ -77,6 +77,7 @@ async def list_tasks(
             completed_at=t.completed_at,
             error=t.error_message,
             retry_count=t.retry_count,
+            queued_ahead=t.queued_ahead,
         )
         for t in tasks
     ]
@@ -104,6 +105,7 @@ async def get_task(
         completed_at=task.completed_at,
         error=task.error_message,
         retry_count=task.retry_count,
+        queued_ahead=task.queued_ahead,
     )
 
 
