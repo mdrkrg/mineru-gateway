@@ -248,3 +248,27 @@ async def test_anonymous_file_parse_passthrough_no_record(tmp_path):
         async with app.state.db.session_factory() as session:
             count = await session.scalar(select(func.count()).select_from(TaskRecord))
             assert count == 0
+
+
+async def test_queued_ahead_captured_and_relayed(client, api_key, sample_files):
+    """§3.7: 上游 queued_ahead 被捕获, 在 detail 和 list 中都返回."""
+    from .mock_upstream import state as ms
+
+    ms.queued_ahead = 5
+    try:
+        resp = await client.post(
+            "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+        )
+        assert resp.status_code == 202
+        task_id = resp.json()["task_id"]
+
+        detail = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+        assert detail.status_code == 200
+        assert detail.json()["queued_ahead"] == 5
+
+        list_resp = await client.get(
+            "/tasks", headers={"X-API-Key": api_key}, params={"status": "pending"}
+        )
+        assert list_resp.json()["items"][0]["queued_ahead"] == 5
+    finally:
+        ms.queued_ahead = None

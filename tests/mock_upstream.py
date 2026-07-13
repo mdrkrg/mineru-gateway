@@ -28,6 +28,7 @@ class MockState:
     submit_raises: bool = False  # simulate POST /tasks connection failure
     status_raises: bool = False  # simulate GET /tasks/{id} failure
     task_status: str = "processing"  # status reported by GET /tasks/{id}
+    queued_ahead: int | None = None  # queued_ahead in submit 202 response
     submitted: list[dict] = field(default_factory=list)
 
     def reset(self) -> None:
@@ -43,6 +44,7 @@ class MockState:
         self.submit_raises = False
         self.status_raises = False
         self.task_status = "processing"
+        self.queued_ahead = None
         self.submitted.clear()
 
 
@@ -86,7 +88,7 @@ def create_mock_upstream() -> FastAPI:
                 "task_id": f"up-{uuid.uuid4().hex[:12]}",
                 "status": "pending",
                 "file_names": file_names,
-                "queued_ahead": None,
+                "queued_ahead": state.queued_ahead,
             },
         )
 
