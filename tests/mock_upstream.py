@@ -58,9 +58,9 @@ def create_mock_upstream() -> FastAPI:
             return JSONResponse(status_code=500, content={"detail": "boom"})
         return {
             "status": state.status,
-            "max_concurrent": state.max_concurrent,
-            "queued": state.queued,
-            "processing": state.processing,
+            "max_concurrent_requests": state.max_concurrent,
+            "queued_tasks": state.queued,
+            "processing_tasks": state.processing,
         }
 
     @app.post("/tasks")

@@ -33,9 +33,11 @@ class UpstreamClient:
         data = resp.json()
         return UpstreamHealth(
             status=data.get("status", "unknown"),
-            max_concurrent=data.get("max_concurrent", 0),
-            queued=data.get("queued", 0),
-            processing=data.get("processing", 0),
+            max_concurrent=data.get(
+                "max_concurrent_requests", data.get("max_concurrent", 0)
+            ),
+            queued=data.get("queued_tasks", data.get("queued", 0)),
+            processing=data.get("processing_tasks", data.get("processing", 0)),
         )
 
     async def submit_task(

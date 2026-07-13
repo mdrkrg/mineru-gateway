@@ -7,6 +7,10 @@ Plan: Phase 1 — "GET /health 聚合".
 
 from __future__ import annotations
 
+import httpx
+
+from mineru_gateway.upstream.client import UpstreamClient
+
 from .mock_upstream import state as mock_state
 
 
@@ -35,3 +39,34 @@ async def test_health_degraded_when_upstream_not_healthy(client):
     mock_state.status = "overloaded"
     resp = await client.get("/health")
     assert resp.json()["status"] == "degraded"
+
+
+async def test_parses_real_router_health_field_names():
+    """§6.2 步骤2: 兼容 mineru-router v3.4.0 的 /health 字段名.
+
+    真实 router 用 max_concurrent_requests / queued_tasks / processing_tasks
+    (而非 max_concurrent / queued / processing)。回归测试: 若客户端读错字段,
+    free_slots 会退化为 0, 使门控 503 掉所有提交。
+    """
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "status": "healthy",
+                "version": "3.4.0",
+                "queued_tasks": 2,
+                "processing_tasks": 5,
+                "max_concurrent_requests": 24,
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://router") as http:
+        health = await UpstreamClient(http).get_health()
+
+    assert health.status == "healthy"
+    assert health.max_concurrent == 24
+    assert health.queued == 2
+    assert health.processing == 5
+    assert health.free_slots == 17
