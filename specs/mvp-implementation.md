@@ -121,12 +121,31 @@
 
 | 功能 | 说明 |
 |------|------|
-| 健康感知提交门控 | 读取上游 `/health`，`free_slots < 1` → 503 + `Retry-After` |
+| 健康感知提交门控 | 读取上游 `/health`（mineru-router v3.4.0 字段名为 `max_concurrent_requests` / `queued_tasks` / `processing_tasks`），计算 `free_slots = max_concurrent_requests - queued_tasks - processing_tasks`，不足 1 → 503 + `Retry-After` |
 | 按 Key 内存限流 | 进程内令牌桶，可配置每 Key 每秒请求数（单实例单 worker 有效） |
 | 全局并发限制 | DB 中 `pending + processing + retry_pending` 上限，超出 503（`retry_pending` 为待重提的在制任务，同样占用额度）|
 | 文件大小限制 | 单文件最大 `MAX_UPLOAD_SIZE`（默认 500MB） |
 
 ### 3.6 可观测性
+
+| 功能 | 说明 |
+|------|------|
+| 结构化日志 | JSON 日志，含 `task_id`、`api_key_id`、`duration_ms` 等字段。请求级访问日志由 ASGI 中间件（`middleware.py`）逐请求产生，含 `request_id`/`method`/`path`/`status_code`/`duration_ms`，认证请求附带 `api_key_id`；响应回填 `X-Request-Id` 头 |
+| 健康检查 | Gateway `/health` + 聚合上游状态 |
+
+### 3.7 与上游 mineru-router 的差异（v3.4.0 实测）
+
+Gateway 定位为认证/持久化/容灾层，以下行为与真实 router 有意不同（非兼容性缺陷）：
+
+| 差异 | 真实 router | Gateway | 原因 |
+|------|-----------|---------|------|
+| `/health` 当 upstream 不健康时 | 返回 `503` | Gateway 自身返回 `200` + `"status":"degraded"`；上游状态为 `"status":"unreachable"` | Gateway 始终 200 以允许自身健康监控独立于上游 |
+| `/health` 响应字段 | 含 `version` / `protocol_version` / `completed_tasks` / `failed_tasks` / `processing_window_size` / `servers[]` | 仅暴露 `status` / `max_concurrent_requests` / `queued_tasks` / `processing_tasks` / `free_slots`（门控所必需） | MVP 精简，仅提取门控所需字段 |
+| `DELETE /tasks/{id}` | **不存在** | 存在，仅限 `pending` 任务 | Gateway 扩展，用于客户端清理排队任务 |
+| 任务状态流转 | 仅 `pending` / `processing` / `completed` / `failed` | 增加 `cancelled` / `retry_pending` | Gateway 的取消语义与崩溃重提中间态 |
+| `GET /tasks/{id}/result` 非终态 | 返回 `202` + 状态体 | 返回 `409`（DB 无 `upstream_task_id` 或状态未完成） | Gateway 从自身 DB 镜像判断（不额外查询上游） |
+| Status 体含 `queued_ahead` | 有（当上游返回该字段时） | 无 | Gateway 自身不设排队队列 |
+| `POST /tasks` 响应体 | 含 `started_at` / `completed_at` / `error`（null 时仍出现） | 202 响应仅含 `task_id` / `status` / `backend` / `file_names` / `created_at` / `status_url` / `result_url` / `message` | Gateway 精简 202 体，完整字段在 `GET /tasks/{id}` 返回 |
 
 | 功能 | 说明 |
 |------|------|
@@ -161,7 +180,8 @@ class TaskRecord(Base):
 
     id:              UUID (PK)          # Gateway 的 task_id（返回给客户端）
     api_key_id:      FK → api_keys.id (NOT NULL, index)   # 每条任务都归属某个 Key
-    status:          str (index)        # pending | processing | completed | failed | cancelled
+    status:          str (index)        # pending | processing | completed | failed | cancelled | retry_pending
+    #                                   # ↑ Gateway 扩展 cancelled/retry_pending；真实 router 仅前 4 个
 
     # 文件信息
     file_names:      JSON (list[str])
@@ -182,6 +202,9 @@ class TaskRecord(Base):
     return_content_list: bool
     return_images:   bool
     response_format_zip: bool
+    return_original_file: bool
+    client_side_output_generation: bool
+    server_url:      str
     start_page_id:   int
     end_page_id:     int
 
@@ -309,6 +332,7 @@ DELETE /tasks/{task_id}:
   summary: 取消任务
   security: X-API-Key
   description: |
+    Gateway 扩展端点（真实 mineru-router 无取消 API）。
     仅限 status=pending 的任务。若上游可连通则尝试转发取消请求。
   response (200):
     task_id: str
@@ -382,7 +406,7 @@ async def handle_task_submission(
     if api_key and not await rate_limiter.acquire(str(api_key.id)):
         raise HTTPException(429, detail="Rate limit exceeded", headers={"Retry-After": "60"})
 
-    # 2. 健康感知门控
+    # 2. 健康感知门控（上游 /health 字段：max_concurrent_requests / queued_tasks / processing_tasks）
     health = await upstream.get_health()
     free_slots = health.max_concurrent - health.queued - health.processing
     if free_slots <= 0:
