@@ -76,6 +76,11 @@ class TaskRecord(Base):
     return_content_list: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     return_images: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     response_format_zip: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    return_original_file: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    client_side_output_generation: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    server_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     start_page_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     end_page_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 

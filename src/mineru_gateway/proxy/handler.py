@@ -32,11 +32,13 @@ _BOOL_FIELDS = {
     "return_content_list",
     "return_images",
     "response_format_zip",
+    "return_original_file",
+    "client_side_output_generation",
 }
 _INT_FIELDS = {"start_page_id", "end_page_id"}
 
 
-_STR_FIELDS = {"parse_method", "effort"}
+_STR_FIELDS = {"parse_method", "effort", "server_url"}
 _LIST_FIELDS = {"lang_list"}
 
 
