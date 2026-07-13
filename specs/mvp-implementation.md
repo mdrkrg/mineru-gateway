@@ -144,7 +144,6 @@ Gateway 定位为认证/持久化/容灾层，以下行为与真实 router 有�
 | `DELETE /tasks/{id}` | **不存在** | 存在，仅限 `pending` 任务 | Gateway 扩展，用于客户端清理排队任务 |
 | 任务状态流转 | 仅 `pending` / `processing` / `completed` / `failed` | 增加 `cancelled` / `retry_pending` | Gateway 的取消语义与崩溃重提中间态 |
 | `GET /tasks/{id}/result` 非终态 | 返回 `202` + 状态体 | 返回 `409`（DB 无 `upstream_task_id` 或状态未完成） | Gateway 从自身 DB 镜像判断（不额外查询上游） |
-| Status 体含 `queued_ahead` | 有（当上游返回该字段时） | 无 | Gateway 自身不设排队队列 |
 | `POST /tasks` 响应体 | 含 `started_at` / `completed_at` / `error`（null 时仍出现） | 202 响应仅含 `task_id` / `status` / `backend` / `file_names` / `created_at` / `status_url` / `result_url` / `message` | Gateway 精简 202 体，完整字段在 `GET /tasks/{id}` 返回 |
 
 | 功能 | 说明 |
@@ -212,6 +211,7 @@ class TaskRecord(Base):
     upstream_url:        str
     upstream_task_id:    str (nullable, index)
     retry_count:         int (default=0)         # 已重提次数（对比固定常量 MAX_RETRIES）
+    queued_ahead:        int (nullable)          # 提交时上游返回的排队前任务数（仅 pending 时有意义）
     consecutive_poll_failures: int (default=0)   # 后台同步连续失败计数
 
     # 文件缓存
@@ -324,6 +324,7 @@ GET /tasks:
         completed_at: str | null
         error: str | null
         retry_count: int
+        queued_ahead: int | null    # 提交时上游返回的排队前任务数
     total: int
     page: int
     page_size: int
