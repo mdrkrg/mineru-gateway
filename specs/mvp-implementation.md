@@ -135,16 +135,16 @@
 
 ### 3.7 与上游 mineru-router 的差异（v3.4.0 实测）
 
-Gateway 定位为认证/持久化/容灾层，以下行为与真实 router 有意不同（非兼容性缺陷）：
+Gateway 定位为认证/持久化/容灾层，以下行为与真实 router 不尽一致。标为「待修」的项是已知差距，后续应逐项对齐。
 
-| 差异 | 真实 router | Gateway | 原因 |
-|------|-----------|---------|------|
-| `/health` 当 upstream 不健康时 | 返回 `503` | Gateway 自身返回 `200` + `"status":"degraded"`；上游状态为 `"status":"unreachable"` | Gateway 始终 200 以允许自身健康监控独立于上游 |
-| `/health` 响应字段 | 含 `version` / `protocol_version` / `completed_tasks` / `failed_tasks` / `processing_window_size` / `servers[]` | 仅暴露 `status` / `max_concurrent_requests` / `queued_tasks` / `processing_tasks` / `free_slots`（门控所必需） | MVP 精简，仅提取门控所需字段 |
-| `DELETE /tasks/{id}` | **不存在** | 存在，仅限 `pending` 任务 | Gateway 扩展，用于客户端清理排队任务 |
-| 任务状态流转 | 仅 `pending` / `processing` / `completed` / `failed` | 增加 `cancelled` / `retry_pending` | Gateway 的取消语义与崩溃重提中间态 |
-| `GET /tasks/{id}/result` 非终态 | 返回 `202` + 状态体 | 返回 `409`（DB 无 `upstream_task_id` 或状态未完成） | Gateway 从自身 DB 镜像判断（不额外查询上游） |
-| `POST /tasks` 响应体 | 含 `started_at` / `completed_at` / `error`（null 时仍出现） | 202 响应仅含 `task_id` / `status` / `backend` / `file_names` / `created_at` / `status_url` / `result_url` / `message` | Gateway 精简 202 体，完整字段在 `GET /tasks/{id}` 返回 |
+| 差异 | 真实 router | Gateway | 状态 |
+|------|-----------|---------|:----:|
+| `/health` 当 upstream 不健康时 | 返回 `503` | Gateway 自身返回 `200` + `"status":"degraded"` | **待修** — 应返回 503 以保持契约一致 |
+| `/health` 响应字段 | 含 `version` / `protocol_version` / `completed_tasks` / `failed_tasks` / `processing_window_size` / `servers[]` | 仅暴露 `status` / `max_concurrent_requests` / `queued_tasks` / `processing_tasks` / `free_slots` | **待修** — 应透传上游完整字段 |
+| `DELETE /tasks/{id}` | **不存在** | 存在，仅限 `pending` 任务 | Gateway 扩展 |
+| 任务状态流转 | 仅 `pending` / `processing` / `completed` / `failed` | 增加 `cancelled` / `retry_pending` | Gateway 扩展 |
+| `GET /tasks/{id}/result` 非终态 | 返回 `202` + 状态体 | 返回 `409` | MVP 简化（从 DB 镜像判断，不额外查询上游） |
+| `POST /tasks` 响应体 | 含 `started_at` / `completed_at` / `error`（null 时仍出现） | 202 响应仅含 `task_id` / `status` / `backend` / `file_names` / `created_at` / `status_url` / `result_url` / `message` | **待修** — 应补齐缺失字段 |
 
 | 功能 | 说明 |
 |------|------|
