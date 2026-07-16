@@ -20,6 +20,11 @@ class MockState:
     max_concurrent: int = 4
     queued: int = 0
     processing: int = 0
+    version: str = "3.4.0"
+    protocol_version: int = 2
+    completed_tasks: int = 0
+    failed_tasks: int = 0
+    processing_window_size: int = 64
     health_raises: bool = False  # simulate upstream /health being unreachable
     submit_status: int = 202  # status code returned by POST /tasks
     submit_malformed: bool = False  # return 202 without a task_id
@@ -36,6 +41,11 @@ class MockState:
         self.max_concurrent = 4
         self.queued = 0
         self.processing = 0
+        self.version = "3.4.0"
+        self.protocol_version = 2
+        self.completed_tasks = 0
+        self.failed_tasks = 0
+        self.processing_window_size = 64
         self.health_raises = False
         self.submit_status = 202
         self.submit_malformed = False
@@ -57,13 +67,21 @@ def create_mock_upstream() -> FastAPI:
     @app.get("/health")
     async def health():
         if state.health_raises:
-            return JSONResponse(status_code=500, content={"detail": "boom"})
-        return {
+            raise RuntimeError("upstream unreachable")
+        payload = {
             "status": state.status,
+            "version": state.version,
+            "protocol_version": state.protocol_version,
             "max_concurrent_requests": state.max_concurrent,
             "queued_tasks": state.queued,
             "processing_tasks": state.processing,
+            "completed_tasks": state.completed_tasks,
+            "failed_tasks": state.failed_tasks,
+            "processing_window_size": state.processing_window_size,
         }
+        if state.status != "healthy":
+            return JSONResponse(status_code=503, content=payload)
+        return payload
 
     @app.post("/tasks")
     async def submit_task(request: Request):

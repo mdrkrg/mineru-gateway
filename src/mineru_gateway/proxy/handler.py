@@ -197,6 +197,9 @@ async def handle_task_submission(
             "created_at": task.created_at.isoformat(),
             "status_url": f"{settings.gateway_url}/tasks/{task.id}",
             "result_url": f"{settings.gateway_url}/tasks/{task.id}/result",
+            "started_at": None,
+            "completed_at": None,
+            "error": None,
             "message": "Task submitted successfully",
         },
         headers={

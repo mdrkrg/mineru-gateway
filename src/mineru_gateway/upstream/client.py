@@ -17,6 +17,11 @@ class UpstreamHealth:
     max_concurrent: int
     queued: int
     processing: int
+    version: str = ""
+    protocol_version: int | None = None
+    completed: int = 0
+    failed: int = 0
+    processing_window_size: int | None = None
 
     @property
     def free_slots(self) -> int:
@@ -29,8 +34,7 @@ class UpstreamClient:
 
     async def get_health(self) -> UpstreamHealth:
         resp = await self._client.get("/health")
-        resp.raise_for_status()
-        data = resp.json()
+        data = resp.json() if resp.status_code != 500 else {}
         return UpstreamHealth(
             status=data.get("status", "unknown"),
             max_concurrent=data.get(
@@ -38,6 +42,11 @@ class UpstreamClient:
             ),
             queued=data.get("queued_tasks", data.get("queued", 0)),
             processing=data.get("processing_tasks", data.get("processing", 0)),
+            version=data.get("version", ""),
+            protocol_version=data.get("protocol_version"),
+            completed=data.get("completed_tasks", 0),
+            failed=data.get("failed_tasks", 0),
+            processing_window_size=data.get("processing_window_size"),
         )
 
     async def submit_task(
