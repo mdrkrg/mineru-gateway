@@ -38,6 +38,10 @@ async def test_submit_authenticated_creates_task_and_superset_response(
     assert body["status_url"].endswith(f"/tasks/{body['task_id']}")
     assert body["result_url"].endswith(f"/tasks/{body['task_id']}/result")
     assert body["file_names"] == ["doc.pdf"]
+    # §3.7: 202 应含 started_at / completed_at / error（均 null），与上游兼容
+    assert body.get("started_at") is None
+    assert body.get("completed_at") is None
+    assert body.get("error") is None
     # Compatibility response headers present.
     assert resp.headers["X-MinerU-Task-Id"] == body["task_id"]
 
