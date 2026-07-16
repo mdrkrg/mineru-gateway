@@ -479,6 +479,8 @@ async def status_sync_loop(interval: float = 5.0):
             continue
 
         # groupby 要求输入按 key 有序，先排序再分组
+        # * MVP 仅单 upstream，实现在 sync_once 中做一次全局健康探针
+        #    （而非按 upstream_url 分组逐一探测）；多 upstream 时按此伪代码展开
         tasks.sort(key=lambda t: t.upstream_url)
         for upstream_url, task_group in groupby(tasks, key=lambda t: t.upstream_url):
             try:
@@ -692,6 +694,7 @@ volumes:
 | C4 | `retry_pending` 占用并发额度 | 待重提任务在被重提/判失败前持续计入全局并发；由 `retry_interval` 约束时长 |
 | C5 | 匿名为实例级全开关 | `GATEWAY_ALLOW_ANONYMOUS` 全局生效，无按端点/路径的匿名控制 |
 | C6 | 单实例为**强制**约束 | 内存限流与三个后台循环依赖进程内状态；`--workers>1` 会静默双计限流并重复处理重提。compose/Dockerfile 固定 `workers 1`，但无运行时守卫 |
+| C7 | status_sync 全局探针 | §6.3 伪代码按 `upstream_url` 分组逐探健康；MVP 实现做单次全局探针（`sync_once`），对单 upstream 无害。多 upstream 时需还原 |
 
 ### 已知竞态 / 数据质量
 
