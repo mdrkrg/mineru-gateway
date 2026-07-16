@@ -34,7 +34,10 @@ class UpstreamClient:
 
     async def get_health(self) -> UpstreamHealth:
         resp = await self._client.get("/health")
-        data = resp.json() if resp.status_code != 500 else {}
+        try:
+            data = resp.json()
+        except ValueError:
+            data = {}
         return UpstreamHealth(
             status=data.get("status", "unknown"),
             max_concurrent=data.get(

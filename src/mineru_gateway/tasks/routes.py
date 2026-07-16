@@ -122,6 +122,8 @@ async def get_task_result(
         raise HTTPException(status_code=404, detail="Task not found")
     if not task.upstream_task_id:
         raise HTTPException(status_code=409, detail="Task has no upstream result yet")
+    if task.status not in ("completed", "failed", "cancelled"):
+        raise HTTPException(status_code=409, detail="Task result not yet available")
 
     upstream_resp = await upstream.get_task_result(task.upstream_task_id)
     excluded = {"content-length", "content-encoding", "transfer-encoding", "connection"}
