@@ -205,8 +205,15 @@ async def test_list_requires_auth(client):
 
 
 async def test_get_result_streams_from_upstream(client, api_key):
-    """§5.1: 结果从上游按 upstream_task_id 流式透传."""
+    """§5.1: 结果从上游按 upstream_task_id 流式透传 (需任务已达终态)."""
     task_id = await _submit(client, api_key)
+    db = client._transport.app.state.db
+    async with db.session_factory() as session:
+        from mineru_gateway import models
+
+        task = await session.get(models.TaskRecord, task_id)
+        task.status = "completed"
+        await session.commit()
     resp = await client.get(f"/tasks/{task_id}/result", headers={"X-API-Key": api_key})
     assert resp.status_code == 200
     assert "result content" in resp.text
@@ -228,6 +235,13 @@ async def test_get_result_409_when_no_upstream_task_id(client, api_key):
 
     from mineru_gateway.models import ApiKey
     from mineru_gateway.tasks import service
+
+    db = client._transport.app.state.db
+    async with db.session_factory() as session:
+        key = (await session.execute(select(ApiKey))).scalars().first()
+    from sqlalchemy import select
+
+    from mineru_gateway.models import ApiKey
 
     db = client._transport.app.state.db
     async with db.session_factory() as session:
@@ -329,3 +343,22 @@ async def test_cancel_requires_auth(client, api_key):
     task_id = await _submit(client, api_key)
     resp = await client.delete(f"/tasks/{task_id}")
     assert resp.status_code == 401
+
+
+async def test_get_result_409_for_pending_task_with_upstream_id(
+    client, api_key, sample_files
+):
+    """§3.7: 非终态任务 (has upstream_task_id but not terminal) → 409."""
+    from .mock_upstream import state as ms
+
+    ms.task_status = "pending"
+    resp = await client.post(
+        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+    )
+    assert resp.status_code == 202
+    task_id = resp.json()["task_id"]
+
+    result_resp = await client.get(
+        f"/tasks/{task_id}/result", headers={"X-API-Key": api_key}
+    )
+    assert result_resp.status_code == 409
