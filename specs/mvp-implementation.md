@@ -650,7 +650,7 @@ volumes:
 | `GATEWAY_ALLOW_ANONYMOUS` | `false` | 是否允许无 Key 纯透传 |
 | `GATEWAY_WORKERS` | `1` | **MVP 必须为 1** |
 | `GATEWAY_FILE_CACHE_DIR` | `/tmp/gateway-cache` | 暂存目录 |
-| `GATEWAY_MAX_UPLOAD_SIZE` | `524288000` | 单文件上限（字节） |
+| `GATEWAY_MAX_UPLOAD_SIZE` | `524288000` | 单文件及单请求累计上限（字节） |
 | `GATEWAY_RATE_LIMIT_PER_KEY` | `10` | 每 Key 每秒请求数 |
 | `GATEWAY_TASK_RETENTION_DAYS` | `90` | 任务记录保留天数 |
 | `GATEWAY_CREATE_TABLES` | `false` | 启动时是否 `create_all` 自动建表；**生产保持 `false`**，Schema 由 Alembic 迁移管理（见下）。仅测试/本地便捷场景置 `true` |
