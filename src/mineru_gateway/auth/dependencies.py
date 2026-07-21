@@ -5,12 +5,17 @@ from __future__ import annotations
 import secrets
 from collections.abc import AsyncIterator
 
-from fastapi import Depends, Header, HTTPException, Request
+from fastapi import Depends, HTTPException, Request
+from fastapi.security import APIKeyHeader
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Settings
 from ..models import ApiKey
 from . import service
+
+
+X_API_KEY = APIKeyHeader(name="X-API-Key", auto_error=False)
+X_ADMIN_TOKEN = APIKeyHeader(name="X-Admin-Token")
 
 
 def get_settings_dep(request: Request) -> Settings:
@@ -23,18 +28,16 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
 
 
 async def require_admin_token(
-    x_admin_token: str | None = Header(default=None),
+    x_admin_token: str = Depends(X_ADMIN_TOKEN),
     settings: Settings = Depends(get_settings_dep),
 ) -> None:
-    if x_admin_token is None or not secrets.compare_digest(
-        x_admin_token, settings.admin_token
-    ):
+    if not secrets.compare_digest(x_admin_token, settings.admin_token):
         raise HTTPException(status_code=401, detail="Invalid or missing admin token")
 
 
 async def require_api_key(
     request: Request,
-    x_api_key: str | None = Header(default=None),
+    x_api_key: str | None = Depends(X_API_KEY),
     settings: Settings = Depends(get_settings_dep),
     session: AsyncSession = Depends(get_session),
 ) -> ApiKey | None:
