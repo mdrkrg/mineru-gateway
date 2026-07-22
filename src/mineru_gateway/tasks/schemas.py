@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
@@ -10,7 +11,7 @@ from pydantic import BaseModel, ConfigDict
 class TaskListItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    task_id: str
+    task_id: uuid.UUID
     status: str
     backend: str
     file_names: list[str]
@@ -30,7 +31,7 @@ class TaskListResponse(BaseModel):
 
 
 class TaskDetail(BaseModel):
-    task_id: str
+    task_id: uuid.UUID
     status: str
     backend: str
     file_names: list[str]
@@ -44,6 +45,6 @@ class TaskDetail(BaseModel):
 
 
 class TaskCancelResponse(BaseModel):
-    task_id: str
+    task_id: uuid.UUID
     status: str
     message: str

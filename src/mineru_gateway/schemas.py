@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
@@ -16,7 +17,7 @@ class ApiKeyCreate(BaseModel):
 
 
 class ApiKeyCreated(BaseModel):
-    key_id: str
+    key_id: uuid.UUID
     api_key: str
     api_key_prefix: str
     message: str = "Save this API key. It will not be shown again."
@@ -25,7 +26,7 @@ class ApiKeyCreated(BaseModel):
 class ApiKeyInfo(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: str
+    id: uuid.UUID
     prefix: str
     label: str
     created_at: datetime
@@ -42,7 +43,7 @@ class ApiKeyList(BaseModel):
 
 
 class TaskSubmitResponse(BaseModel):
-    task_id: str
+    task_id: uuid.UUID
     status: str
     backend: str
     file_names: list[str]

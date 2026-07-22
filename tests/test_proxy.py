@@ -8,6 +8,7 @@ Plan: Phase 1 — "POST /tasks (异步) + POST /file_parse (同步) 流式透传
 
 from __future__ import annotations
 
+import uuid
 
 from mineru_gateway.config import Settings
 from mineru_gateway.main import create_app
@@ -66,7 +67,7 @@ async def test_submit_records_parse_parameters(client, api_key, sample_files):
     from mineru_gateway.models import TaskRecord
 
     async with client._transport.app.state.db.session_factory() as session:
-        task = await session.get(TaskRecord, task_id)
+        task = await session.get(TaskRecord, uuid.UUID(task_id))
         assert task.backend == "pipeline"
         assert task.formula_enable is True
         assert task.table_enable is False

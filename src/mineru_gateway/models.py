@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
@@ -13,15 +14,12 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    Uuid,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mineru_gateway.db import Base
 from mineru_gateway.utils.uuid import get_uuid
-
-
-def _uuid_str() -> str:
-    return str(get_uuid())
 
 
 def _utcnow() -> datetime:
@@ -31,7 +29,7 @@ def _utcnow() -> datetime:
 class ApiKey(Base):
     __tablename__ = "api_keys"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=get_uuid)
     key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     key_prefix: Mapped[str] = mapped_column(String(8))
     label: Mapped[str] = mapped_column(String(255), default="")
@@ -51,9 +49,9 @@ class ApiKey(Base):
 class TaskRecord(Base):
     __tablename__ = "tasks"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
-    api_key_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("api_keys.id"), nullable=False, index=True
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=get_uuid)
+    api_key_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(), ForeignKey("api_keys.id"), nullable=False, index=True
     )
     status: Mapped[str] = mapped_column(String(20), index=True, default="pending")
 

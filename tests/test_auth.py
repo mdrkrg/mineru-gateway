@@ -6,6 +6,8 @@ Plan: Phase 1 — "Admin Token 签发/列出/吊销 API Key".
 
 from __future__ import annotations
 
+import uuid
+
 
 async def test_create_key_requires_admin_token(client):
     """§3.1: 创建 Key 需要 X-Admin-Token; 缺失时拒绝 (401)."""
@@ -122,11 +124,11 @@ async def test_last_used_at_updated_on_use(client, admin_headers, sample_files, 
     key_id, raw = created["key_id"], created["api_key"]
 
     async with app.state.db.session_factory() as session:
-        before = await session.get(ApiKey, key_id)
+        before = await session.get(ApiKey, uuid.UUID(key_id))
         assert before.last_used_at is None
 
     await client.post("/tasks", headers={"X-API-Key": raw}, files=sample_files)
 
     async with app.state.db.session_factory() as session:
-        after = await session.get(ApiKey, key_id)
+        after = await session.get(ApiKey, uuid.UUID(key_id))
         assert after.last_used_at is not None

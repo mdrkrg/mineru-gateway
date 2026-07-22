@@ -9,6 +9,7 @@ GET /tasks 列表 (分页、筛选); DELETE /tasks/{id} 取消".
 
 from __future__ import annotations
 
+import uuid
 from datetime import date, timedelta
 
 from .mock_upstream import state as mock_state
@@ -211,7 +212,7 @@ async def test_get_result_streams_from_upstream(client, api_key):
     async with db.session_factory() as session:
         from mineru_gateway import models
 
-        task = await session.get(models.TaskRecord, task_id)
+        task = await session.get(models.TaskRecord, uuid.UUID(task_id))
         task.status = "completed"
         await session.commit()
     resp = await client.get(f"/tasks/{task_id}/result", headers={"X-API-Key": api_key})
