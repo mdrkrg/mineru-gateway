@@ -41,6 +41,28 @@ def _get_redirect_base_url(settings: Settings) -> str:
     return settings.oauth_redirect_base_url or settings.gateway_url
 
 
+def _is_secure(settings: Settings) -> bool:
+    """Section 7.2: cookie secure flag depends on environment."""
+    base_url = _get_redirect_base_url(settings)
+    return base_url.startswith("https://")
+
+
+def _coerce_email_verified(value) -> bool | None:
+    """Section 4.5: extract boolean from email_verified claim.
+
+    Some providers return "true"/"false" strings or 1/0.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.lower() == "true"
+    return None
+
+
 async def _get_user_manager(
     session: AsyncSession, settings: Settings
 ) -> tuple[SQLAlchemyUserDatabase, UserManager]:
@@ -69,7 +91,7 @@ async def authorize(
         value=state,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=_is_secure(settings),
         max_age=600,
     )
     response.status_code = status.HTTP_302_FOUND
@@ -115,12 +137,15 @@ async def callback(
     sub = profile.get("sub")
     email = profile.get("email", "")
     display_name = _resolve_display_name(profile)
-    email_verified = profile.get("email_verified")
+    email_verified = _coerce_email_verified(profile.get("email_verified"))
 
     if not sub or not email:
         raise HTTPException(status_code=400, detail="OIDC profile missing sub or email")
 
     _, user_manager = await _get_user_manager(session, settings)
+
+    # Prepare response to clear CSRF cookie (Section 7.2: single-use)
+    response = Response()
 
     # Step 4: Lookup existing OAuthAccount by (oauth_name, account_id)
     existing_oauth = (
@@ -162,6 +187,8 @@ async def callback(
         if existing_user is not None:
             # Email exists -> check email_verified
             if email_verified is True:
+                if not existing_user.is_active:
+                    raise HTTPException(status_code=400, detail="User is inactive")
                 user = existing_user
             elif email_verified is False:
                 raise HTTPException(
@@ -215,6 +242,8 @@ async def callback(
     tokens = await issue_token_pair(user, settings)
 
     # Step 7: Return JSON or redirect to frontend
+    response.delete_cookie(_COOKIE_NAME)
+
     if settings.oauth_frontend_redirect_url:
         fragment_params = urlencode(
             {
@@ -224,9 +253,10 @@ async def callback(
             }
         )
         redirect_url = f"{settings.oauth_frontend_redirect_url}#{fragment_params}"
-        return Response(
-            status_code=status.HTTP_302_FOUND,
-            headers={"location": redirect_url},
-        )
+        response.status_code = status.HTTP_302_FOUND
+        response.headers["location"] = redirect_url
+        return response
 
-    return TokenPair(**tokens)
+    response.media_type = "application/json"
+    response.body = TokenPair(**tokens).model_dump_json().encode()
+    return response
