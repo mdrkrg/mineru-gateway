@@ -162,6 +162,31 @@ async def test_callback_existing_oauth_account_updates_tokens(
     assert second.json()["access_token"]
 
 
+async def test_callback_existing_oauth_account_ignores_email_verified_false(
+    oauth_client, mock_oauth_client
+):
+    """Section 4.5: existing OAuthAccount (by sub) -> email_verified not checked.
+
+    The email_verified check (409/400) only applies when linking by email
+    (no existing OAuthAccount). Step 4 takes precedence over the email sub-check.
+    """
+    first = await _oauth_flow(oauth_client)
+    assert first.status_code == 200
+
+    # Second login with email_verified=false - should still work
+    # because OAuthAccount already exists by (keycloak, oidc-sub-123)
+    mock_oauth_client.get_profile.return_value = {
+        "sub": "oidc-sub-123",
+        "email": "oauth-user@example.com",
+        "name": "OAuth User",
+        "email_verified": False,
+    }
+
+    second = await _oauth_flow(oauth_client)
+    assert second.status_code == 200
+    assert second.json()["access_token"]
+
+
 async def test_callback_email_exists_email_verified_true_links_to_existing_user(
     oauth_client, mock_oauth_client
 ):
@@ -273,6 +298,32 @@ async def test_callback_display_name_from_name(oauth_client, mock_oauth_client):
         "/users/me", headers={"Authorization": f"Bearer {token}"}
     )
     assert me.json()["display_name"] == "FullName User"
+
+
+async def test_callback_display_name_empty_name_falls_back(
+    oauth_client, mock_oauth_client
+):
+    """Section 4.5: name is empty string -> fallback to preferred_username.
+
+    Spec says "first non-empty value" - empty string should not be used.
+    """
+    mock_oauth_client.get_profile.return_value = {
+        "sub": "oidc-sub-empty-name",
+        "email": "empty-name@example.com",
+        "name": "",
+        "preferred_username": "fallback-user",
+        "given_name": "GivenName",
+        "email_verified": True,
+    }
+
+    resp = await _oauth_flow(oauth_client)
+    assert resp.status_code == 200
+
+    token = resp.json()["access_token"]
+    me = await oauth_client.get(
+        "/users/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert me.json()["display_name"] == "fallback-user"
 
 
 async def test_callback_display_name_fallback_to_preferred_username(

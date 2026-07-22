@@ -201,13 +201,13 @@ async def test_refresh_using_access_token_returns_401(client, registered_user):
 
 
 async def test_logout_with_valid_jwt_returns_200(client, user_headers):
-    """Section 9.4: valid JWT -> 200."""
+    """Section 9.4: valid JWT -> 200 {"message": "Logged out"}."""
     resp = await client.post(
         "/auth/jwt/logout",
         headers=user_headers,
     )
     assert resp.status_code == 200
-    assert "message" in resp.json()
+    assert resp.json() == {"message": "Logged out"}
 
 
 async def test_logout_without_jwt_returns_401(client):
