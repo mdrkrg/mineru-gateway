@@ -114,6 +114,18 @@ async def test_update_me_password_too_short_returns_400(
     assert resp.status_code == 400
 
 
+async def test_update_me_password_contains_email_returns_400(
+    client, registered_user, user_headers
+):
+    """Section 4.3 / 7.4: password containing email via PATCH -> 400."""
+    resp = await client.patch(
+        "/users/me",
+        headers=user_headers,
+        json={"password": registered_user["email"] + "123"},
+    )
+    assert resp.status_code == 400
+
+
 async def test_update_me_without_jwt_returns_401(client):
     """Section 9.5: no JWT on PATCH -> 401."""
     resp = await client.patch("/users/me", json={"display_name": "X"})

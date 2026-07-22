@@ -181,3 +181,19 @@ async def test_admin_create_user_bad_password_returns_400(client, admin_headers)
         },
     )
     assert resp.status_code == 400
+
+
+async def test_admin_create_user_password_contains_email_returns_400(
+    client, admin_headers
+):
+    """Section 4.2 / 7.4: admin create with password containing email -> 400."""
+    resp = await client.post(
+        "/auth/users",
+        headers=admin_headers,
+        json={
+            "email": "embed@example.com",
+            "password": "embed@example.com123",
+            "display_name": "Embed",
+        },
+    )
+    assert resp.status_code == 400
