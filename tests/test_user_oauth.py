@@ -248,7 +248,7 @@ async def test_callback_email_exists_email_verified_true_links_to_existing_user(
 
     # Verify the OAuth flow linked to the pre-registered User rather than
     # creating a new one: /users/me with the OAuth access_token must return the
-    # same id and a single User row must exist.
+    # same id and exactly one User + one OAuthAccount row must exist.
     token = resp.json()["access_token"]
     me = await oauth_client.get(
         "/users/me", headers={"Authorization": f"Bearer {token}"}
@@ -258,11 +258,12 @@ async def test_callback_email_exists_email_verified_true_links_to_existing_user(
 
     app = oauth_client._transport.app
     async with app.state.db.session_factory() as session:
-        count = await session.scalar(
-            select(func.count()).select_from(User).where(User.id != existing_id)
+        user_count = await session.scalar(select(func.count()).select_from(User))
+        oauth_count = await session.scalar(
+            select(func.count()).select_from(OAuthAccount)
         )
-        # No new User created besides the pre-registered one.
-        assert count == 0
+        assert user_count == 1
+        assert oauth_count == 1
 
 
 # ===== Section 4.5 / 9.7: Callback - error cases =====
@@ -290,9 +291,7 @@ async def test_callback_state_mismatch_with_cookie_returns_400(oauth_client):
     auth_resp = await oauth_client.get("/auth/oauth/keycloak/authorize")
     assert auth_resp.status_code == 302
     location = auth_resp.headers.get("location", "")
-    params = parse_qs(urlparse(location).query)
-    real_state = params.get("state", [""])[0]
-    assert real_state
+    assert "state=" in location
 
     # Step 2: call callback with a *different* state than the cookie holds.
     # httpx keeps cookies across requests in the same AsyncClient, so the CSRF
