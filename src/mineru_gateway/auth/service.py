@@ -92,16 +92,37 @@ async def create_key_for_user(
     expires_at: datetime | None = None,
 ) -> tuple[ApiKey, str]:
     """Section 5.2: create key with owner_id = user_id, return (record, raw)."""
-    raise NotImplementedError
+    raw = generate_raw_key()
+    record = ApiKey(
+        key_hash=_hash_key(raw),
+        key_prefix=raw[:_PREFIX_LEN],
+        label=label or "",
+        expires_at=expires_at,
+        owner_id=user_id,
+    )
+    session.add(record)
+    await session.commit()
+    await session.refresh(record)
+    return record, raw
 
 
 async def list_keys_for_user(session: AsyncSession, user_id: uuid.UUID) -> list[ApiKey]:
     """Section 5.2: list keys where owner_id == user_id."""
-    raise NotImplementedError
+    result = await session.execute(
+        select(ApiKey)
+        .where(ApiKey.owner_id == user_id)
+        .order_by(ApiKey.created_at.desc())
+    )
+    return list(result.scalars().all())
 
 
 async def revoke_key_for_user(
     session: AsyncSession, key_id: uuid.UUID, user_id: uuid.UUID
 ) -> bool:
     """Section 5.2: revoke key if owner_id == user_id. False if not owner/not found."""
-    raise NotImplementedError
+    record = await session.get(ApiKey, key_id)
+    if record is None or record.owner_id != user_id:
+        return False
+    record.is_active = False
+    await session.commit()
+    return True
