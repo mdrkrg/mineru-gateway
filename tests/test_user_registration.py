@@ -110,6 +110,12 @@ async def test_admin_create_user_success(client, admin_headers):
     assert body["display_name"] == "Bob"
     assert body["is_active"] is True
     assert body["is_superuser"] is False
+    assert body["is_verified"] is False
+    assert "id" in body
+    assert "created_at" in body
+    assert "updated_at" in body
+    assert "access_token" not in body
+    assert "refresh_token" not in body
 
 
 async def test_admin_create_user_not_affected_by_closed_registration(
