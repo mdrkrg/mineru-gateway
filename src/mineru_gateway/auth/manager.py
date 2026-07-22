@@ -10,7 +10,7 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 
 from fastapi import Depends, Request, Response
-from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin
+from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin, exceptions
 from fastapi_users.db import SQLAlchemyUserDatabase
 
 from ..config import Settings
@@ -30,13 +30,20 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
 
     async def validate_password(self, password: str, user) -> None:
         """Section 7.4 / 5.2: password >= 8 chars, must not contain email."""
-        raise NotImplementedError
+        if len(password) < 8:
+            raise exceptions.InvalidPasswordException(
+                reason="Password must be at least 8 characters"
+            )
+        if user.email and user.email.lower() in password.lower():
+            raise exceptions.InvalidPasswordException(
+                reason="Password must not contain the email address"
+            )
 
     async def on_after_register(
         self, user: User, request: Request | None = None
     ) -> None:
         """Section 5.2: log 'User {id} registered'."""
-        raise NotImplementedError
+        print(f"User {user.id} registered")
 
     async def on_after_login(
         self,
@@ -45,7 +52,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         response: Response | None = None,
     ) -> None:
         """Section 5.2: log 'User {id} logged in'."""
-        raise NotImplementedError
+        print(f"User {user.id} logged in")
 
 
 async def get_user_manager(

@@ -67,3 +67,29 @@ async def get_user_db(
 ) -> AsyncIterator[SQLAlchemyUserDatabase]:
     """Section 5.3: yields SQLAlchemyUserDatabase for User + OAuthAccount."""
     yield SQLAlchemyUserDatabase(session, User, OAuthAccount)
+
+
+async def current_active_user(
+    request: Request,
+    settings: Settings = Depends(get_settings_dep),
+    session: AsyncSession = Depends(get_session),
+) -> User:
+    """Section 4.3/4.4: JWT (access token) -> active User, else 401."""
+    from fastapi_users.db import SQLAlchemyUserDatabase
+
+    from .manager import UserManager
+
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    token = auth[7:]
+
+    user_db = SQLAlchemyUserDatabase(session, User, OAuthAccount)
+    user_manager = UserManager(user_db, settings)
+    from .backend import get_jwt_strategy
+
+    strategy = get_jwt_strategy(settings)
+    user = await strategy.read_token(token, user_manager)
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user

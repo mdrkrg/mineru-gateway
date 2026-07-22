@@ -46,19 +46,38 @@ def create_auth_backend(settings: Settings) -> AuthenticationBackend:
     )
 
 
-def issue_token_pair(user: User, settings: Settings) -> dict[str, str]:
+async def issue_token_pair(user: User, settings: Settings) -> dict[str, str]:
     """Section 5.2: sign access + refresh token pair.
 
     Returns {access_token, refresh_token, token_type}.
     """
-    raise NotImplementedError
+    access_strategy = get_jwt_strategy(settings)
+    refresh_strategy = get_refresh_jwt_strategy(settings)
+    access_token = await access_strategy.write_token(user)
+    refresh_token = await refresh_strategy.write_token(user)
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+    }
 
 
 async def verify_refresh_token(
     session: AsyncSession, token: str, settings: Settings
-) -> User:
+) -> User | None:
     """Section 5.2: verify refresh token signature, audience, expiry.
 
-    Returns the active User. Raises on invalid/expired/wrong-audience token.
+    Returns the active User, or None if invalid/expired/wrong-audience.
     """
-    raise NotImplementedError
+    from fastapi_users.db import SQLAlchemyUserDatabase
+
+    from ..models import OAuthAccount
+    from .manager import UserManager
+
+    user_db = SQLAlchemyUserDatabase(session, User, OAuthAccount)
+    user_manager = UserManager(user_db, settings)
+    strategy = get_refresh_jwt_strategy(settings)
+    user = await strategy.read_token(token, user_manager)
+    if user is None or not user.is_active:
+        return None
+    return user
