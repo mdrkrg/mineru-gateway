@@ -30,7 +30,7 @@ class ApiKey(Base):
     __tablename__ = "api_keys"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=get_uuid)
-    key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True)
     key_prefix: Mapped[str] = mapped_column(String(8))
     label: Mapped[str] = mapped_column(String(255), default="")
     created_at: Mapped[datetime] = mapped_column(

@@ -1,8 +1,8 @@
 """initial_schema
 
-Revision ID: d78676edc1c6
+Revision ID: f6fdc978828b
 Revises: 
-Create Date: 2026-07-22 12:18:33.852488
+Create Date: 2026-07-22 16:08:03.189335
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'd78676edc1c6'
+revision: str = 'f6fdc978828b'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -30,9 +30,9 @@ def upgrade() -> None:
     sa.Column('last_used_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('expires_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=False),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('key_hash')
     )
-    op.create_index(op.f('ix_api_keys_key_hash'), 'api_keys', ['key_hash'], unique=True)
     op.create_table('tasks',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('api_key_id', sa.Uuid(), nullable=False),
@@ -89,6 +89,5 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_tasks_created_at'), table_name='tasks')
     op.drop_index(op.f('ix_tasks_api_key_id'), table_name='tasks')
     op.drop_table('tasks')
-    op.drop_index(op.f('ix_api_keys_key_hash'), table_name='api_keys')
     op.drop_table('api_keys')
     # ### end Alembic commands ###
