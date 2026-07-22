@@ -5,6 +5,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
+from fastapi_users.db import (
+    SQLAlchemyBaseOAuthAccountTable,
+    SQLAlchemyBaseUserTable,
+)
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -14,9 +18,10 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from mineru_gateway.db import Base
 from mineru_gateway.utils.uuid import get_uuid
@@ -110,3 +115,35 @@ class TaskRecord(Base):
     __table_args__ = (
         Index("ix_tasks_key_status_created", "api_key_id", "status", "created_at"),
     )
+
+
+class User(SQLAlchemyBaseUserTable, Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=get_uuid)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    # Relationships
+    oauth_accounts: Mapped[list["OAuthAccount"]] = relationship(
+        "OAuthAccount", back_populates="user"
+    )
+
+
+class OAuthAccount(SQLAlchemyBaseOAuthAccountTable, Base):
+    __tablename__ = "oauth_accounts"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=get_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(), ForeignKey("users.id", ondelete="cascade"), nullable=False
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="oauth_accounts")
+
+    __table_args__ = (UniqueConstraint("oauth_name", "account_id"),)
