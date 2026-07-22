@@ -44,7 +44,7 @@ async def test_list_keys_hides_plaintext(client, admin_headers):
     assert len(keys) == 1
     entry = keys[0]
     assert "api_key" not in entry
-    assert entry["prefix"]
+    assert entry["api_key_prefix"]
     assert entry["is_active"] is True
 
 

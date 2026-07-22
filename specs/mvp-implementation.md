@@ -288,7 +288,7 @@ GET /auth/keys:
   response (200):
     keys:
       - id: str
-        prefix: str
+        api_key_prefix: str
         label: str
         created_at: str
         last_used_at: str | null

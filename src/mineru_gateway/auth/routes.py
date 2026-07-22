@@ -45,7 +45,7 @@ async def list_keys(session: AsyncSession = Depends(get_session)) -> ApiKeyList:
         keys=[
             ApiKeyInfo(
                 id=r.id,
-                prefix=r.key_prefix,
+                api_key_prefix=r.key_prefix,
                 label=r.label,
                 created_at=r.created_at,
                 last_used_at=r.last_used_at,
