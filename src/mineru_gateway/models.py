@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
@@ -17,11 +16,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .db import Base
+from mineru_gateway.db import Base
+from mineru_gateway.utils.uuid import get_uuid
 
 
 def _uuid_str() -> str:
-    return str(uuid.uuid4())
+    return str(get_uuid())
 
 
 def _utcnow() -> datetime:
