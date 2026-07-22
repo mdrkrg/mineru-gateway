@@ -7,10 +7,11 @@ from collections.abc import AsyncIterator
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import APIKeyHeader
+from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Settings
-from ..models import ApiKey
+from ..models import ApiKey, OAuthAccount, User
 from . import service
 
 
@@ -56,3 +57,13 @@ async def require_api_key(
         raise HTTPException(status_code=401, detail="Invalid API key")
     request.state.api_key_id = str(api_key.id)
     return api_key
+
+
+# ===== User management dependencies (Section 5.3) =====
+
+
+async def get_user_db(
+    session: AsyncSession = Depends(get_session),
+) -> AsyncIterator[SQLAlchemyUserDatabase]:
+    """Section 5.3: yields SQLAlchemyUserDatabase for User + OAuthAccount."""
+    yield SQLAlchemyUserDatabase(session, User, OAuthAccount)

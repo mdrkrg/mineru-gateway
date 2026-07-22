@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class OIDCProviderConfig(BaseModel):
+    """Section 3.2: OIDC provider configuration entry."""
+
+    name: str
+    openid_configuration_endpoint: str
+    client_id: str
+    client_secret: str
 
 
 class Settings(BaseSettings):
@@ -43,6 +53,16 @@ class Settings(BaseSettings):
     cleanup_interval: float = 3600.0
     max_retries: int = 3
     poll_failure_threshold: int = 3
+
+    # --- User management & OAuth (Section 3.1) ---
+    user_auth_enabled: bool = False
+    jwt_secret: str = "change-me"
+    jwt_access_lifetime_seconds: int = 900
+    jwt_refresh_lifetime_seconds: int = 604800
+    open_registration: bool = False
+    oidc_providers: list[OIDCProviderConfig] = []
+    oauth_redirect_base_url: str = ""
+    oauth_frontend_redirect_url: str = ""
 
 
 @lru_cache

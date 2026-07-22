@@ -8,7 +8,11 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
 
+from .auth.api_keys_me import router as api_keys_me_router
+from .auth.jwt_routes import router as jwt_router
+from .auth.oauth.routes import router as oauth_router
 from .auth.routes import router as auth_router
+from .auth.user_routes import router as user_router
 from .background import cleanup, retry, status_sync
 from .config import Settings, get_settings
 from .db import Database
@@ -109,10 +113,20 @@ def create_app(
 
     app = FastAPI(title="mineru-gateway", version="0.1.0", lifespan=lifespan)
     app.add_middleware(RequestLoggingMiddleware)
+
+    # Section 6.3: always-registered routes
     app.include_router(auth_router)
     app.include_router(proxy_router)
     app.include_router(tasks_router)
     app.include_router(health_router)
+
+    # Section 6.3: user-auth routes only when USER_AUTH_ENABLED=true
+    if settings.user_auth_enabled:
+        app.include_router(jwt_router)
+        app.include_router(user_router)
+        app.include_router(api_keys_me_router)
+        app.include_router(oauth_router)
+
     return app
 
 

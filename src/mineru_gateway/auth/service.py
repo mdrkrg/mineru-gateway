@@ -80,3 +80,28 @@ async def verify_key(session: AsyncSession, raw_key: str) -> ApiKey | None:
     record.last_used_at = now
     await session.commit()
     return record
+
+
+# ===== Owner-scoped API Key methods (Section 5.2) =====
+
+
+async def create_key_for_user(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    label: str | None = None,
+    expires_at: datetime | None = None,
+) -> tuple[ApiKey, str]:
+    """Section 5.2: create key with owner_id = user_id, return (record, raw)."""
+    raise NotImplementedError
+
+
+async def list_keys_for_user(session: AsyncSession, user_id: uuid.UUID) -> list[ApiKey]:
+    """Section 5.2: list keys where owner_id == user_id."""
+    raise NotImplementedError
+
+
+async def revoke_key_for_user(
+    session: AsyncSession, key_id: uuid.UUID, user_id: uuid.UUID
+) -> bool:
+    """Section 5.2: revoke key if owner_id == user_id. False if not owner/not found."""
+    raise NotImplementedError
