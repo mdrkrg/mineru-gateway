@@ -89,6 +89,15 @@ async def test_register_closed_registration_returns_403(closed_reg_client):
     )
     assert resp.status_code == 403
 
+    # Spec 4.2: "不创建用户". Verify the rejected credentials cannot be used to
+    # log in - a subsequent login attempt must fail with 401, confirming no
+    # User row was persisted.
+    login = await closed_reg_client.post(
+        "/auth/jwt/login",
+        json={"email": "nobody@example.com", "password": "secret123"},
+    )
+    assert login.status_code == 401
+
 
 # ===== Section 4.2 / 9.1: POST /auth/users (admin create user) =====
 
