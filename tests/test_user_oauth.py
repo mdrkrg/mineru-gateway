@@ -186,6 +186,14 @@ async def test_callback_existing_oauth_account_ignores_email_verified_false(
     assert second.status_code == 200
     assert second.json()["access_token"]
 
+    # is_verified should NOT be downgraded (first login set it via email_verified=true,
+    # and existing OAuthAccount relogin does not touch is_verified per Section 4.5 step 4)
+    token = second.json()["access_token"]
+    me = await oauth_client.get(
+        "/users/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert me.json()["is_verified"] is True
+
 
 async def test_callback_email_exists_email_verified_true_links_to_existing_user(
     oauth_client, mock_oauth_client
