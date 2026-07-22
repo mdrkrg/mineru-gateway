@@ -5,6 +5,7 @@ Spec: user-management-and-oauth.md Section 5.2 (UserManager interfaces).
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Annotated
@@ -17,6 +18,8 @@ from ..config import Settings
 from ..models import User
 from .backend import create_auth_backend
 from .dependencies import get_settings_dep, get_user_db
+
+logger = logging.getLogger(__name__)
 
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
@@ -43,7 +46,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         self, user: User, request: Request | None = None
     ) -> None:
         """Section 5.2: log 'User {id} registered'."""
-        print(f"User {user.id} registered")
+        logger.info("User %s registered", user.id)
 
     async def on_after_login(
         self,
@@ -52,7 +55,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         response: Response | None = None,
     ) -> None:
         """Section 5.2: log 'User {id} logged in'."""
-        print(f"User {user.id} logged in")
+        logger.info("User %s logged in", user.id)
 
 
 async def get_user_manager(
