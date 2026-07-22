@@ -7,6 +7,8 @@ Plan: Phase 4 — "健康感知提交门控 + 全局并发上限".
 
 from __future__ import annotations
 
+import uuid
+
 import httpx
 from asgi_lifespan import LifespanManager
 
@@ -117,7 +119,9 @@ async def test_retry_pending_task_occupies_slot(tmp_path):
         from mineru_gateway.tasks import service
 
         async with app.state.db.session_factory() as session:
-            await service.update(session, task_id, {"status": "retry_pending"})
+            await service.update(
+                session, uuid.UUID(task_id), {"status": "retry_pending"}
+            )
 
         async with httpx.AsyncClient(
             transport=transport, base_url="http://testserver"

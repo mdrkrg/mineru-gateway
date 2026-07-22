@@ -6,6 +6,7 @@ and enforce per-key ownership (§3.3).
 
 from __future__ import annotations
 
+import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -86,7 +87,7 @@ async def list_tasks(
 
 @router.get("/{task_id}", response_model=TaskDetail)
 async def get_task(
-    task_id: str,
+    task_id: uuid.UUID,
     api_key: ApiKey | None = Depends(require_api_key),
     session: AsyncSession = Depends(get_session),
 ) -> TaskDetail:
@@ -111,7 +112,7 @@ async def get_task(
 
 @router.get("/{task_id}/result")
 async def get_task_result(
-    task_id: str,
+    task_id: uuid.UUID,
     api_key: ApiKey | None = Depends(require_api_key),
     session: AsyncSession = Depends(get_session),
     upstream: UpstreamClient = Depends(_upstream),
@@ -140,7 +141,7 @@ async def get_task_result(
 
 @router.delete("/{task_id}", response_model=TaskCancelResponse)
 async def cancel_task(
-    task_id: str,
+    task_id: uuid.UUID,
     api_key: ApiKey | None = Depends(require_api_key),
     session: AsyncSession = Depends(get_session),
     upstream: UpstreamClient = Depends(_upstream),

@@ -74,9 +74,9 @@ async def test_revoke_key_disables_it(client, admin_headers, sample_files):
 
 
 async def test_revoke_unknown_key_is_idempotent(client, admin_headers):
-    """§5.3 DELETE /auth/keys/{id}: 吊销不存在的 Key 幂等返回 204 (无副作用)."""
+    """§5.3 DELETE /auth/keys/{id}: invalid UUID returns 422 (bad request)."""
     resp = await client.delete("/auth/keys/does-not-exist", headers=admin_headers)
-    assert resp.status_code == 204
+    assert resp.status_code == 422
 
 
 async def test_expired_key_is_rejected(client, admin_headers, sample_files):

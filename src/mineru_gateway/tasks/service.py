@@ -9,7 +9,6 @@ from typing import Any
 from sqlalchemy import String, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mineru_gateway.utils.uuid import to_uuid
 
 from ..models import TaskRecord
 
@@ -22,20 +21,14 @@ async def create(session: AsyncSession, **fields: Any) -> TaskRecord:
     return task
 
 
-async def get(session: AsyncSession, task_id: str | uuid.UUID) -> TaskRecord | None:
-    uid = to_uuid(task_id)
-    if uid is None:
-        return None
-    return await session.get(TaskRecord, uid)
+async def get(session: AsyncSession, task_id: uuid.UUID) -> TaskRecord | None:
+    return await session.get(TaskRecord, task_id)
 
 
 async def get_owned(
-    session: AsyncSession, task_id: str | uuid.UUID, api_key_id: uuid.UUID
+    session: AsyncSession, task_id: uuid.UUID, api_key_id: uuid.UUID
 ) -> TaskRecord | None:
-    uid = to_uuid(task_id)
-    if uid is None:
-        return None
-    task = await session.get(TaskRecord, uid)
+    task = await session.get(TaskRecord, task_id)
     if task is None or task.api_key_id != api_key_id:
         return None
     return task
@@ -161,11 +154,8 @@ async def get_retryable(session: AsyncSession) -> list[TaskRecord]:
     return list(result.scalars().all())
 
 
-async def update(session: AsyncSession, task_id: str | uuid.UUID, fields: dict) -> None:
-    uid = to_uuid(task_id)
-    if uid is None:
-        return
-    task = await session.get(TaskRecord, uid)
+async def update(session: AsyncSession, task_id: uuid.UUID, fields: dict) -> None:
+    task = await session.get(TaskRecord, task_id)
     if task is None:
         return
     for key, value in fields.items():
@@ -174,17 +164,14 @@ async def update(session: AsyncSession, task_id: str | uuid.UUID, fields: dict) 
 
 
 async def update_from_upstream(
-    session: AsyncSession, task_id: str | uuid.UUID, upstream_status: dict
+    session: AsyncSession, task_id: uuid.UUID, upstream_status: dict
 ) -> str | None:
     """Mirror upstream status onto the task.
 
     Returns the cache_dir to release when the task has just reached a terminal
     state (staged files are no longer needed, §3.4); otherwise None.
     """
-    uid = to_uuid(task_id)
-    if uid is None:
-        return None
-    task = await session.get(TaskRecord, uid)
+    task = await session.get(TaskRecord, task_id)
     if task is None:
         return None
     raw = (upstream_status.get("status") or "").lower()
@@ -210,12 +197,9 @@ async def update_from_upstream(
     return released
 
 
-async def mark_retryable(session: AsyncSession, task_id: str | uuid.UUID) -> None:
+async def mark_retryable(session: AsyncSession, task_id: uuid.UUID) -> None:
     """Flag a crashed task for resubmission, only if its cache is still present."""
-    uid = to_uuid(task_id)
-    if uid is None:
-        return
-    task = await session.get(TaskRecord, uid)
+    task = await session.get(TaskRecord, task_id)
     if task is None or task.status in TERMINAL_STATES:
         return
     if not task.cache_dir:
@@ -225,13 +209,8 @@ async def mark_retryable(session: AsyncSession, task_id: str | uuid.UUID) -> Non
     await session.commit()
 
 
-async def mark_failed(
-    session: AsyncSession, task_id: str | uuid.UUID, error: str
-) -> None:
-    uid = to_uuid(task_id)
-    if uid is None:
-        return
-    task = await session.get(TaskRecord, uid)
+async def mark_failed(session: AsyncSession, task_id: uuid.UUID, error: str) -> None:
+    task = await session.get(TaskRecord, task_id)
     if task is None:
         return
     task.status = "failed"

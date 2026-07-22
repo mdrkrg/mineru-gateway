@@ -42,9 +42,9 @@ async def test_get_task_detail_returns_db_state(client, api_key):
 
 
 async def test_get_task_detail_unknown_id_404(client, api_key):
-    """§3.2: 不存在的任务返回 404."""
+    """§3.2: 格式错误的 UUID 返回 422."""
     resp = await client.get("/tasks/does-not-exist", headers={"X-API-Key": api_key})
-    assert resp.status_code == 404
+    assert resp.status_code == 422
 
 
 async def test_get_task_detail_enforces_ownership(client, admin_headers, api_key):
@@ -326,7 +326,7 @@ async def test_cancel_releases_cache(client, api_key, app):
     from mineru_gateway.tasks import service
 
     async with app.state.db.session_factory() as session:
-        task = await service.get(session, task_id)
+        task = await service.get(session, uuid.UUID(task_id))
         cache_dir = task.cache_dir
     assert cache_dir and os.path.isdir(cache_dir)
 
@@ -335,7 +335,7 @@ async def test_cancel_releases_cache(client, api_key, app):
 
     assert not os.path.exists(cache_dir)
     async with app.state.db.session_factory() as session:
-        task = await service.get(session, task_id)
+        task = await service.get(session, uuid.UUID(task_id))
         assert task.cache_dir is None
 
 

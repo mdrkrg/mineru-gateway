@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mineru_gateway.utils.uuid import to_uuid
 
 from ..models import ApiKey
 
@@ -54,11 +53,8 @@ async def list_keys(session: AsyncSession) -> list[ApiKey]:
     return list(result.scalars().all())
 
 
-async def revoke_key(session: AsyncSession, key_id: str | uuid.UUID) -> bool:
-    uid = to_uuid(key_id)
-    if uid is None:
-        return False
-    record = await session.get(ApiKey, uid)
+async def revoke_key(session: AsyncSession, key_id: uuid.UUID) -> bool:
+    record = await session.get(ApiKey, key_id)
     if record is None:
         return False
     record.is_active = False

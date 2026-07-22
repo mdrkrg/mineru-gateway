@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,7 +63,7 @@ async def list_keys(session: AsyncSession = Depends(get_session)) -> ApiKeyList:
     dependencies=[Depends(require_admin_token)],
 )
 async def revoke_key(
-    key_id: str,
+    key_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     await service.revoke_key(session, key_id)
