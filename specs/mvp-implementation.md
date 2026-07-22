@@ -227,8 +227,9 @@ class TaskRecord(Base):
 
 ### SQLite 兼容说明
 
-- `UUID` → `CHAR(36)`；`JSON` → `TEXT` + `json.dumps/loads`；`datetime` → `TEXT`（ISO 8601）。
+- `UUID` → `BLOB (16 bytes)`（SQLAlchemy `Uuid` 默认）；`JSON` → `TEXT` + `json.dumps/loads`；`datetime` → `TEXT`（ISO 8601）。
 - 所有查询通过 SQLAlchemy ORM 抽象，自动适配两种后端。
+- ID 统一使用 **UUIDv7**（`uuid.uuid7()`），按时间有序，适合作为聚集索引。
 
 ### 约束与索引
 
@@ -297,7 +298,7 @@ GET /auth/keys:
 DELETE /auth/keys/{key_id}:
   summary: 吊销指定 API Key
   security: X-Admin-Token
-  response (204)
+  response (204) — 仅限有效 UUID；格式错误返回 422
 
 
 # ===== 任务管理（需 X-API-Key）=====
@@ -695,6 +696,7 @@ volumes:
 | C5 | 匿名为实例级全开关 | `GATEWAY_ALLOW_ANONYMOUS` 全局生效，无按端点/路径的匿名控制 |
 | C6 | 单实例为**强制**约束 | 内存限流与三个后台循环依赖进程内状态；`--workers>1` 会静默双计限流并重复处理重提。compose/Dockerfile 固定 `workers 1`，但无运行时守卫 |
 | C7 | status_sync 全局探针 | §6.3 伪代码按 `upstream_url` 分组逐探健康；MVP 实现做单次全局探针（`sync_once`），对单 upstream 无害。多 upstream 时需还原 |
+| C8 | UUID 路径参数验证 | `{key_id}` 和 `{task_id}` 路径参数声明为 `uuid.UUID` 类型，格式错误的 UUID（如 `does-not-exist`）返回 `422 Unprocessable Entity`，而非 `404`/`204`。该行为由 FastAPI 自动处理，服务层仅接收经过验证的 `uuid.UUID` 对象 |
 
 ### 已知竞态 / 数据质量
 
