@@ -242,6 +242,22 @@ async def test_business_endpoints_work_with_admin_key(
     assert resp.status_code == 202
 
 
+async def test_file_parse_endpoint_works_with_admin_key(
+    client, admin_headers, sample_files
+):
+    """Section 9.9 / 4.6: POST /file_parse behavior unchanged."""
+    key_resp = await client.post(
+        "/auth/keys", json={"label": "parse-key"}, headers=admin_headers
+    )
+    raw_key = key_resp.json()["api_key"]
+
+    resp = await client.post(
+        "/file_parse", headers={"X-API-Key": raw_key}, files=sample_files
+    )
+    # file_parse is synchronous; status depends on mock upstream
+    assert resp.status_code in (200, 202)
+
+
 async def test_business_endpoints_work_with_user_key(
     client, user_headers, sample_files
 ):
@@ -261,3 +277,42 @@ async def test_health_route_unchanged(client):
     """Section 9.9 / 4.6: GET /health behavior unchanged."""
     resp = await client.get("/health")
     assert resp.status_code == 200
+
+
+# ===== Section 3.1 / 7.1: JWT secret startup validation =====
+
+
+def test_jwt_secret_too_short_rejects_startup(tmp_path):
+    """Section 3.1 / 7.1: jwt_secret < 32 chars with user_auth_enabled -> reject."""
+    import pytest
+
+    from mineru_gateway.config import Settings
+    from mineru_gateway.main import create_app
+
+    settings = Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
+        admin_token="test",
+        user_auth_enabled=True,
+        jwt_secret="short",  # < 32 chars
+        create_tables=True,
+        enable_background=False,
+    )
+    with pytest.raises((ValueError, RuntimeError)):
+        create_app(settings=settings)
+
+
+def test_jwt_secret_long_enough_starts_successfully(tmp_path):
+    """Section 3.1 / 7.1: jwt_secret >= 32 chars with user_auth_enabled -> OK."""
+    from mineru_gateway.config import Settings
+    from mineru_gateway.main import create_app
+
+    settings = Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
+        admin_token="test",
+        user_auth_enabled=True,
+        jwt_secret="a" * 32,  # exactly 32 chars
+        create_tables=True,
+        enable_background=False,
+    )
+    app = create_app(settings=settings)
+    assert app is not None

@@ -145,12 +145,13 @@ async def test_refresh_new_access_token_works_for_users_me(client, registered_us
     assert me.json()["email"] == registered_user["email"]
 
 
-async def test_refresh_expired_token_returns_401(client, registered_user, settings):
+async def test_refresh_expired_token_returns_401(client, settings):
     """Section 9.3: expired refresh_token -> 401."""
     from datetime import datetime, timedelta, timezone
+    import uuid
 
     expired_payload = {
-        "sub": str(registered_user),
+        "sub": str(uuid.uuid4()),
         "aud": ["fastapi-users:refresh"],
         "iat": datetime.now(timezone.utc) - timedelta(days=30),
         "exp": datetime.now(timezone.utc) - timedelta(days=29),

@@ -181,11 +181,22 @@ def user_headers(user_token) -> dict:
 
 @pytest.fixture
 def mock_oauth_client():
-    """Mock OIDC client for OAuth tests (Section 5.2 OAuthClient contract)."""
+    """Mock OIDC client for OAuth tests (Section 5.2 OAuthClient contract).
+
+    get_authorization_url dynamically includes state so tests can extract it
+    from the redirect Location header.
+    """
+
+    async def _get_authorization_url(redirect_uri, state=None, **kwargs):
+        url = "https://oidc.example.com/authorize"
+        if state:
+            url += f"?state={state}"
+        if redirect_uri:
+            url += f"&redirect_uri={redirect_uri}"
+        return url
+
     client = MagicMock()
-    client.get_authorization_url = AsyncMock(
-        return_value="https://oidc.example.com/authorize"
-    )
+    client.get_authorization_url = AsyncMock(side_effect=_get_authorization_url)
     client.get_access_token = AsyncMock(
         return_value={"access_token": "oidc-access-token", "token_type": "bearer"}
     )

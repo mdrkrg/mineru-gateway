@@ -41,6 +41,13 @@ class UserUpdate(schemas.BaseUserUpdate):
 # ===== Token schemas (Section 4.1) =====
 
 
+class LoginRequest(BaseModel):
+    """Section 4.1: login request body (email + password only)."""
+
+    email: str
+    password: str
+
+
 class TokenPair(BaseModel):
     """Section 4.1: login / OAuth callback response (access + refresh)."""
 

@@ -10,14 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Settings
 from .dependencies import get_session, get_settings_dep, require_admin_token
-from .schemas import RefreshTokenRequest, TokenPair, UserCreate, UserRead
+from .schemas import LoginRequest, RefreshTokenRequest, TokenPair, UserCreate, UserRead
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/jwt/login", response_model=TokenPair)
 async def login(
-    body: UserCreate,
+    body: LoginRequest,
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings_dep),
 ) -> TokenPair:

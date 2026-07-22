@@ -36,6 +36,13 @@ def create_app(
     if create_tables is None:
         create_tables = settings.create_tables
 
+    # Section 3.1 / 7.1: validate jwt_secret when user_auth_enabled
+    if settings.user_auth_enabled and len(settings.jwt_secret) < 32:
+        raise ValueError(
+            "GATEWAY_JWT_SECRET must be at least 32 characters when "
+            "GATEWAY_USER_AUTH_ENABLED is true"
+        )
+
     configure_logging(level=settings.log_level, json_logs=settings.json_logs)
 
     @asynccontextmanager
