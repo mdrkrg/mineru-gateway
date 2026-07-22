@@ -48,7 +48,16 @@ class ApiKey(Base):
         DateTime(timezone=True), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    # Reserved for future user system / OAuth: owner_id (nullable, FK)
+
+    owner_id: Mapped[str | None] = mapped_column(
+        Uuid(),
+        ForeignKey("users.id", name="fk_api_keys_owner_id"),
+        nullable=True,
+        index=True,
+    )
+
+    # Relationships
+    owner: Mapped["User | None"] = relationship("User", back_populates="api_keys")
 
 
 class TaskRecord(Base):
@@ -130,6 +139,7 @@ class User(SQLAlchemyBaseUserTable, Base):
     )
 
     # Relationships
+    api_keys: Mapped[list["ApiKey"]] = relationship("ApiKey", back_populates="owner")
     oauth_accounts: Mapped[list["OAuthAccount"]] = relationship(
         "OAuthAccount", back_populates="user"
     )
