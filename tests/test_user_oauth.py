@@ -14,8 +14,10 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
+from sqlalchemy import func, select
 
 from mineru_gateway.config import OIDCProviderConfig
+from mineru_gateway.models import OAuthAccount, User
 from mineru_gateway.main import create_app
 
 TEST_OIDC_PROVIDER = OIDCProviderConfig(
@@ -121,12 +123,19 @@ async def _oauth_flow(client, code="test-code"):
 
 
 async def test_authorize_returns_302_and_sets_csrf_cookie(oauth_client):
-    """Section 9.7: GET /auth/oauth/{provider}/authorize -> 302 + CSRF cookie."""
+    """Section 9.7: GET /auth/oauth/{provider}/authorize -> 302 + CSRF cookie.
+
+    Section 7.2: cookie must be httponly and samesite=lax.
+    """
     resp = await oauth_client.get("/auth/oauth/keycloak/authorize")
     assert resp.status_code == 302
     assert "location" in resp.headers
     set_cookie = resp.headers.get("set-cookie", "")
     assert set_cookie
+    # Parse cookie attributes (case-insensitive).
+    cookie_lower = set_cookie.lower()
+    assert "httponly" in cookie_lower
+    assert "samesite=lax" in cookie_lower
 
 
 async def test_authorize_nonexistent_provider_returns_404(oauth_client):
@@ -157,9 +166,32 @@ async def test_callback_existing_oauth_account_updates_tokens(
     first = await _oauth_flow(oauth_client)
     assert first.status_code == 200
 
+    # Change the OIDC provider tokens so we can verify the OAuthAccount is updated,
+    # not just re-issued a gateway JWT pair.
+    mock_oauth_client.get_access_token = AsyncMock(
+        return_value={
+            "access_token": "oidc-access-token-rotated",
+            "refresh_token": "oidc-refresh-rotated",
+            "token_type": "bearer",
+            "expires_at": 9999,
+        }
+    )
+
     second = await _oauth_flow(oauth_client)
     assert second.status_code == 200
     assert second.json()["access_token"]
+
+    # Verify the OAuthAccount row was updated with the new provider tokens.
+    app = oauth_client._transport.app
+    async with app.state.db.session_factory() as session:
+        oauth_acc = (
+            await session.execute(
+                select(OAuthAccount).where(OAuthAccount.oauth_name == "keycloak")
+            )
+        ).scalar_one()
+        assert oauth_acc.access_token == "oidc-access-token-rotated"
+        assert oauth_acc.refresh_token == "oidc-refresh-rotated"
+        assert oauth_acc.expires_at == 9999
 
 
 async def test_callback_existing_oauth_account_ignores_email_verified_false(
@@ -208,19 +240,65 @@ async def test_callback_email_exists_email_verified_true_links_to_existing_user(
         },
     )
     assert reg.status_code == 201
+    existing_id = reg.json()["id"]
 
     resp = await _oauth_flow(oauth_client)
     assert resp.status_code == 200
     assert resp.json()["access_token"]
+
+    # Verify the OAuth flow linked to the pre-registered User rather than
+    # creating a new one: /users/me with the OAuth access_token must return the
+    # same id and a single User row must exist.
+    token = resp.json()["access_token"]
+    me = await oauth_client.get(
+        "/users/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert me.status_code == 200
+    assert me.json()["id"] == existing_id
+
+    app = oauth_client._transport.app
+    async with app.state.db.session_factory() as session:
+        count = await session.scalar(
+            select(func.count()).select_from(User).where(User.id != existing_id)
+        )
+        # No new User created besides the pre-registered one.
+        assert count == 0
 
 
 # ===== Section 4.5 / 9.7: Callback - error cases =====
 
 
 async def test_callback_state_mismatch_returns_400(oauth_client):
-    """Section 9.7: state mismatch -> 400 (CSRF attack or expired cookie)."""
+    """Section 9.7: state mismatch -> 400 (CSRF attack or expired cookie).
+
+    Covers the expired/missing cookie case: callback called directly without a
+    prior authorize call, so no CSRF cookie is present.
+    """
     resp = await oauth_client.get(
         "/auth/oauth/keycloak/callback?code=test-code&state=fake-state"
+    )
+    assert resp.status_code == 400
+
+
+async def test_callback_state_mismatch_with_cookie_returns_400(oauth_client):
+    """Section 9.7 / 7.2: cookie present but query state differs -> 400.
+
+    This is the actual CSRF-attack scenario: a valid CSRF cookie was set by
+    /authorize (state=S1), but the attacker-supplied query param is S2.
+    """
+    # Step 1: call authorize to set the CSRF cookie with a real state.
+    auth_resp = await oauth_client.get("/auth/oauth/keycloak/authorize")
+    assert auth_resp.status_code == 302
+    location = auth_resp.headers.get("location", "")
+    params = parse_qs(urlparse(location).query)
+    real_state = params.get("state", [""])[0]
+    assert real_state
+
+    # Step 2: call callback with a *different* state than the cookie holds.
+    # httpx keeps cookies across requests in the same AsyncClient, so the CSRF
+    # cookie from step 1 is sent here.
+    resp = await oauth_client.get(
+        "/auth/oauth/keycloak/callback?code=test-code&state=attacker-state"
     )
     assert resp.status_code == 400
 
