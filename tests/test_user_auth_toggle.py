@@ -97,24 +97,20 @@ async def test_disabled_user_auth_business_routes_work(
 
 
 async def test_enabled_user_auth_jwt_routes_accessible(client):
-    """Section 9.8: USER_AUTH_ENABLED=true -> JWT routes are accessible."""
-    # /auth/register should be accessible (not 404)
-    resp = await client.post(
-        "/auth/register",
-        json={
-            "email": "toggle@example.com",
-            "password": "secret123",
-            "display_name": "Toggle",
-        },
-    )
-    assert resp.status_code != 404
-
-    # /auth/jwt/login should be accessible (not 404)
-    resp = await client.post(
-        "/auth/jwt/login",
-        json={"email": "toggle@example.com", "password": "secret123"},
-    )
-    assert resp.status_code != 404
+    """Section 9.8: USER_AUTH_ENABLED=true -> all JWT routes are accessible."""
+    endpoints = [
+        ("/auth/register", "POST", {"email": "x@example.com", "password": "x"}),
+        ("/auth/jwt/login", "POST", {"email": "x@example.com", "password": "x"}),
+        ("/auth/jwt/refresh", "POST", {"refresh_token": "x"}),
+        ("/auth/jwt/logout", "POST", None),
+        ("/auth/users", "POST", {"email": "x@example.com", "password": "x"}),
+    ]
+    for path, method, body in endpoints:
+        if body:
+            resp = await client.request(method, path, json=body)
+        else:
+            resp = await client.request(method, path)
+        assert resp.status_code != 404, f"{method} {path} returned 404"
 
 
 async def test_enabled_user_auth_user_routes_accessible(client):
