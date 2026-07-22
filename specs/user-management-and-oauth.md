@@ -426,7 +426,7 @@ Content-Type: application/json
 **失败**：
 
 - 401 — 无 JWT 或无效 JWT。
-- 400 — `expires_at` 格式无效。
+- 422 — `expires_at` 格式无效。
 
 **行为**：创建 Key，`owner_id` 设为当前用户 ID。`label` 语义为用户对 Key 的命名。返回的 API Key 明文仅此一次可见。
 

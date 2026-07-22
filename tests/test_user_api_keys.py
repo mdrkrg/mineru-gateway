@@ -72,11 +72,7 @@ async def test_create_my_key_with_expires_at(client, user_headers):
 
 
 async def test_create_my_key_with_invalid_expires_at_returns_422(client, user_headers):
-    """Section 4.4: invalid expires_at format -> 422 (Pydantic datetime validation).
-
-    Note: spec says 400 but FastAPI returns 422 for Pydantic schema validation
-    failures (datetime parse). 400 is for business logic; 422 is framework-level.
-    """
+    """Section 4.4: invalid expires_at format -> 422 (Pydantic datetime validation)."""
     resp = await client.post(
         "/me/api-keys",
         headers=user_headers,
