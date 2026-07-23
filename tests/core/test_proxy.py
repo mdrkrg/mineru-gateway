@@ -407,3 +407,72 @@ async def test_idempotent_repeat_after_task_failed(client, api_key, sample_files
     assert resp2.status_code == 202
     assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
     assert resp2.json()["task_id"] == task_id
+
+
+async def test_idempotent_different_keys_same_idempotency_key(
+    client, admin_headers, sample_files
+):
+    """T6 sec 6.2: two different API Keys using the same idempotency key
+    each create independent tasks. No conflict, no replay."""
+    idem_key = "shared-key"
+    resp_a = (
+        await client.post("/auth/keys", json={"label": "key-A"}, headers=admin_headers)
+    ).json()
+    resp_b = (
+        await client.post("/auth/keys", json={"label": "key-B"}, headers=admin_headers)
+    ).json()
+    key_a, key_b = resp_a["api_key"], resp_b["api_key"]
+
+    r1 = await client.post(
+        "/tasks",
+        headers={"X-API-Key": key_a, "X-Idempotency-Key": idem_key},
+        files=sample_files,
+    )
+    assert r1.status_code == 202
+    assert "X-Idempotency-Key-Replayed" not in r1.headers
+
+    r2 = await client.post(
+        "/tasks",
+        headers={"X-API-Key": key_b, "X-Idempotency-Key": idem_key},
+        files=sample_files,
+    )
+    assert r2.status_code == 202
+    assert "X-Idempotency-Key-Replayed" not in r2.headers
+    assert r1.json()["task_id"] != r2.json()["task_id"]
+
+    from sqlalchemy import func, select
+    from mineru_gateway.models import TaskRecord
+
+    async with client._transport.app.state.db.session_factory() as session:
+        count = await session.scalar(select(func.count()).select_from(TaskRecord))
+        assert count == 2
+
+
+async def test_idempotent_same_key_different_idempotency_keys(
+    client, api_key, sample_files
+):
+    """T7 sec 6.2: same API Key with different idempotency keys creates
+    two independent tasks with different task_ids."""
+    r1 = await client.post(
+        "/tasks",
+        headers={"X-API-Key": api_key, "X-Idempotency-Key": "key-1"},
+        files=sample_files,
+    )
+    assert r1.status_code == 202
+    assert "X-Idempotency-Key-Replayed" not in r1.headers
+
+    r2 = await client.post(
+        "/tasks",
+        headers={"X-API-Key": api_key, "X-Idempotency-Key": "key-2"},
+        files=sample_files,
+    )
+    assert r2.status_code == 202
+    assert "X-Idempotency-Key-Replayed" not in r2.headers
+    assert r1.json()["task_id"] != r2.json()["task_id"]
+
+    from sqlalchemy import func, select
+    from mineru_gateway.models import TaskRecord
+
+    async with client._transport.app.state.db.session_factory() as session:
+        count = await session.scalar(select(func.count()).select_from(TaskRecord))
+        assert count == 2
