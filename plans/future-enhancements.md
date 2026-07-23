@@ -172,7 +172,9 @@
 
 **规模**：~60 行
 
-### B3. 用户管理 🟠 P1
+### ~~B3. 用户管理 🟠 P1~~
+
+状态：已完成。
 
 **触发条件**：需要多用户自服务访问，不再由管理员单一签发 API Key。
 
@@ -234,7 +236,9 @@ JWT payload 包含 `sub=user_id`、`scopes`（如 `tasks:read tasks:write`）。
 
 **规模**：~300 行（models, auth, routes）+ 2 migrations
 
-### B4. OAuth 2.0 登录 🟠 P1（依赖 B3）
+### ~~B4. OAuth 2.0 登录 🟠 P1（依赖 B3）~~
+
+状态：已完成。仅实现 Generic OIDC。
 
 **触发条件**：接入现有 SSO / GitHub / Google / OIDC 登录，避免自建密码体系。
 
