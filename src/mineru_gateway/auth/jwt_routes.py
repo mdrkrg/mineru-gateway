@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi_users import exceptions
 from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,6 +38,7 @@ async def get_user_manager_dep(
 @router.post("/jwt/login", response_model=TokenPair)
 async def login(
     body: LoginRequest,
+    request: Request,
     user_manager: Annotated[UserManager, Depends(get_user_manager_dep)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> TokenPair:
@@ -59,7 +60,7 @@ async def login(
         )
     if not user.is_active:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    await user_manager.on_after_login(user, request=None, response=None)
+    await user_manager.on_after_login(user, request=request, response=None)
     tokens = await issue_token_pair(user, settings)
     return TokenPair(**tokens)
 
@@ -92,6 +93,7 @@ async def logout(
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 async def register(
     body: UserCreate,
+    request: Request,
     user_manager: Annotated[UserManager, Depends(get_user_manager_dep)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> UserRead:
@@ -99,7 +101,7 @@ async def register(
     if not settings.open_registration:
         raise HTTPException(status_code=403, detail="Registration is closed")
     try:
-        user = await user_manager.create(body, safe=True, request=None)
+        user = await user_manager.create(body, safe=True, request=request)
     except exceptions.InvalidPasswordException:
         raise HTTPException(status_code=400, detail="Password does not meet rules")
     except exceptions.UserAlreadyExists:
@@ -115,12 +117,13 @@ async def register(
 )
 async def admin_create_user(
     body: UserCreate,
+    request: Request,
     user_manager: Annotated[UserManager, Depends(get_user_manager_dep)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> UserRead:
     """Section 4.2: admin creates user (X-Admin-Token, not gated by OPEN_REGISTRATION)."""
     try:
-        user = await user_manager.create(body, safe=True, request=None)
+        user = await user_manager.create(body, safe=True, request=request)
     except exceptions.InvalidPasswordException:
         raise HTTPException(status_code=400, detail="Password does not meet rules")
     except exceptions.UserAlreadyExists:
