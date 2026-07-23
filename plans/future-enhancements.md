@@ -14,7 +14,9 @@
 
 优先级标记：🔴 Critical  🟡 High  🟠 Medium  ⚪ Low
 
-### A1. 多 worker 运行时守卫 🔴
+### ~~A1. 多 worker 运行时守卫 🔴~~
+
+状态：已解决。更好的未来缓解方案见[多 Worker 水平扩展方案](./multi-worker-scaling.md)。
 
 **背景**：C6 已记录 `--workers>1` 会静默双计限流 + 重复重提 + 后台循环竞跑。compose 固定
 `workers 1`，但无运行时检测，Uvicorn CLI 传入 `--workers 2` 仍会启动。
