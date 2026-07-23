@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import UploadFile
 
@@ -169,10 +170,11 @@ async def handle_task_submission(
         raise HTTPException(status_code=401, detail="API key required")
 
     idempotency_key = _normalize_idempotency_key(x_idempotency_key)
+    api_key_id = api_key.id if api_key is not None else None
 
-    if api_key is not None and idempotency_key is not None:
+    if api_key_id is not None and idempotency_key is not None:
         existing = await task_service.get_by_idempotency_key(
-            session, api_key.id, idempotency_key
+            session, api_key_id, idempotency_key
         )
         if existing is not None:
             return _build_replay_response(existing, settings)
@@ -222,21 +224,33 @@ async def handle_task_submission(
     qa = payload.get("queued_ahead")
     queued_ahead: int | None = qa if isinstance(qa, int) else None
 
-    task = await task_service.create(
-        session,
-        api_key_id=api_key.id,
-        status="pending",
-        upstream_url=settings.upstream_url,
-        upstream_task_id=payload.get("task_id"),
-        file_names=payload.get("file_names", file_names),
-        file_count=len(file_names),
-        file_total_bytes=total_bytes,
-        backend=data.get("backend", "hybrid-engine"),
-        cache_dir=cache_dir,
-        queued_ahead=queued_ahead,
-        idempotency_key=idempotency_key,
-        **_parse_params(data),
-    )
+    try:
+        task = await task_service.create(
+            session,
+            api_key_id=api_key_id,
+            status="pending",
+            upstream_url=settings.upstream_url,
+            upstream_task_id=payload.get("task_id"),
+            file_names=payload.get("file_names", file_names),
+            file_count=len(file_names),
+            file_total_bytes=total_bytes,
+            backend=data.get("backend", "hybrid-engine"),
+            cache_dir=cache_dir,
+            queued_ahead=queued_ahead,
+            idempotency_key=idempotency_key,
+            **_parse_params(data),
+        )
+    except IntegrityError:
+        await session.rollback()
+        await cache.release(cache_dir)
+        assert api_key_id is not None
+        assert idempotency_key is not None
+        existing = await task_service.get_by_idempotency_key(
+            session, api_key_id, idempotency_key
+        )
+        if existing is not None:
+            return _build_replay_response(existing, settings)
+        raise
 
     return JSONResponse(
         status_code=202,

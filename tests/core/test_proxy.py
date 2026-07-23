@@ -578,8 +578,11 @@ async def test_idempotent_concurrent_same_key(client, api_key, sample_files):
         r1, r2 = await asyncio.gather(
             client.post("/tasks", headers=headers, files=sample_files),
             client.post("/tasks", headers=headers, files=sample_files),
+            return_exceptions=True,
         )
 
+    assert not isinstance(r1, Exception), f"r1 raised {r1}"
+    assert not isinstance(r2, Exception), f"r2 raised {r2}"
     responses = [r1, r2]
     assert r1.status_code == 202
     assert r2.status_code == 202
@@ -631,8 +634,11 @@ async def test_idempotent_concurrent_failure_releases_cache(
             r1, r2 = await asyncio.gather(
                 client.post("/tasks", headers=headers, files=sample_files),
                 client.post("/tasks", headers=headers, files=sample_files),
+                return_exceptions=True,
             )
 
+    assert not isinstance(r1, Exception), f"r1 raised {r1}"
+    assert not isinstance(r2, Exception), f"r2 raised {r2}"
     assert mock_release.call_count == 1
 
 
