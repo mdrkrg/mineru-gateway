@@ -679,6 +679,59 @@ async def test_idempotent_replay_skips_rate_limit(tmp_path, sample_files):
             assert resp2.status_code == 202
             assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
 
+            # Control: a different key should be rate-limited (proves limiter is empty)
+            resp3 = await c.post(
+                "/tasks",
+                headers={
+                    "X-API-Key": api_key,
+                    "X-Idempotency-Key": "different-key",
+                },
+                files=files,
+            )
+            assert resp3.status_code == 429
+
+
+async def test_idempotent_key_at_max_length(client, api_key, sample_files):
+    """GAP-1 sec 3.1: exactly 255-character X-Idempotency-Key is valid,
+    returns 202 and stores the key."""
+    key_255 = "a" * 255
+    resp = await client.post(
+        "/tasks",
+        headers={"X-API-Key": api_key, "X-Idempotency-Key": key_255},
+        files=sample_files,
+    )
+    assert resp.status_code == 202
+    assert "X-Idempotency-Key-Replayed" not in resp.headers
+
+    task_id = resp.json()["task_id"]
+    from mineru_gateway.models import TaskRecord
+
+    async with client._transport.app.state.db.session_factory() as session:
+        task = await session.get(TaskRecord, uuid.UUID(task_id))
+        assert task.idempotency_key == key_255
+
+
+async def test_idempotent_blank_keys_do_not_collide(client, api_key, sample_files):
+    """GAP-2 sec 2.2: same blank/whitespace idempotency key submitted twice
+    creates two separate tasks (NULL values do not collide)."""
+    headers = {"X-API-Key": api_key, "X-Idempotency-Key": "   "}
+
+    resp1 = await client.post("/tasks", headers=headers, files=sample_files)
+    assert resp1.status_code == 202
+    task_id_1 = resp1.json()["task_id"]
+
+    resp2 = await client.post("/tasks", headers=headers, files=sample_files)
+    assert resp2.status_code == 202
+    task_id_2 = resp2.json()["task_id"]
+    assert task_id_1 != task_id_2
+
+    from sqlalchemy import func, select
+    from mineru_gateway.models import TaskRecord
+
+    async with client._transport.app.state.db.session_factory() as session:
+        count = await session.scalar(select(func.count()).select_from(TaskRecord))
+        assert count == 2
+
 
 async def test_idempotent_replay_skips_health_check(client, api_key, sample_files):
     """T12b sec 6.5: idempotent replay skips upstream health gating.
@@ -694,6 +747,17 @@ async def test_idempotent_replay_skips_health_check(client, api_key, sample_file
     resp2 = await client.post("/tasks", headers=headers, files=sample_files)
     assert resp2.status_code == 202
     assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
+
+    # Control: a different key should be blocked by health gate (503)
+    resp3 = await client.post(
+        "/tasks",
+        headers={
+            "X-API-Key": api_key,
+            "X-Idempotency-Key": "health-control-key",
+        },
+        files=sample_files,
+    )
+    assert resp3.status_code == 503
 
 
 async def test_idempotent_key_reusable_after_cleanup(client, api_key, sample_files):
@@ -724,3 +788,20 @@ async def test_idempotent_key_reusable_after_cleanup(client, api_key, sample_fil
     async with client._transport.app.state.db.session_factory() as session:
         count = await session.scalar(select(func.count()).select_from(TaskRecord))
         assert count == 1
+
+
+async def test_file_parse_ignores_idempotency_key(client, api_key, sample_files):
+    """GAP-3 sec 0 non-goal: POST /file_parse ignores X-Idempotency-Key.
+    Two requests with the same key each return independent 200 responses,
+    no X-Idempotency-Key-Replayed header."""
+    headers = {"X-API-Key": api_key, "X-Idempotency-Key": "fp-key-1"}
+
+    resp1 = await client.post("/file_parse", headers=headers, files=sample_files)
+    assert resp1.status_code == 200
+    assert "X-Idempotency-Key-Replayed" not in resp1.headers
+    assert resp1.json()["markdown"] == "# parsed"
+
+    resp2 = await client.post("/file_parse", headers=headers, files=sample_files)
+    assert resp2.status_code == 200
+    assert "X-Idempotency-Key-Replayed" not in resp2.headers
+    assert resp2.json()["markdown"] == "# parsed"
