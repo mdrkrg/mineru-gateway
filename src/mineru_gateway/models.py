@@ -49,7 +49,7 @@ class ApiKey(Base):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    owner_id: Mapped[str | None] = mapped_column(
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(),
         ForeignKey("users.id", name="fk_api_keys_owner_id"),
         nullable=True,
