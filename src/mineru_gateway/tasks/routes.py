@@ -91,19 +91,9 @@ async def task_stats(
     api_key: ApiKey | None = Depends(require_api_key),
     session: AsyncSession = Depends(get_session),
 ) -> TaskStatsResponse:
-    _require_key(api_key)
-    return TaskStatsResponse(
-        pending=0,
-        processing=0,
-        retry_pending=0,
-        completed=0,
-        failed=0,
-        cancelled=0,
-        today_completed=0,
-        today_failed=0,
-        total_bytes=0,
-        avg_duration_ms=None,
-    )
+    key = _require_key(api_key)
+    stats = await service.get_stats(session, key.id)
+    return TaskStatsResponse(**stats)
 
 
 @router.get("/{task_id}", response_model=TaskDetail)

@@ -43,8 +43,6 @@ Error cases
 
 from __future__ import annotations
 
-import pytest
-
 
 # --- auth / access control ---
 
@@ -62,9 +60,6 @@ async def test_task_stats_rejects_invalid_key(client):
 
 
 # Spec: "two different API keys never see each other's statistics"
-@pytest.mark.xfail(
-    reason="stub returns hardcoded zeros; ownership isolation not yet enforced"
-)
 async def test_task_stats_ownership_isolation(client, api_key, admin_headers):
     # Create a second key under the admin.
     resp = await client.post(
@@ -108,9 +103,6 @@ async def test_task_stats_ownership_isolation(client, api_key, admin_headers):
 
 
 # Spec: "even if they belong to the same user"
-@pytest.mark.xfail(
-    reason="stub returns hardcoded zeros; ownership isolation not yet enforced"
-)
 async def test_task_stats_ownership_isolation_same_user(client, user_headers):
     resp1 = await client.post(
         "/me/api-keys", json={"label": "key-alpha"}, headers=user_headers
@@ -196,16 +188,18 @@ async def test_task_stats_ignores_query_params(client, api_key):
 
 # --- per-status counts ---
 
-_XFAIL_STUB = "stub returns hardcoded zeros; real aggregation not yet implemented"
-
 
 async def _seed_task(
     app, api_key_id, status, *, file_bytes=1024, started_at=None, completed_at=None
 ):
     """Insert a single TaskRecord directly via the DB for test setup."""
     from datetime import datetime, timezone
+    from uuid import UUID
 
     from mineru_gateway.models import TaskRecord
+
+    if isinstance(api_key_id, str):
+        api_key_id = UUID(api_key_id)
 
     async with app.state.db.session_factory() as session:
         task = TaskRecord(
@@ -229,7 +223,8 @@ async def _seed_task(
 
 # Spec: per-status counts (pending, processing, retry_pending, completed,
 #        failed, cancelled)
-@pytest.mark.xfail(reason=_XFAIL_STUB)
+
+
 async def test_task_stats_counts_by_status(app, client, admin_headers):
     # Create a fresh key and get its UUID.
     resp = await client.post(
@@ -263,7 +258,8 @@ async def test_task_stats_counts_by_status(app, client, admin_headers):
 
 
 # Spec: "today_completed / today_failed" filter by UTC calendar day
-@pytest.mark.xfail(reason=_XFAIL_STUB)
+
+
 async def test_task_stats_today_counts_are_utc_scoped(app, client, admin_headers):
     from datetime import datetime, timedelta, timezone
 
@@ -303,7 +299,8 @@ async def test_task_stats_today_counts_are_utc_scoped(app, client, admin_headers
 
 
 # Spec: "total_bytes = sum of file_total_bytes across all tasks for this key"
-@pytest.mark.xfail(reason=_XFAIL_STUB)
+
+
 async def test_task_stats_total_bytes(app, client, admin_headers):
     resp = await client.post(
         "/auth/keys", json={"label": "bytes-test"}, headers=admin_headers
@@ -326,7 +323,8 @@ async def test_task_stats_total_bytes(app, client, admin_headers):
 
 # Spec: "avg_duration_ms = average of (completed_at - started_at) for
 #        completed tasks; null when no completed tasks exist"
-@pytest.mark.xfail(reason=_XFAIL_STUB)
+
+
 async def test_task_stats_avg_duration(app, client, admin_headers):
     from datetime import datetime, timedelta, timezone
 

@@ -245,3 +245,64 @@ async def delete_expired(session: AsyncSession, retention_days: int) -> list[str
         await session.delete(task)
     await session.commit()
     return cache_dirs
+
+
+# --- task statistics ---
+
+
+async def get_stats(session: AsyncSession, api_key_id: uuid.UUID) -> dict:
+    today_start = datetime.combine(date.today(), time.min, tzinfo=timezone.utc)
+
+    agg = await session.execute(
+        select(
+            func.count().filter(TaskRecord.status == "pending").label("pending"),
+            func.count().filter(TaskRecord.status == "processing").label("processing"),
+            func.count()
+            .filter(TaskRecord.status == "retry_pending")
+            .label("retry_pending"),
+            func.count().filter(TaskRecord.status == "completed").label("completed"),
+            func.count().filter(TaskRecord.status == "failed").label("failed"),
+            func.count().filter(TaskRecord.status == "cancelled").label("cancelled"),
+            func.count()
+            .filter(
+                TaskRecord.status == "completed",
+                TaskRecord.completed_at >= today_start,
+            )
+            .label("today_completed"),
+            func.count()
+            .filter(
+                TaskRecord.status == "failed",
+                TaskRecord.completed_at >= today_start,
+            )
+            .label("today_failed"),
+            func.sum(TaskRecord.file_total_bytes).label("total_bytes"),
+        ).where(TaskRecord.api_key_id == api_key_id)
+    )
+    row = agg.one()
+
+    completed_tasks = await session.execute(
+        select(TaskRecord.started_at, TaskRecord.completed_at).where(
+            TaskRecord.api_key_id == api_key_id,
+            TaskRecord.status == "completed",
+            TaskRecord.started_at.is_not(None),
+            TaskRecord.completed_at.is_not(None),
+        )
+    )
+    durations = [
+        (r.completed_at - r.started_at).total_seconds() * 1000
+        for r in completed_tasks.all()
+    ]
+    avg_duration_ms = sum(durations) / len(durations) if durations else None
+
+    return {
+        "pending": row.pending,
+        "processing": row.processing,
+        "retry_pending": row.retry_pending,
+        "completed": row.completed,
+        "failed": row.failed,
+        "cancelled": row.cancelled,
+        "today_completed": row.today_completed,
+        "today_failed": row.today_failed,
+        "total_bytes": int(row.total_bytes or 0),
+        "avg_duration_ms": avg_duration_ms,
+    }
