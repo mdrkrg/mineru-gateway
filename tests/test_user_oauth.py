@@ -544,6 +544,25 @@ async def test_callback_access_token_works_for_users_me(
     assert me.json()["email"] == "oauth-user@example.com"
 
 
+async def test_oauth_user_cannot_login_with_password(oauth_client, mock_oauth_client):
+    """OAuth-created user has a valid bcrypt hash (not empty string).
+
+    A login attempt with any password must return 401 (not 500 from
+    a bcrypt UnknownHashError on an empty/invalid hash).
+    """
+    resp = await _oauth_flow(oauth_client)
+    assert resp.status_code == 200
+
+    login_resp = await oauth_client.post(
+        "/auth/jwt/login",
+        json={
+            "email": "oauth-user@example.com",
+            "password": "any-password-at-all",
+        },
+    )
+    assert login_resp.status_code == 401
+
+
 # ===== Section 4.5: Frontend redirect =====
 
 

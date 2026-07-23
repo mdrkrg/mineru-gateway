@@ -238,13 +238,14 @@ async def callback(
         else:
             # Create new User
             is_verified = bool(email_verified)
+            random_pw = user_manager.password_helper.generate()
             user = User(
                 email=email,
                 display_name=display_name,
                 is_active=True,
                 is_superuser=False,
                 is_verified=is_verified,
-                hashed_password="",
+                hashed_password=user_manager.password_helper.hash(random_pw),
             )
             session.add(user)
             await session.flush()
