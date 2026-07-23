@@ -355,6 +355,9 @@ async def test_idempotent_repeat_same_key_returns_replay(client, api_key, sample
     assert resp2.status_code == 202
     assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
     assert resp2.json()["task_id"] == task_id_1
+    # Replayed response carries same X-MinerU-* headers as first submission
+    assert resp2.headers["X-MinerU-Task-Id"] == task_id_1
+    assert resp2.headers["X-MinerU-Task-Status"] == "pending"
 
     from sqlalchemy import func, select
     from mineru_gateway.models import TaskRecord
@@ -387,6 +390,11 @@ async def test_idempotent_repeat_after_task_completed(client, api_key, sample_fi
     body = resp2.json()
     assert body["task_id"] == task_id
     assert body["status"] == "pending"
+    assert body["started_at"] is None
+    assert body["completed_at"] is None
+    assert body["error"] is None
+    assert resp2.headers["X-MinerU-Task-Id"] == task_id
+    assert resp2.headers["X-MinerU-Task-Status"] == "pending"
 
 
 async def test_idempotent_repeat_after_task_failed(client, api_key, sample_files):
@@ -409,7 +417,14 @@ async def test_idempotent_repeat_after_task_failed(client, api_key, sample_files
     resp2 = await client.post("/tasks", headers=headers, files=sample_files)
     assert resp2.status_code == 202
     assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
-    assert resp2.json()["task_id"] == task_id
+    body = resp2.json()
+    assert body["task_id"] == task_id
+    assert body["status"] == "pending"
+    assert body["started_at"] is None
+    assert body["completed_at"] is None
+    assert body["error"] is None
+    assert resp2.headers["X-MinerU-Task-Id"] == task_id
+    assert resp2.headers["X-MinerU-Task-Status"] == "pending"
 
 
 async def test_idempotent_different_keys_same_idempotency_key(
@@ -597,7 +612,7 @@ async def test_idempotent_concurrent_failure_releases_cache(
                 client.post("/tasks", headers=headers, files=sample_files),
             )
 
-    assert mock_release.call_count >= 1
+    assert mock_release.call_count == 1
 
 
 async def test_idempotent_key_too_long_returns_422(client, api_key, sample_files):
