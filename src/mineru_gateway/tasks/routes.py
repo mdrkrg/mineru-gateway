@@ -23,6 +23,7 @@ from .schemas import (
     TaskDetail,
     TaskListItem,
     TaskListResponse,
+    TaskStatsResponse,
 )
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -83,6 +84,26 @@ async def list_tasks(
         for t in tasks
     ]
     return TaskListResponse(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.get("/stats", response_model=TaskStatsResponse)
+async def task_stats(
+    api_key: ApiKey | None = Depends(require_api_key),
+    session: AsyncSession = Depends(get_session),
+) -> TaskStatsResponse:
+    _require_key(api_key)
+    return TaskStatsResponse(
+        pending=0,
+        processing=0,
+        retry_pending=0,
+        completed=0,
+        failed=0,
+        cancelled=0,
+        today_completed=0,
+        today_failed=0,
+        total_bytes=0,
+        avg_duration_ms=None,
+    )
 
 
 @router.get("/{task_id}", response_model=TaskDetail)

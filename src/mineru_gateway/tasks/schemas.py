@@ -48,3 +48,16 @@ class TaskCancelResponse(BaseModel):
     task_id: uuid.UUID
     status: str
     message: str
+
+
+class TaskStatsResponse(BaseModel):
+    pending: int
+    processing: int
+    retry_pending: int
+    completed: int
+    failed: int
+    cancelled: int
+    today_completed: int
+    today_failed: int
+    total_bytes: int
+    avg_duration_ms: float | None = None
