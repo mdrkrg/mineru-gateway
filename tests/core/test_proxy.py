@@ -274,3 +274,64 @@ async def test_queued_ahead_captured_and_relayed(client, api_key, sample_files):
         "/tasks", headers={"X-API-Key": api_key}, params={"status": "pending"}
     )
     assert list_resp.json()["items"][0]["queued_ahead"] == 5
+
+
+# --- Idempotent submission (spec: idempotent-submission.md) ---
+
+
+async def test_idempotent_first_submission_with_key(client, api_key, sample_files):
+    """T1 sec 6.1: first submission with X-Idempotency-Key stores key in DB,
+    returns 202 with no X-Idempotency-Key-Replayed response header."""
+    resp = await client.post(
+        "/tasks",
+        headers={"X-API-Key": api_key, "X-Idempotency-Key": "key-1"},
+        files=sample_files,
+    )
+    assert resp.status_code == 202
+    assert "X-Idempotency-Key-Replayed" not in resp.headers
+
+    task_id = resp.json()["task_id"]
+    from mineru_gateway.models import TaskRecord
+
+    async with client._transport.app.state.db.session_factory() as session:
+        task = await session.get(TaskRecord, uuid.UUID(task_id))
+        assert task.idempotency_key == "key-1"
+
+
+async def test_idempotent_without_key_header(client, api_key, sample_files):
+    """T4 sec 6.1: submission without X-Idempotency-Key stores NULL in DB,
+    response does not include X-Idempotency-Key-Replayed."""
+    resp = await client.post(
+        "/tasks",
+        headers={"X-API-Key": api_key},
+        files=sample_files,
+    )
+    assert resp.status_code == 202
+    assert "X-Idempotency-Key-Replayed" not in resp.headers
+
+    task_id = resp.json()["task_id"]
+    from mineru_gateway.models import TaskRecord
+
+    async with client._transport.app.state.db.session_factory() as session:
+        task = await session.get(TaskRecord, uuid.UUID(task_id))
+        assert task.idempotency_key is None
+
+
+async def test_idempotent_blank_key_treated_as_missing(client, api_key, sample_files):
+    """T5 sec 6.1: empty string or whitespace-only X-Idempotency-Key
+    treated as not provided, stores NULL in DB."""
+    for idem_key in ("", "   ", "\t  "):
+        resp = await client.post(
+            "/tasks",
+            headers={"X-API-Key": api_key, "X-Idempotency-Key": idem_key},
+            files=sample_files,
+        )
+        assert resp.status_code == 202
+        assert "X-Idempotency-Key-Replayed" not in resp.headers
+
+        task_id = resp.json()["task_id"]
+        from mineru_gateway.models import TaskRecord
+
+        async with client._transport.app.state.db.session_factory() as session:
+            task = await session.get(TaskRecord, uuid.UUID(task_id))
+            assert task.idempotency_key is None
