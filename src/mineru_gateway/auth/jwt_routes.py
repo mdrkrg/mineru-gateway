@@ -119,7 +119,6 @@ async def admin_create_user(
     body: UserCreate,
     request: Request,
     user_manager: Annotated[UserManager, Depends(get_user_manager_dep)],
-    settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> UserRead:
     """Section 4.2: admin creates user (X-Admin-Token, not gated by OPEN_REGISTRATION)."""
     try:
