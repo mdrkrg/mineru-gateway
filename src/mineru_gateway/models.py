@@ -68,6 +68,7 @@ class TaskRecord(Base):
         Uuid(), ForeignKey("api_keys.id"), nullable=False, index=True
     )
     status: Mapped[str] = mapped_column(String(20), index=True, default="pending")
+    idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # File info
     file_names: Mapped[list] = mapped_column(JSON, default=list)
@@ -123,6 +124,9 @@ class TaskRecord(Base):
 
     __table_args__ = (
         Index("ix_tasks_key_status_created", "api_key_id", "status", "created_at"),
+        UniqueConstraint(
+            "api_key_id", "idempotency_key", name="uq_tasks_key_idempotency"
+        ),
     )
 
 
