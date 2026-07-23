@@ -86,3 +86,42 @@ async def api_key(client, admin_headers) -> str:
 @pytest.fixture
 def sample_files() -> list[tuple[str, tuple[str, bytes, str]]]:
     return [("files", ("doc.pdf", b"%PDF-1.4 fake pdf bytes", "application/pdf"))]
+
+
+# ===== User auth fixtures (needed for same-user key isolation tests) =====
+
+
+@pytest.fixture
+async def registered_user(client) -> dict:
+    resp = await client.post(
+        "/auth/register",
+        json={
+            "email": "stats-user@example.com",
+            "password": "Str0ng!Pass",
+            "display_name": "Stats User",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    return {
+        "email": "stats-user@example.com",
+        "password": "Str0ng!Pass",
+        "display_name": "Stats User",
+    }
+
+
+@pytest.fixture
+async def user_token(client, registered_user) -> str:
+    resp = await client.post(
+        "/auth/jwt/login",
+        json={
+            "email": registered_user["email"],
+            "password": registered_user["password"],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()["access_token"]
+
+
+@pytest.fixture
+def user_headers(user_token) -> dict:
+    return {"Authorization": f"Bearer {user_token}"}

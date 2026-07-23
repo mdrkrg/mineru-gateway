@@ -107,6 +107,49 @@ async def test_task_stats_ownership_isolation(client, api_key, admin_headers):
     assert body["avg_duration_ms"] is None
 
 
+# Spec: "even if they belong to the same user"
+@pytest.mark.xfail(
+    reason="stub returns hardcoded zeros; ownership isolation not yet enforced"
+)
+async def test_task_stats_ownership_isolation_same_user(client, user_headers):
+    resp1 = await client.post(
+        "/me/api-keys", json={"label": "key-alpha"}, headers=user_headers
+    )
+    assert resp1.status_code == 201
+    key1 = resp1.json()["api_key"]
+
+    resp2 = await client.post(
+        "/me/api-keys", json={"label": "key-beta"}, headers=user_headers
+    )
+    assert resp2.status_code == 201
+    key2 = resp2.json()["api_key"]
+
+    files = [("files", ("doc.pdf", b"%PDF-1.4 data", "application/pdf"))]
+    resp = await client.post("/tasks", headers={"X-API-Key": key1}, files=files)
+    assert resp.status_code == 202
+
+    first = await client.get("/tasks/stats", headers={"X-API-Key": key1})
+    assert first.status_code == 200
+    assert first.json()["pending"] >= 1
+
+    second = await client.get("/tasks/stats", headers={"X-API-Key": key2})
+    assert second.status_code == 200
+    body = second.json()
+    for field in (
+        "pending",
+        "processing",
+        "retry_pending",
+        "completed",
+        "failed",
+        "cancelled",
+        "today_completed",
+        "today_failed",
+        "total_bytes",
+    ):
+        assert body[field] == 0, f"{field} should be 0 for isolated key"
+    assert body["avg_duration_ms"] is None
+
+
 # --- zero state ---
 
 
@@ -136,6 +179,19 @@ async def test_task_stats_is_idempotent(client, api_key):
     assert first.status_code == 200
     assert second.status_code == 200
     assert first.json() == second.json()
+
+
+# Spec: "Query parameters (status, date range, etc.) are intentionally NOT
+#        supported -- this is a fixed aggregate, not a filtered list."
+async def test_task_stats_ignores_query_params(client, api_key):
+    no_params = await client.get("/tasks/stats", headers={"X-API-Key": api_key})
+    with_params = await client.get(
+        "/tasks/stats?status=completed&date_from=2020-01-01",
+        headers={"X-API-Key": api_key},
+    )
+    assert no_params.status_code == 200
+    assert with_params.status_code == 200
+    assert no_params.json() == with_params.json()
 
 
 # --- per-status counts ---
@@ -209,9 +265,10 @@ async def test_task_stats_counts_by_status(app, client, admin_headers):
 # Spec: "today_completed / today_failed" filter by UTC calendar day
 @pytest.mark.xfail(reason=_XFAIL_STUB)
 async def test_task_stats_today_counts_are_utc_scoped(app, client, admin_headers):
-    from datetime import date, datetime, time, timedelta, timezone
+    from datetime import datetime, timedelta, timezone
 
-    today_start = datetime.combine(date.today(), time.min, tzinfo=timezone.utc)
+    now_utc = datetime.now(timezone.utc)
+    today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
     yesterday = today_start - timedelta(days=1)
 
     resp = await client.post(
@@ -339,3 +396,22 @@ async def test_task_stats_avg_duration(app, client, admin_headers):
     resp3 = await client.get("/tasks/stats", headers={"X-API-Key": empty_key})
     assert resp3.status_code == 200
     assert resp3.json()["avg_duration_ms"] is None
+
+
+async def test_task_stats_response_has_only_expected_keys(client, api_key):
+    resp = await client.get("/tasks/stats", headers={"X-API-Key": api_key})
+    assert resp.status_code == 200
+    body = resp.json()
+    expected_keys = {
+        "pending",
+        "processing",
+        "retry_pending",
+        "completed",
+        "failed",
+        "cancelled",
+        "today_completed",
+        "today_failed",
+        "total_bytes",
+        "avg_duration_ms",
+    }
+    assert set(body.keys()) == expected_keys
