@@ -122,6 +122,7 @@ async def handle_task_submission(
     limiter: MemoryTokenBucket,
     cache: FileCache,
     settings: Settings,
+    x_idempotency_key: str | None = None,
 ) -> Response:
     # Defensive: anonymous only allowed when configured.
     if api_key is None and not settings.allow_anonymous:

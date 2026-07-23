@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.dependencies import get_session, require_api_key
@@ -40,6 +40,7 @@ async def submit_task(
     limiter=Depends(_limiter),
     cache: FileCache = Depends(_cache),
     settings: Settings = Depends(_settings),
+    x_idempotency_key: str | None = Header(None, alias="X-Idempotency-Key"),
 ):
     return await handle_task_submission(
         request=request,
@@ -49,6 +50,7 @@ async def submit_task(
         limiter=limiter,
         cache=cache,
         settings=settings,
+        x_idempotency_key=x_idempotency_key,
     )
 
 
