@@ -8,7 +8,10 @@ Plan: Phase 1 — "POST /tasks (异步) + POST /file_parse (同步) 流式透传
 
 from __future__ import annotations
 
+import asyncio
 import uuid
+
+from unittest.mock import AsyncMock, patch
 
 from mineru_gateway.config import Settings
 from mineru_gateway.main import create_app
@@ -507,3 +510,91 @@ async def test_idempotent_anonymous_ignores_key(tmp_path):
         async with app.state.db.session_factory() as session:
             count = await session.scalar(select(func.count()).select_from(TaskRecord))
             assert count == 0
+
+
+async def test_idempotent_concurrent_same_key(client, api_key, sample_files):
+    """T9 sec 6.4: two concurrent requests with same idempotency key.
+    Only one task record created, both return 202, second gets replay.
+
+    Uses a mock on task_service.create to simulate a race condition:
+    first call succeeds, second raises IntegrityError."""
+    idem_key = "t9-race-key"
+    headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
+
+    from sqlalchemy.exc import IntegrityError
+    from mineru_gateway.tasks import service as task_service
+
+    original_create = task_service.create
+    _first_done = False
+
+    async def racing_create(session, **fields):
+        nonlocal _first_done
+        if _first_done:
+            raise IntegrityError(
+                "mock",
+                {},
+                Exception("UNIQUE constraint failed: uq_tasks_key_idempotency"),
+            )
+        _first_done = True
+        return await original_create(session, **fields)
+
+    with patch.object(task_service, "create", side_effect=racing_create):
+        r1, r2 = await asyncio.gather(
+            client.post("/tasks", headers=headers, files=sample_files),
+            client.post("/tasks", headers=headers, files=sample_files),
+        )
+
+    responses = [r1, r2]
+    success_codes = {r.status_code for r in responses}
+    assert 202 in success_codes
+    replayed = [
+        r for r in responses if r.headers.get("X-Idempotency-Key-Replayed") == "true"
+    ]
+    assert len(replayed) == 1
+
+    task_ids = {r.json()["task_id"] for r in responses if r.status_code == 202}
+    assert len(task_ids) == 1
+
+    from sqlalchemy import func, select
+    from mineru_gateway.models import TaskRecord
+
+    async with client._transport.app.state.db.session_factory() as session:
+        count = await session.scalar(select(func.count()).select_from(TaskRecord))
+        assert count == 1
+
+
+async def test_idempotent_concurrent_failure_releases_cache(
+    client, api_key, sample_files
+):
+    """T10 sec 6.4: the losing request in a race condition releases
+    its file cache directory to avoid orphaned disk files."""
+    idem_key = "t10-cache-key"
+    headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
+
+    from sqlalchemy.exc import IntegrityError
+    from mineru_gateway.tasks import service as task_service
+    from mineru_gateway.tasks.cache import FileCache
+
+    original_create = task_service.create
+    _first_done = False
+
+    async def racing_create(session, **fields):
+        nonlocal _first_done
+        if _first_done:
+            raise IntegrityError(
+                "mock",
+                {},
+                Exception("UNIQUE constraint failed: uq_tasks_key_idempotency"),
+            )
+        _first_done = True
+        return await original_create(session, **fields)
+
+    with patch.object(task_service, "create", side_effect=racing_create):
+        with patch.object(FileCache, "release", new_callable=AsyncMock) as mock_release:
+            mock_release.return_value = None
+            r1, r2 = await asyncio.gather(
+                client.post("/tasks", headers=headers, files=sample_files),
+                client.post("/tasks", headers=headers, files=sample_files),
+            )
+
+    assert mock_release.call_count >= 1
