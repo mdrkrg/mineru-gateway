@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from contextlib import asynccontextmanager
 
 import httpx
@@ -35,6 +36,17 @@ def create_app(
     owns_upstream_client = upstream_client is None
     if create_tables is None:
         create_tables = settings.create_tables
+
+    # TODO: Support mutli-worker
+    if settings.workers > 1:
+        print(
+            f"ERROR: GATEWAY_WORKERS={settings.workers} is not supported. "
+            "Multiple uvicorn workers cause duplicated rate-limiting, "
+            "duplicate background-loop runs, and retry races. "
+            "Set GATEWAY_WORKERS=1 to start.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     # Section 3.1 / 7.1: validate jwt_secret when user_auth_enabled
     if settings.user_auth_enabled and len(settings.jwt_secret) < 32:
@@ -140,7 +152,8 @@ def create_app(
 def main() -> None:
     import uvicorn
 
-    uvicorn.run(create_app(), host="0.0.0.0", port=8000, workers=1)
+    settings = get_settings()
+    uvicorn.run(create_app(), host="0.0.0.0", port=8000, workers=settings.workers)
 
 
 if __name__ == "__main__":

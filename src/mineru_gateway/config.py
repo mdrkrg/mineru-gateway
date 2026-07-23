@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     max_concurrent_tasks: int = 0
     log_level: str = "INFO"
     json_logs: bool = True
+    workers: int = 1
 
     # --- Phase 3: disaster recovery ---
     file_cache_dir: str = "/tmp/gateway-cache"
