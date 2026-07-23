@@ -16,7 +16,7 @@ from mineru_gateway.config import Settings
 from mineru_gateway.main import create_app
 from mineru_gateway.upstream.client import UpstreamClient
 
-from .mock_upstream import create_mock_upstream, state as mock_state
+from tests.mock_upstream import create_mock_upstream, state as mock_state
 
 
 async def test_full_lifecycle(client, admin_headers, app, upstream_client):

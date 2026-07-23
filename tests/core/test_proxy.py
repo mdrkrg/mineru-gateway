@@ -15,7 +15,7 @@ from mineru_gateway.main import create_app
 from asgi_lifespan import LifespanManager
 import httpx
 
-from .mock_upstream import create_mock_upstream, state as mock_state
+from tests.mock_upstream import create_mock_upstream, state as mock_state
 
 
 async def test_submit_requires_key_when_anonymous_disabled(client, sample_files):
@@ -257,7 +257,7 @@ async def test_anonymous_file_parse_passthrough_no_record(tmp_path):
 
 async def test_queued_ahead_captured_and_relayed(client, api_key, sample_files):
     """§3.7: 上游 queued_ahead 被捕获, 在 detail 和 list 中都返回."""
-    from .mock_upstream import state as mock_state
+    from tests.mock_upstream import state as mock_state
 
     mock_state.queued_ahead = 5
     resp = await client.post(

@@ -18,7 +18,7 @@ from pathlib import Path
 
 from mineru_gateway.db import Base
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def test_upgrade_head_creates_expected_schema(tmp_path):

@@ -15,7 +15,7 @@ from asgi_lifespan import LifespanManager
 from mineru_gateway.config import Settings
 from mineru_gateway.main import create_app
 
-from .mock_upstream import create_mock_upstream
+from tests.mock_upstream import create_mock_upstream
 
 
 async def _client_with_cap(tmp_path, cap):

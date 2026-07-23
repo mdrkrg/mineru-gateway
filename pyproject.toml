@@ -29,6 +29,7 @@ packages = ["src/mineru_gateway"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [dependency-groups]
 dev = [

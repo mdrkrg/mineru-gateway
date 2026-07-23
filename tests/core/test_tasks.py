@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, timedelta
 
-from .mock_upstream import state as mock_state
+from tests.mock_upstream import state as mock_state
 
 
 async def _submit(client, api_key, data=None):
@@ -350,7 +350,7 @@ async def test_get_result_409_for_pending_task_with_upstream_id(
     client, api_key, sample_files
 ):
     """§3.7: 非终态任务 (has upstream_task_id but not terminal) → 409."""
-    from .mock_upstream import state as ms
+    from tests.mock_upstream import state as ms
 
     ms.task_status = "pending"
     resp = await client.post(

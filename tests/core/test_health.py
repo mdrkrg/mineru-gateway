@@ -11,7 +11,7 @@ import httpx
 
 from mineru_gateway.upstream.client import UpstreamClient
 
-from .mock_upstream import state as mock_state
+from tests.mock_upstream import state as mock_state
 
 
 async def test_health_reports_healthy(client):

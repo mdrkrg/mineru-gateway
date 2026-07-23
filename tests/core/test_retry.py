@@ -16,7 +16,7 @@ from mineru_gateway.tasks import service
 from mineru_gateway.tasks.cache import FileCache
 from mineru_gateway.upstream.client import UpstreamClient
 
-from .mock_upstream import state as mock_state
+from tests.mock_upstream import state as mock_state
 
 
 async def _seed_key(session):
