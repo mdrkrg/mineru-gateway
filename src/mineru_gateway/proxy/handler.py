@@ -179,7 +179,7 @@ async def handle_task_submission(
         if existing is not None:
             return _build_replay_response(existing, settings)
 
-    if api_key and not await limiter.acquire(str(api_key.id)):
+    if api_key_id is not None and not await limiter.acquire(str(api_key_id)):
         raise HTTPException(
             status_code=429,
             detail="Rate limit exceeded",
