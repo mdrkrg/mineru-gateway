@@ -355,9 +355,12 @@ async def test_idempotent_repeat_same_key_returns_replay(client, api_key, sample
     assert resp2.status_code == 202
     assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
     assert resp2.json()["task_id"] == task_id_1
-    # Replayed response carries same X-MinerU-* headers as first submission
     assert resp2.headers["X-MinerU-Task-Id"] == task_id_1
     assert resp2.headers["X-MinerU-Task-Status"] == "pending"
+    assert resp2.headers["X-MinerU-Task-Status-Url"].endswith(f"/tasks/{task_id_1}")
+    assert resp2.headers["X-MinerU-Task-Result-Url"].endswith(
+        f"/tasks/{task_id_1}/result"
+    )
 
     from sqlalchemy import func, select
     from mineru_gateway.models import TaskRecord
@@ -393,8 +396,17 @@ async def test_idempotent_repeat_after_task_completed(client, api_key, sample_fi
     assert body["started_at"] is None
     assert body["completed_at"] is None
     assert body["error"] is None
+    assert isinstance(body["backend"], str)
+    assert isinstance(body["file_names"], list)
+    assert isinstance(body["created_at"], str)
+    assert body["status_url"].endswith(f"/tasks/{task_id}")
+    assert body["result_url"].endswith(f"/tasks/{task_id}/result")
     assert resp2.headers["X-MinerU-Task-Id"] == task_id
     assert resp2.headers["X-MinerU-Task-Status"] == "pending"
+    assert resp2.headers["X-MinerU-Task-Status-Url"].endswith(f"/tasks/{task_id}")
+    assert resp2.headers["X-MinerU-Task-Result-Url"].endswith(
+        f"/tasks/{task_id}/result"
+    )
 
 
 async def test_idempotent_repeat_after_task_failed(client, api_key, sample_files):
@@ -423,8 +435,17 @@ async def test_idempotent_repeat_after_task_failed(client, api_key, sample_files
     assert body["started_at"] is None
     assert body["completed_at"] is None
     assert body["error"] is None
+    assert isinstance(body["backend"], str)
+    assert isinstance(body["file_names"], list)
+    assert isinstance(body["created_at"], str)
+    assert body["status_url"].endswith(f"/tasks/{task_id}")
+    assert body["result_url"].endswith(f"/tasks/{task_id}/result")
     assert resp2.headers["X-MinerU-Task-Id"] == task_id
     assert resp2.headers["X-MinerU-Task-Status"] == "pending"
+    assert resp2.headers["X-MinerU-Task-Status-Url"].endswith(f"/tasks/{task_id}")
+    assert resp2.headers["X-MinerU-Task-Result-Url"].endswith(
+        f"/tasks/{task_id}/result"
+    )
 
 
 async def test_idempotent_different_keys_same_idempotency_key(
@@ -560,15 +581,15 @@ async def test_idempotent_concurrent_same_key(client, api_key, sample_files):
         )
 
     responses = [r1, r2]
-    success_codes = {r.status_code for r in responses}
-    assert 202 in success_codes
+    assert r1.status_code == 202
+    assert r2.status_code == 202
     replayed = [
         r for r in responses if r.headers.get("X-Idempotency-Key-Replayed") == "true"
     ]
     assert len(replayed) == 1
 
-    task_ids = {r.json()["task_id"] for r in responses if r.status_code == 202}
-    assert len(task_ids) == 1
+    task_ids = [r.json()["task_id"] for r in responses]
+    assert task_ids[0] == task_ids[1]
 
     from sqlalchemy import func, select
     from mineru_gateway.models import TaskRecord
