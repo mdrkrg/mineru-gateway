@@ -5,6 +5,8 @@ Spec: user-management-and-oauth.md Section 4.5.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import secrets
 from urllib.parse import urlencode
 
@@ -45,6 +47,37 @@ def _is_secure(settings: Settings) -> bool:
     """Section 7.2: cookie secure flag depends on environment."""
     base_url = _get_redirect_base_url(settings)
     return base_url.startswith("https://")
+
+
+def _sign_state(state: str, settings: Settings) -> str:
+    """Section 4.5/7.2: sign state with HMAC-SHA256 using jwt_secret.
+
+    Returns ``"{state}.{hmac_hexdigest}"`` so the cookie value is
+    tamper-proof while keeping the state itself readable.
+    """
+    key = settings.jwt_secret.encode("utf-8")
+    msg = state.encode("utf-8")
+    sig = hmac.new(key, msg, hashlib.sha256).hexdigest()
+    return f"{state}.{sig}"
+
+
+def _extract_state_from_cookie(
+    cookie_value: str | None, settings: Settings
+) -> str | None:
+    """Section 4.5/7.2: verify HMAC signature and return the state.
+
+    Returns the original state if the signature is valid, or ``None``
+    if the cookie is missing, malformed, or the signature does not match.
+    """
+    if not cookie_value or "." not in cookie_value:
+        return None
+    state, _, sig = cookie_value.rpartition(".")
+    if not state or not sig:
+        return None
+    expected = _sign_state(state, settings)
+    if hmac.compare_digest(expected, cookie_value):
+        return state
+    return None
 
 
 def _coerce_email_verified(value) -> bool | None:
@@ -88,7 +121,7 @@ async def authorize(
 
     response.set_cookie(
         key=_COOKIE_NAME,
-        value=state,
+        value=_sign_state(state, settings),
         httponly=True,
         samesite="lax",
         secure=_is_secure(settings),
@@ -113,8 +146,10 @@ async def callback(
     if client is None:
         raise HTTPException(status_code=404, detail="Unknown OAuth provider")
 
-    # Step 1: Verify CSRF state
-    cookie_state = request.cookies.get(_COOKIE_NAME)
+    # Step 1: Verify CSRF state (cookie is HMAC-signed)
+    cookie_state = _extract_state_from_cookie(
+        request.cookies.get(_COOKIE_NAME), settings
+    )
     if not cookie_state or not secrets.compare_digest(cookie_state, state):
         raise HTTPException(status_code=400, detail="State mismatch (CSRF)")
 
