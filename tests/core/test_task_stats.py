@@ -136,3 +136,206 @@ async def test_task_stats_is_idempotent(client, api_key):
     assert first.status_code == 200
     assert second.status_code == 200
     assert first.json() == second.json()
+
+
+# --- per-status counts ---
+
+_XFAIL_STUB = "stub returns hardcoded zeros; real aggregation not yet implemented"
+
+
+async def _seed_task(
+    app, api_key_id, status, *, file_bytes=1024, started_at=None, completed_at=None
+):
+    """Insert a single TaskRecord directly via the DB for test setup."""
+    from datetime import datetime, timezone
+
+    from mineru_gateway.models import TaskRecord
+
+    async with app.state.db.session_factory() as session:
+        task = TaskRecord(
+            api_key_id=api_key_id,
+            status=status,
+            file_names=["test.pdf"],
+            file_count=1,
+            file_total_bytes=file_bytes,
+            backend="hybrid-engine",
+            upstream_url="http://mock-upstream",
+            upstream_task_id=None,
+            retry_count=0,
+            consecutive_poll_failures=0,
+            created_at=datetime.now(timezone.utc),
+            started_at=started_at,
+            completed_at=completed_at,
+        )
+        session.add(task)
+        await session.commit()
+
+
+# Spec: per-status counts (pending, processing, retry_pending, completed,
+#        failed, cancelled)
+@pytest.mark.xfail(reason=_XFAIL_STUB)
+async def test_task_stats_counts_by_status(app, client, admin_headers):
+    # Create a fresh key and get its UUID.
+    resp = await client.post(
+        "/auth/keys", json={"label": "counts-test"}, headers=admin_headers
+    )
+    assert resp.status_code == 201
+    key_data = resp.json()
+    api_key_str = key_data["api_key"]
+    api_key_id = key_data["key_id"]
+
+    # Seed tasks in various statuses.
+    await _seed_task(app, api_key_id, "pending")
+    await _seed_task(app, api_key_id, "pending")
+    await _seed_task(app, api_key_id, "processing")
+    await _seed_task(app, api_key_id, "retry_pending")
+    await _seed_task(app, api_key_id, "completed")
+    await _seed_task(app, api_key_id, "completed")
+    await _seed_task(app, api_key_id, "completed")
+    await _seed_task(app, api_key_id, "failed")
+    await _seed_task(app, api_key_id, "cancelled")
+
+    resp = await client.get("/tasks/stats", headers={"X-API-Key": api_key_str})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["pending"] == 2
+    assert body["processing"] == 1
+    assert body["retry_pending"] == 1
+    assert body["completed"] == 3
+    assert body["failed"] == 1
+    assert body["cancelled"] == 1
+
+
+# Spec: "today_completed / today_failed" filter by UTC calendar day
+@pytest.mark.xfail(reason=_XFAIL_STUB)
+async def test_task_stats_today_counts_are_utc_scoped(app, client, admin_headers):
+    from datetime import date, datetime, time, timedelta, timezone
+
+    today_start = datetime.combine(date.today(), time.min, tzinfo=timezone.utc)
+    yesterday = today_start - timedelta(days=1)
+
+    resp = await client.post(
+        "/auth/keys", json={"label": "today-test"}, headers=admin_headers
+    )
+    assert resp.status_code == 201
+    key_data = resp.json()
+    api_key_str = key_data["api_key"]
+    api_key_id = key_data["key_id"]
+
+    # Today's completed tasks
+    await _seed_task(app, api_key_id, "completed", completed_at=today_start)
+    await _seed_task(
+        app, api_key_id, "completed", completed_at=datetime.now(timezone.utc)
+    )
+    # Yesterday's completed -- should NOT count in today_completed
+    await _seed_task(app, api_key_id, "completed", completed_at=yesterday)
+    # Today's failed
+    await _seed_task(app, api_key_id, "failed", completed_at=today_start)
+    # Yesterday's failed -- should NOT count in today_failed
+    await _seed_task(app, api_key_id, "failed", completed_at=yesterday)
+
+    resp = await client.get("/tasks/stats", headers={"X-API-Key": api_key_str})
+    assert resp.status_code == 200
+    body = resp.json()
+    # All-time counts include everything
+    assert body["completed"] == 3
+    assert body["failed"] == 2
+    # Today counts only include tasks completed today UTC
+    assert body["today_completed"] == 2
+    assert body["today_failed"] == 1
+
+
+# Spec: "total_bytes = sum of file_total_bytes across all tasks for this key"
+@pytest.mark.xfail(reason=_XFAIL_STUB)
+async def test_task_stats_total_bytes(app, client, admin_headers):
+    resp = await client.post(
+        "/auth/keys", json={"label": "bytes-test"}, headers=admin_headers
+    )
+    assert resp.status_code == 201
+    key_data = resp.json()
+    api_key_str = key_data["api_key"]
+    api_key_id = key_data["key_id"]
+
+    await _seed_task(app, api_key_id, "pending", file_bytes=100)
+    await _seed_task(app, api_key_id, "completed", file_bytes=250)
+    await _seed_task(app, api_key_id, "failed", file_bytes=50)
+    await _seed_task(app, api_key_id, "cancelled", file_bytes=75)
+
+    resp = await client.get("/tasks/stats", headers={"X-API-Key": api_key_str})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total_bytes"] == 475
+
+
+# Spec: "avg_duration_ms = average of (completed_at - started_at) for
+#        completed tasks; null when no completed tasks exist"
+@pytest.mark.xfail(reason=_XFAIL_STUB)
+async def test_task_stats_avg_duration(app, client, admin_headers):
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+
+    resp = await client.post(
+        "/auth/keys", json={"label": "duration-test"}, headers=admin_headers
+    )
+    assert resp.status_code == 201
+    key_data = resp.json()
+    api_key_str = key_data["api_key"]
+    api_key_id = key_data["key_id"]
+
+    # Two completed tasks with known durations.
+    # Task 1: started 10 min ago, completed now -> 600_000 ms
+    await _seed_task(
+        app,
+        api_key_id,
+        "completed",
+        started_at=now - timedelta(minutes=10),
+        completed_at=now,
+    )
+    # Task 2: started 5 min ago, completed now -> 300_000 ms
+    await _seed_task(
+        app,
+        api_key_id,
+        "completed",
+        started_at=now - timedelta(minutes=5),
+        completed_at=now,
+    )
+    # Task 3: still processing, should not affect avg_duration
+    await _seed_task(
+        app,
+        api_key_id,
+        "processing",
+        started_at=now - timedelta(minutes=2),
+    )
+    # Task 4: failed, should not affect avg_duration
+    await _seed_task(
+        app,
+        api_key_id,
+        "failed",
+        started_at=now - timedelta(minutes=8),
+        completed_at=now,
+    )
+
+    resp = await client.get("/tasks/stats", headers={"X-API-Key": api_key_str})
+    assert resp.status_code == 200
+    body = resp.json()
+
+    # Assert avg is roughly 450_000 ms (10 min + 5 min avg = 7.5 min = 450,000 ms)
+    avg = body["avg_duration_ms"]
+    assert avg is not None
+    assert 400_000 <= avg <= 500_000
+
+    # avg_duration_ms should be null for a key with no completed tasks
+    resp2 = await client.post(
+        "/auth/keys", json={"label": "no-completed"}, headers=admin_headers
+    )
+    assert resp2.status_code == 201
+    empty_key = resp2.json()["api_key"]
+    empty_key_id = resp2.json()["key_id"]
+    await _seed_task(app, empty_key_id, "pending")
+    await _seed_task(app, empty_key_id, "processing")
+    await _seed_task(app, empty_key_id, "failed", completed_at=now)
+
+    resp3 = await client.get("/tasks/stats", headers={"X-API-Key": empty_key})
+    assert resp3.status_code == 200
+    assert resp3.json()["avg_duration_ms"] is None
