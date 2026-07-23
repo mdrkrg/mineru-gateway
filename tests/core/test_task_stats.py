@@ -105,3 +105,34 @@ async def test_task_stats_ownership_isolation(client, api_key, admin_headers):
     ):
         assert body[field] == 0, f"{field} should be 0 for a key with no tasks"
     assert body["avg_duration_ms"] is None
+
+
+# --- zero state ---
+
+
+# Spec: "A key with no tasks returns all counts as 0 and null for avg_duration_ms"
+async def test_task_stats_defaults_to_zero_when_no_tasks(client, api_key):
+    resp = await client.get("/tasks/stats", headers={"X-API-Key": api_key})
+    assert resp.status_code == 200
+    body = resp.json()
+
+    assert body["pending"] == 0
+    assert body["processing"] == 0
+    assert body["retry_pending"] == 0
+    assert body["completed"] == 0
+    assert body["failed"] == 0
+    assert body["cancelled"] == 0
+    assert body["today_completed"] == 0
+    assert body["today_failed"] == 0
+    assert body["total_bytes"] == 0
+    assert body["avg_duration_ms"] is None
+
+
+# Spec: "The endpoint is read-only and has no side effects"
+# Verifies deterministic output for identical state.
+async def test_task_stats_is_idempotent(client, api_key):
+    first = await client.get("/tasks/stats", headers={"X-API-Key": api_key})
+    second = await client.get("/tasks/stats", headers={"X-API-Key": api_key})
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == second.json()
