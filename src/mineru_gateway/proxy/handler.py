@@ -114,6 +114,20 @@ def _relay_response(resp) -> Response:
     )
 
 
+def _normalize_idempotency_key(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    if len(stripped) > 255:
+        raise HTTPException(
+            status_code=422,
+            detail="X-Idempotency-Key must not exceed 255 characters",
+        )
+    return stripped
+
+
 async def handle_task_submission(
     request: Request,
     api_key: ApiKey | None,
@@ -127,6 +141,8 @@ async def handle_task_submission(
     # Defensive: anonymous only allowed when configured.
     if api_key is None and not settings.allow_anonymous:
         raise HTTPException(status_code=401, detail="API key required")
+
+    idempotency_key = _normalize_idempotency_key(x_idempotency_key)
 
     if api_key and not await limiter.acquire(str(api_key.id)):
         raise HTTPException(
@@ -185,6 +201,7 @@ async def handle_task_submission(
         backend=data.get("backend", "hybrid-engine"),
         cache_dir=cache_dir,
         queued_ahead=queued_ahead,
+        idempotency_key=idempotency_key,
         **_parse_params(data),
     )
 
