@@ -569,8 +569,8 @@ src/mineru_gateway/auth/
 
 | 接口 | 输入 | 输出 | 行为 |
 |------|------|------|------|
-| `issue_token_pair(user)` | `User` 对象 | `{access_token: str, refresh_token: str, token_type: "bearer"}` | 签发访问令牌（aud=fastapi-users:auth，短期）和刷新令牌（aud=fastapi-users:refresh，长期），使用 `GATEWAY_JWT_SECRET` 签名 |
-| `verify_refresh_token(session, token)` | `session: AsyncSession, token: str`（JWT） | `User` 对象 | 验证刷新令牌签名、audience、过期时间，通过 session 查询用户并校验 `is_active`；验证失败时返回 `None`，路由层抛异常 |
+| `issue_token_pair(user, settings)` | `user: User, settings: Settings` | `{access_token: str, refresh_token: str, token_type: "bearer"}` | 签发访问令牌（aud=fastapi-users:auth，短期）和刷新令牌（aud=fastapi-users:refresh，长期），使用 `settings.jwt_secret` 签名。`settings` 显式传入以支持依赖注入与测试隔离 |
+| `verify_refresh_token(session, token, settings)` | `session: AsyncSession, token: str`（JWT）, `settings: Settings` | `User` 对象 | 验证刷新令牌签名、audience、过期时间，通过 session 查询用户并校验 `is_active`；验证失败时返回 `None`，路由层抛异常。`settings` 显式传入以支持依赖注入与测试隔离 |
 
 #### `auth/manager.py` — UserManager
 
