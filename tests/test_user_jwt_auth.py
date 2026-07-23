@@ -169,7 +169,7 @@ async def test_refresh_invalid_signature_returns_401(client):
     """Section 9.3: wrong-signature refresh_token -> 401."""
     bad_token = jwt.encode(
         {"sub": "x", "aud": ["fastapi-users:refresh"]},
-        "wrong-secret-key",
+        "wrong-secret-key-wrong-secret-key",
         algorithm="HS256",
     )
     resp = await client.post(
