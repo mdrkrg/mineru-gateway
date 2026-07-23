@@ -476,3 +476,34 @@ async def test_idempotent_same_key_different_idempotency_keys(
     async with client._transport.app.state.db.session_factory() as session:
         count = await session.scalar(select(func.count()).select_from(TaskRecord))
         assert count == 2
+
+
+async def test_idempotent_anonymous_ignores_key(tmp_path):
+    """T8 sec 6.3: anonymous request with X-Idempotency-Key is ignored.
+    Two anonymous submissions with same key each go through as pure
+    passthrough, produce upstream task ids, and write no DB records."""
+    app, settings = await _anon_client(tmp_path)
+    async with LifespanManager(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as c:
+            files = [("files", ("a.pdf", b"data", "application/pdf"))]
+            headers = {"X-Idempotency-Key": "anon-key-1"}
+
+            resp1 = await c.post("/tasks", headers=headers, files=files)
+            assert resp1.status_code == 202
+            assert resp1.json()["task_id"].startswith("up-")
+            assert "X-Idempotency-Key-Replayed" not in resp1.headers
+
+            resp2 = await c.post("/tasks", headers=headers, files=files)
+            assert resp2.status_code == 202
+            assert resp2.json()["task_id"].startswith("up-")
+            assert "X-Idempotency-Key-Replayed" not in resp2.headers
+
+        from sqlalchemy import func, select
+        from mineru_gateway.models import TaskRecord
+
+        async with app.state.db.session_factory() as session:
+            count = await session.scalar(select(func.count()).select_from(TaskRecord))
+            assert count == 0
