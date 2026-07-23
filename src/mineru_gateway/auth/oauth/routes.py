@@ -247,6 +247,7 @@ async def callback(
                 is_verified=is_verified,
                 hashed_password=user_manager.password_helper.hash(random_pw),
             )
+            await user_manager.on_after_register(user, request=request)
             session.add(user)
             await session.flush()
 
@@ -276,6 +277,7 @@ async def callback(
 
     # Step 6: Issue token pair
     tokens = await issue_token_pair(user, settings)
+    await user_manager.on_after_login(user, request=request, response=response)
 
     # Step 7: Return JSON or redirect to frontend
     response.delete_cookie(_COOKIE_NAME)
