@@ -335,3 +335,75 @@ async def test_idempotent_blank_key_treated_as_missing(client, api_key, sample_f
         async with client._transport.app.state.db.session_factory() as session:
             task = await session.get(TaskRecord, uuid.UUID(task_id))
             assert task.idempotency_key is None
+
+
+async def test_idempotent_repeat_same_key_returns_replay(client, api_key, sample_files):
+    """T2 sec 6.1: second submission with same X-Idempotency-Key returns 202
+    with X-Idempotency-Key-Replayed: true, same task_id, only one DB record."""
+    idem_key = "t2-repeat-key"
+    headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
+
+    resp1 = await client.post("/tasks", headers=headers, files=sample_files)
+    assert resp1.status_code == 202
+    assert "X-Idempotency-Key-Replayed" not in resp1.headers
+    task_id_1 = resp1.json()["task_id"]
+
+    resp2 = await client.post("/tasks", headers=headers, files=sample_files)
+    assert resp2.status_code == 202
+    assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
+    assert resp2.json()["task_id"] == task_id_1
+
+    from sqlalchemy import func, select
+    from mineru_gateway.models import TaskRecord
+
+    async with client._transport.app.state.db.session_factory() as session:
+        count = await session.scalar(select(func.count()).select_from(TaskRecord))
+        assert count == 1
+
+
+async def test_idempotent_repeat_after_task_completed(client, api_key, sample_files):
+    """T3 sec 6.1: resubmit with same idempotency key after task completed.
+    Should return original response (status: pending), not completed."""
+    idem_key = "t3-completed-key"
+    headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
+
+    resp1 = await client.post("/tasks", headers=headers, files=sample_files)
+    assert resp1.status_code == 202
+    task_id = resp1.json()["task_id"]
+
+    from mineru_gateway.models import TaskRecord
+
+    async with client._transport.app.state.db.session_factory() as session:
+        task = await session.get(TaskRecord, uuid.UUID(task_id))
+        task.status = "completed"
+        await session.commit()
+
+    resp2 = await client.post("/tasks", headers=headers, files=sample_files)
+    assert resp2.status_code == 202
+    assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
+    body = resp2.json()
+    assert body["task_id"] == task_id
+    assert body["status"] == "pending"
+
+
+async def test_idempotent_repeat_after_task_failed(client, api_key, sample_files):
+    """T3b sec 6.1: resubmit with same key after task failed.
+    Behavior matches T3: returns original pending response, not failed."""
+    idem_key = "t3b-failed-key"
+    headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
+
+    resp1 = await client.post("/tasks", headers=headers, files=sample_files)
+    assert resp1.status_code == 202
+    task_id = resp1.json()["task_id"]
+
+    from mineru_gateway.models import TaskRecord
+
+    async with client._transport.app.state.db.session_factory() as session:
+        task = await session.get(TaskRecord, uuid.UUID(task_id))
+        task.status = "failed"
+        await session.commit()
+
+    resp2 = await client.post("/tasks", headers=headers, files=sample_files)
+    assert resp2.status_code == 202
+    assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
+    assert resp2.json()["task_id"] == task_id
