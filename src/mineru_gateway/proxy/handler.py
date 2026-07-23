@@ -128,6 +128,32 @@ def _normalize_idempotency_key(raw: str | None) -> str | None:
     return stripped
 
 
+def _build_replay_response(task, settings: Settings) -> JSONResponse:
+    return JSONResponse(
+        status_code=202,
+        content={
+            "task_id": str(task.id),
+            "status": "pending",
+            "backend": task.backend,
+            "file_names": task.file_names,
+            "created_at": task.created_at.isoformat(),
+            "status_url": f"{settings.gateway_url}/tasks/{task.id}",
+            "result_url": f"{settings.gateway_url}/tasks/{task.id}/result",
+            "started_at": None,
+            "completed_at": None,
+            "error": None,
+            "message": "Task submitted successfully",
+        },
+        headers={
+            "X-MinerU-Task-Id": str(task.id),
+            "X-MinerU-Task-Status": "pending",
+            "X-MinerU-Task-Status-Url": f"{settings.gateway_url}/tasks/{task.id}",
+            "X-MinerU-Task-Result-Url": f"{settings.gateway_url}/tasks/{task.id}/result",
+            "X-Idempotency-Key-Replayed": "true",
+        },
+    )
+
+
 async def handle_task_submission(
     request: Request,
     api_key: ApiKey | None,
@@ -143,6 +169,13 @@ async def handle_task_submission(
         raise HTTPException(status_code=401, detail="API key required")
 
     idempotency_key = _normalize_idempotency_key(x_idempotency_key)
+
+    if api_key is not None and idempotency_key is not None:
+        existing = await task_service.get_by_idempotency_key(
+            session, api_key.id, idempotency_key
+        )
+        if existing is not None:
+            return _build_replay_response(existing, settings)
 
     if api_key and not await limiter.acquire(str(api_key.id)):
         raise HTTPException(

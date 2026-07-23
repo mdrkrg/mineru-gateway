@@ -25,6 +25,18 @@ async def get(session: AsyncSession, task_id: uuid.UUID) -> TaskRecord | None:
     return await session.get(TaskRecord, task_id)
 
 
+async def get_by_idempotency_key(
+    session: AsyncSession, api_key_id: uuid.UUID, idempotency_key: str
+) -> TaskRecord | None:
+    result = await session.execute(
+        select(TaskRecord).where(
+            TaskRecord.api_key_id == api_key_id,
+            TaskRecord.idempotency_key == idempotency_key,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
 async def get_owned(
     session: AsyncSession, task_id: uuid.UUID, api_key_id: uuid.UUID
 ) -> TaskRecord | None:

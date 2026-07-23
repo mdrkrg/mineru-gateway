@@ -675,9 +675,9 @@ async def test_idempotent_replay_skips_rate_limit(tmp_path, sample_files):
         base_url="http://mock-upstream",
     )
     app = create_app(settings=settings, upstream_client=upstream)
-    app.state.rate_limiter = MemoryTokenBucket(rate=1, burst=1)
 
     async with LifespanManager(app):
+        app.state.rate_limiter = MemoryTokenBucket(rate=1, burst=1)
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(
             transport=transport, base_url="http://testserver"
