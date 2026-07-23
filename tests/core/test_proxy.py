@@ -598,3 +598,114 @@ async def test_idempotent_concurrent_failure_releases_cache(
             )
 
     assert mock_release.call_count >= 1
+
+
+async def test_idempotent_key_too_long_returns_422(client, api_key, sample_files):
+    """T11 sec 6.5: X-Idempotency-Key longer than 255 chars returns
+    422 Unprocessable Entity, no downstream processing."""
+    long_key = "a" * 256
+    resp = await client.post(
+        "/tasks",
+        headers={"X-API-Key": api_key, "X-Idempotency-Key": long_key},
+        files=sample_files,
+    )
+    assert resp.status_code == 422
+
+
+async def test_idempotent_replay_skips_rate_limit(tmp_path, sample_files):
+    """T12 sec 6.5: idempotent replay does not consume rate limit tokens.
+    First request exhausts burst=1 tokens. Second request with same
+    key returns 202 via replay, not 429."""
+    from mineru_gateway.config import Settings
+    from mineru_gateway.main import create_app
+    from mineru_gateway.limiter.memory import MemoryTokenBucket
+    from asgi_lifespan import LifespanManager
+    import httpx
+    from tests.mock_upstream import create_mock_upstream
+
+    settings = Settings(
+        upstream_url="http://mock-upstream",
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 't12.db'}",
+        admin_token="test-admin-token",
+        gateway_url="http://testserver",
+        file_cache_dir=str(tmp_path / "cache"),
+        enable_background=False,
+        json_logs=False,
+        create_tables=True,
+        rate_limit_per_key=1,
+    )
+    upstream = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_mock_upstream()),
+        base_url="http://mock-upstream",
+    )
+    app = create_app(settings=settings, upstream_client=upstream)
+    app.state.rate_limiter = MemoryTokenBucket(rate=1, burst=1)
+
+    async with LifespanManager(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as c:
+            r = await c.post(
+                "/auth/keys",
+                json={"label": "rl"},
+                headers={"X-Admin-Token": "test-admin-token"},
+            )
+            api_key = r.json()["api_key"]
+
+            idem_key = "t12-rl-key"
+            headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
+            files = [("files", ("a.pdf", b"data", "application/pdf"))]
+
+            resp1 = await c.post("/tasks", headers=headers, files=files)
+            assert resp1.status_code == 202
+
+            resp2 = await c.post("/tasks", headers=headers, files=files)
+            assert resp2.status_code == 202
+            assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
+
+
+async def test_idempotent_replay_skips_health_check(client, api_key, sample_files):
+    """T12b sec 6.5: idempotent replay skips upstream health gating.
+    When upstream is full (free_slots=0), replay still returns 202."""
+    idem_key = "t12b-health-key"
+    headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
+
+    resp1 = await client.post("/tasks", headers=headers, files=sample_files)
+    assert resp1.status_code == 202
+
+    mock_state.processing = mock_state.max_concurrent
+
+    resp2 = await client.post("/tasks", headers=headers, files=sample_files)
+    assert resp2.status_code == 202
+    assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
+
+
+async def test_idempotent_key_reusable_after_cleanup(client, api_key, sample_files):
+    """T13 sec 6.6: after TaskRecord is deleted, the idempotency key
+    can be reused for a new submission (no replay)."""
+    idem_key = "t13-cleanup-key"
+    headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
+
+    resp1 = await client.post("/tasks", headers=headers, files=sample_files)
+    assert resp1.status_code == 202
+    task_id_1 = resp1.json()["task_id"]
+
+    from mineru_gateway.models import TaskRecord
+
+    async with client._transport.app.state.db.session_factory() as session:
+        task = await session.get(TaskRecord, uuid.UUID(task_id_1))
+        await session.delete(task)
+        await session.commit()
+
+    resp2 = await client.post("/tasks", headers=headers, files=sample_files)
+    assert resp2.status_code == 202
+    task_id_2 = resp2.json()["task_id"]
+    assert "X-Idempotency-Key-Replayed" not in resp2.headers
+    assert task_id_1 != task_id_2
+
+    from sqlalchemy import func, select
+
+    async with client._transport.app.state.db.session_factory() as session:
+        count = await session.scalar(select(func.count()).select_from(TaskRecord))
+        assert count == 1
