@@ -241,10 +241,13 @@ async def handle_task_submission(
             **_parse_params(data),
         )
     except IntegrityError:
+        # Catches any IntegrityError from the insert (currently only the
+        # idempotency unique constraint is possible here).  Fallback `raise`
+        # at the end ensures we don't silently swallow unrelated errors.
         await session.rollback()
         await cache.release(cache_dir)
-        assert api_key_id is not None
-        assert idempotency_key is not None
+        if api_key_id is None or idempotency_key is None:
+            raise
         existing = await task_service.get_by_idempotency_key(
             session, api_key_id, idempotency_key
         )
