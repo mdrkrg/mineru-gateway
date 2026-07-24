@@ -243,6 +243,7 @@ async def result_zip(
 
     included: list[dict[str, str]] = []
     skipped: list[dict[str, str]] = []
+    used_names: set[str] = set()
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -275,6 +276,11 @@ async def result_zip(
                 continue
 
             entry = _build_result_entry_name(task, upstream_resp)
+            if entry in used_names:
+                suffix = str(task_id).split("-")[-1][:8]
+                base, dot_ext = _split_ext(entry)
+                entry = f"{base}-{suffix}{dot_ext}"
+            used_names.add(entry)
             zf.writestr(entry, upstream_resp.content)
             included.append({"task_id": str(task_id), "entry": entry})
 
@@ -344,6 +350,14 @@ def _build_result_entry_name(task: Any, upstream_resp: Any) -> str:
         return f"{base}/result{ext}"
 
     return f"{task.id}/result{ext}"
+
+
+def _split_ext(name: str) -> tuple[str, str]:
+    """Split a filename into (base, extension)."""
+    dot = name.rfind(".")
+    if dot < 0:
+        return name, ""
+    return name[:dot], name[dot:]
 
 
 @router.post(
