@@ -43,6 +43,13 @@ Error cases
 
 from __future__ import annotations
 
+import uuid
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from mineru_gateway.models import TaskRecord
+
 
 # --- auth / access control ---
 
@@ -193,13 +200,8 @@ async def _seed_task(
     app, api_key_id, status, *, file_bytes=1024, started_at=None, completed_at=None
 ):
     """Insert a single TaskRecord directly via the DB for test setup."""
-    from datetime import datetime, timezone
-    from uuid import UUID
-
-    from mineru_gateway.models import TaskRecord
-
     if isinstance(api_key_id, str):
-        api_key_id = UUID(api_key_id)
+        api_key_id = uuid.UUID(api_key_id)
 
     async with app.state.db.session_factory() as session:
         task = TaskRecord(
@@ -261,8 +263,6 @@ async def test_task_stats_counts_by_status(app, client, admin_headers):
 
 
 async def test_task_stats_today_counts_are_utc_scoped(app, client, admin_headers):
-    from datetime import datetime, timedelta, timezone
-
     now_utc = datetime.now(timezone.utc)
     today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
     yesterday = today_start - timedelta(days=1)
@@ -326,8 +326,6 @@ async def test_task_stats_total_bytes(app, client, admin_headers):
 
 
 async def test_task_stats_avg_duration(app, client, admin_headers):
-    from datetime import datetime, timedelta, timezone
-
     now = datetime.now(timezone.utc)
 
     resp = await client.post(
@@ -378,7 +376,7 @@ async def test_task_stats_avg_duration(app, client, admin_headers):
     # Assert avg is roughly 450_000 ms (10 min + 5 min avg = 7.5 min = 450,000 ms)
     avg = body["avg_duration_ms"]
     assert avg is not None
-    assert 400_000 <= avg <= 500_000
+    assert avg == pytest.approx(450_000, rel=0.001)
 
     # avg_duration_ms should be null for a key with no completed tasks
     resp2 = await client.post(
