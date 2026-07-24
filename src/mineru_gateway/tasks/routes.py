@@ -19,6 +19,7 @@ from ..upstream.client import UpstreamClient
 from . import service
 from .cache import FileCache
 from .schemas import (
+    BatchCancelError,
     BatchCancelRequest,
     BatchCancelResponse,
     ResultZipRequest,
@@ -191,6 +192,47 @@ async def result_zip(body: ResultZipRequest) -> None:
     pass
 
 
-@router.post("/cancel")
-async def batch_cancel(body: BatchCancelRequest) -> BatchCancelResponse:
-    return BatchCancelResponse(cancelled_count=0, cancelled_ids=[], errors=[])
+@router.post("/cancel", response_model=BatchCancelResponse)
+async def batch_cancel(
+    body: BatchCancelRequest,
+    api_key: ApiKey | None = Depends(require_api_key),
+    session: AsyncSession = Depends(get_session),
+    upstream: UpstreamClient = Depends(_upstream),
+    cache: FileCache = Depends(_cache),
+) -> BatchCancelResponse:
+    key = _require_key(api_key)
+
+    cancelled_ids: list[uuid.UUID] = []
+    errors: list[BatchCancelError] = []
+
+    for task_id in body.task_ids:
+        task = await service.get_owned(session, task_id, key.id)
+        if task is None:
+            errors.append(BatchCancelError(task_id=task_id, reason="not_found"))
+            continue
+
+        if task.status != "pending":
+            errors.append(
+                BatchCancelError(
+                    task_id=task_id,
+                    reason="not_cancellable",
+                    current_status=task.status,
+                )
+            )
+            continue
+
+        if task.upstream_task_id:
+            try:
+                await upstream.cancel_task(task.upstream_task_id)
+            except Exception:
+                pass
+
+        released = await service.mark_cancelled(session, task)
+        await cache.release(released)
+        cancelled_ids.append(task_id)
+
+    return BatchCancelResponse(
+        cancelled_count=len(cancelled_ids),
+        cancelled_ids=cancelled_ids,
+        errors=errors,
+    )
