@@ -956,3 +956,37 @@ async def test_cancel_single_retry_pending_409(client, api_key):
 
     resp = await client.delete(f"/tasks/{tid}", headers={"X-API-Key": api_key})
     assert resp.status_code == 409
+
+
+async def test_result_zip_duplicate_entry_names_deduplicated(client, api_key):
+    """2 completed tasks with same upstream Content-Disposition filename -> entries deduplicated, not overwritten."""
+    tid1, utid1 = await _submit_and_set_status(client, api_key, "completed")
+    tid2, utid2 = await _submit_and_set_status(client, api_key, "completed")
+
+    mock_state.task_result_overrides[utid1] = {
+        "status_code": 200,
+        "content": b"content-task-1",
+        "headers": {"content-disposition": 'attachment; filename="output.zip"'},
+    }
+    mock_state.task_result_overrides[utid2] = {
+        "status_code": 200,
+        "content": b"content-task-2",
+        "headers": {"content-disposition": 'attachment; filename="output.zip"'},
+    }
+
+    resp = await client.post(
+        "/tasks/result-zip",
+        json={"task_ids": [tid1, tid2]},
+        headers={"X-API-Key": api_key},
+    )
+    assert resp.status_code == 200
+
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        names = zf.namelist()
+        result_names = [n for n in names if n != "_manifest.json"]
+        assert len(result_names) == 2, f"expected 2 result entries, got {result_names}"
+        assert "output.zip" in result_names or any("output" in n for n in result_names)
+        manifest = json.loads(zf.read("_manifest.json"))
+        assert len(manifest["included"]) == 2
+        included_names = {item["entry"] for item in manifest["included"]}
+        assert len(included_names) == 2, "duplicate entry names in manifest"
