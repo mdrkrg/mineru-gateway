@@ -51,6 +51,7 @@ Content-Type: application/json
     b. 若无，且 `task.file_names` 非空：用 `task.file_names[0]`（如 `paper-001.pdf`）构建目录名，`<文件名（去扩展名）>/result.<上游 Content-Type 扩展名>`
     c. 若无 `Content-Disposition` 且 `file_names` 为空：回退为 `<task_id>/result.<上游 Content-Type 扩展名>`
     d. 若无法确定扩展名：使用 `result.bin`
+    e. 若按上述规则产生的 entry 名与已写入 zip 的 entry 重名，追加 `-<task_id 后8位>` 以去重，避免 zip 内数据被静默覆盖
 7. **响应**：
    - `Content-Type: application/zip`
    - `Content-Disposition: attachment; filename="results.zip"`
@@ -151,6 +152,11 @@ Key-A 创建 task-1。Key-B 提交 `{"task_ids": [task-1.id]}`。
 提交 3 个 `completed` task，上游均返回 `200`。
 
 验证：遍历 zip entry 顺序，`_manifest.json` 为最后一个。`included` 含 3 条，`skipped` 为空。
+
+**Z11 — 重名 entry 去重**
+提交 2 个 `completed` task，上游对两者均返回 `Content-Disposition: attachment; filename="output.zip"`。
+
+验证：HTTP `200`。zip 含 2 个 result entry（非 1 个），各自内容完整独立。manifest `included` 含 2 条，`entry` 不同。
 
 ---
 
