@@ -78,24 +78,9 @@ class TaskRecord(Base):
     # Parse parameters
     backend: Mapped[str] = mapped_column(String(50), default="hybrid-engine")
     parse_method: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    lang_list: Mapped[list | None] = mapped_column(JSON, nullable=True)
     effort: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    formula_enable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    table_enable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    image_analysis: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    return_md: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    return_middle_json: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    return_model_output: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    return_content_list: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    return_images: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    response_format_zip: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    return_original_file: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    client_side_output_generation: Mapped[bool | None] = mapped_column(
-        Boolean, nullable=True
-    )
-    server_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    start_page_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    end_page_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    parse_params: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     # Upstream mapping
     upstream_url: Mapped[str] = mapped_column(String(500))
