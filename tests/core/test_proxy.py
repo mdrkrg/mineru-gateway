@@ -72,10 +72,10 @@ async def test_submit_records_parse_parameters(client, api_key, sample_files):
     async with client._transport.app.state.db.session_factory() as session:
         task = await session.get(TaskRecord, uuid.UUID(task_id))
         assert task.backend == "pipeline"
-        assert task.formula_enable is True
-        assert task.table_enable is False
-        assert task.start_page_id == 2
-        assert task.lang_list == ["en", "ch"]
+        assert task.parse_params["formula_enable"] is True
+        assert task.parse_params["table_enable"] is False
+        assert task.parse_params["start_page_id"] == 2
+        assert task.parse_params["lang_list"] == ["en", "ch"]
 
 
 async def test_submit_rejects_when_total_exceeds_max_size(
