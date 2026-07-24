@@ -722,6 +722,7 @@ async def test_batch_cancel_not_found_and_not_owned(client, admin_headers, api_k
     assert len(body["errors"]) == 2
     for err in body["errors"]:
         assert err["reason"] == "not_found"
+        assert "current_status" not in err
 
 
 async def test_batch_cancel_upstream_unreachable(client, api_key):
