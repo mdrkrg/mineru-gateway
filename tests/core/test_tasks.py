@@ -390,9 +390,17 @@ async def _submit_and_set_status(
 async def test_result_zip_all_completed_200(client, api_key):
     """§1.4 Z1: 3 completed tasks, all upstream return 200. Verify 200 + zip content."""
     ids = []
-    for _ in range(3):
+    for i in range(3):
         tid, _ = await _submit_and_set_status(client, api_key, "completed")
         ids.append(tid)
+    db = client._transport.app.state.db
+    from mineru_gateway import models
+
+    for i, tid in enumerate(ids):
+        async with db.session_factory() as session:
+            task = await session.get(models.TaskRecord, uuid.UUID(tid))
+            task.file_names = [f"file_{i}.pdf"]
+            await session.commit()
 
     resp = await client.post(
         "/tasks/result-zip",
@@ -612,9 +620,17 @@ async def test_result_zip_all_upstream_fail(client, api_key):
 async def test_result_zip_manifest_is_last_entry(client, api_key):
     """§1.4 Z10: 3 completed tasks all upstream 200 -> _manifest.json is last zip entry."""
     ids = []
-    for _ in range(3):
+    for i in range(3):
         tid, _ = await _submit_and_set_status(client, api_key, "completed")
         ids.append(tid)
+    db = client._transport.app.state.db
+    from mineru_gateway import models
+
+    for i, tid in enumerate(ids):
+        async with db.session_factory() as session:
+            task = await session.get(models.TaskRecord, uuid.UUID(tid))
+            task.file_names = [f"file_{i}.pdf"]
+            await session.commit()
 
     resp = await client.post(
         "/tasks/result-zip",
