@@ -19,6 +19,9 @@ from ..upstream.client import UpstreamClient
 from . import service
 from .cache import FileCache
 from .schemas import (
+    BatchCancelRequest,
+    BatchCancelResponse,
+    ResultZipRequest,
     TaskCancelResponse,
     TaskDetail,
     TaskListItem,
@@ -181,3 +184,13 @@ async def cancel_task(
     return TaskCancelResponse(
         task_id=task.id, status="cancelled", message="Task cancelled"
     )
+
+
+@router.post("/result-zip")
+async def result_zip(body: ResultZipRequest) -> None:
+    pass
+
+
+@router.post("/cancel")
+async def batch_cancel(body: BatchCancelRequest) -> BatchCancelResponse:
+    return BatchCancelResponse(cancelled_count=0, cancelled_ids=[], errors=[])

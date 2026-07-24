@@ -11,7 +11,7 @@ import uuid
 from dataclasses import dataclass, field
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 
 @dataclass
@@ -36,6 +36,13 @@ class MockState:
     queued_ahead: int | None = None  # queued_ahead in submit 202 response
     submitted: list[dict] = field(default_factory=list)
 
+    # Per-task result overrides for GET /tasks/{id}/result
+    # Key: upstream_task_id -> {"status_code": int, "content": bytes, "headers": dict}
+    result_status_code: int = 200
+    result_content_type: str | None = None
+    result_content_disposition: str | None = None
+    task_result_overrides: dict = field(default_factory=dict)
+
     def reset(self) -> None:
         self.status = "healthy"
         self.max_concurrent = 4
@@ -56,6 +63,10 @@ class MockState:
         self.task_status = "processing"
         self.queued_ahead = None
         self.submitted.clear()
+        self.result_status_code = 200
+        self.result_content_type = None
+        self.result_content_disposition = None
+        self.task_result_overrides.clear()
 
 
 state = MockState()
@@ -130,7 +141,32 @@ def create_mock_upstream() -> FastAPI:
 
     @app.get("/tasks/{task_id}/result")
     async def task_result(task_id: str):
-        return PlainTextResponse("# result content")
+        override = state.task_result_overrides.get(task_id)
+        if override:
+            headers = dict(override.get("headers", {}))
+            return Response(
+                content=override.get("content", b"# result content"),
+                status_code=override.get("status_code", 200),
+                headers=headers,
+                media_type=headers.get("content-type"),
+            )
+
+        headers = {}
+        if state.result_content_type:
+            headers["content-type"] = state.result_content_type
+        if state.result_content_disposition:
+            headers["content-disposition"] = state.result_content_disposition
+
+        if headers:
+            return Response(
+                content=b"# result content",
+                status_code=state.result_status_code,
+                headers=headers,
+                media_type=state.result_content_type,
+            )
+        return PlainTextResponse(
+            "# result content", status_code=state.result_status_code
+        )
 
     @app.delete("/tasks/{task_id}")
     async def cancel_task(task_id: str):

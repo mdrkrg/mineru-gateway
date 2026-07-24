@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TaskListItem(BaseModel):
@@ -61,3 +61,34 @@ class TaskStatsResponse(BaseModel):
     today_failed: int
     total_bytes: int
     avg_duration_ms: float | None = None
+
+
+class ResultZipRequest(BaseModel):
+    task_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+
+
+class NonDownloadableItem(BaseModel):
+    task_id: uuid.UUID
+    status: str
+    reason: str
+
+
+class NonDownloadableError(BaseModel):
+    detail: str
+    non_downloadable: list[NonDownloadableItem]
+
+
+class BatchCancelRequest(BaseModel):
+    task_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+
+
+class BatchCancelError(BaseModel):
+    task_id: uuid.UUID
+    reason: str
+    current_status: str | None = None
+
+
+class BatchCancelResponse(BaseModel):
+    cancelled_count: int
+    cancelled_ids: list[uuid.UUID]
+    errors: list[BatchCancelError]
