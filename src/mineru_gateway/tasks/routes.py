@@ -346,7 +346,9 @@ def _build_result_entry_name(task: Any, upstream_resp: Any) -> str:
     return f"{task.id}/result{ext}"
 
 
-@router.post("/cancel", response_model=BatchCancelResponse)
+@router.post(
+    "/cancel", response_model=BatchCancelResponse, response_model_exclude_none=True
+)
 async def batch_cancel(
     body: BatchCancelRequest,
     api_key: ApiKey | None = Depends(require_api_key),
