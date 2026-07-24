@@ -54,9 +54,15 @@ def _coerce(name: str, value: str):
     return value
 
 
-def _parse_params(data: dict) -> dict:
-    """Extract known parse parameters from the multipart form into TaskRecord fields."""
+def _extract_parse_params(data: dict) -> dict:
+    """Extract all parse parameters from the multipart form into the JSON blob.
+
+    Returns a dict containing all upstream parse parameters (including backend,
+    parse_method, effort), suitable for storage in TaskRecord.parse_params.
+    """
     params: dict = {}
+    if "backend" in data:
+        params["backend"] = data["backend"]
     for name in _BOOL_FIELDS | _INT_FIELDS | _STR_FIELDS:
         if name in data:
             params[name] = _coerce(name, data[name])
@@ -238,12 +244,9 @@ async def handle_task_submission(
             cache_dir=cache_dir,
             queued_ahead=queued_ahead,
             idempotency_key=idempotency_key,
-            **_parse_params(data),
+            parse_params=_extract_parse_params(data),
         )
     except IntegrityError:
-        # Catches any IntegrityError from the insert (currently only the
-        # idempotency unique constraint is possible here).  Fallback `raise`
-        # at the end ensures we don't silently swallow unrelated errors.
         await session.rollback()
         await cache.release(cache_dir)
         if api_key_id is None or idempotency_key is None:
@@ -316,7 +319,7 @@ async def handle_file_parse(
             file_count=len(file_names),
             file_total_bytes=total_bytes,
             backend=data.get("backend", "hybrid-engine"),
-            **_parse_params(data),
+            parse_params=_extract_parse_params(data),
         )
 
     return _relay_response(upstream_resp)
