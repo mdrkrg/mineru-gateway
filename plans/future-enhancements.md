@@ -286,7 +286,9 @@ GATEWAY_OAUTH_REDIRECT_BASE_URL=http://localhost:8000
 
 **规模**：~200 行 + 1 migration
 
-### B5. 任务统计端点（GET /tasks/stats） 🟠 P2
+### ~~B5. 任务统计端点（GET /tasks/stats） 🟠 P2~~
+
+状态：已完成。
 
 **触发条件**：前端频繁 `GET /tasks` 自算 count 成为负担，或需要仪表盘概览。
 
