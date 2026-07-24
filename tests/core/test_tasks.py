@@ -847,7 +847,7 @@ async def test_result_zip_bin_extension_fallback(client, api_key):
     """§1.2 step 6d review: unknown Content-Type -> extension defaults to .bin."""
     tid, _ = await _submit_and_set_status(client, api_key, "completed")
 
-    mock_state.result_content_type = None
+    mock_state.result_content_type = "application/x-unknown-custom"
 
     resp = await client.post(
         "/tasks/result-zip",

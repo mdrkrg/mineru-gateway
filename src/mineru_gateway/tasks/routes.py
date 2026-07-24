@@ -2,19 +2,26 @@
 
 Spec: mvp-implementation.md §3.2, §5.1, §5.3. All endpoints require X-API-Key
 and enforce per-key ownership (§3.3).
+Also batch-endpoints.md: POST /tasks/result-zip, POST /tasks/cancel.
 """
 
 from __future__ import annotations
 
+import io
+import json
+import mimetypes
+import re
 import uuid
+import zipfile
 from datetime import date
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.dependencies import get_session, require_api_key
-from ..models import ApiKey
+from ..models import ApiKey, TaskRecord
 from ..upstream.client import UpstreamClient
 from . import service
 from .cache import FileCache
@@ -188,8 +195,155 @@ async def cancel_task(
 
 
 @router.post("/result-zip")
-async def result_zip(body: ResultZipRequest) -> None:
-    pass
+async def result_zip(
+    body: ResultZipRequest,
+    api_key: ApiKey | None = Depends(require_api_key),
+    session: AsyncSession = Depends(get_session),
+    upstream: UpstreamClient = Depends(_upstream),
+) -> Response:
+    key = _require_key(api_key)
+
+    tasks_by_id: dict[uuid.UUID, TaskRecord] = {}
+    for task_id in body.task_ids:
+        task = await service.get_owned(session, task_id, key.id)
+        if task is None:
+            raise HTTPException(
+                status_code=404, detail="Task not found for one or more task_ids"
+            )
+        tasks_by_id[task.id] = task  # Use the task's uuid, not the request param
+
+    non_downloadable: list[dict[str, Any]] = []
+    for task_id in body.task_ids:
+        task = tasks_by_id[task_id]
+        if task.status != "completed":
+            non_downloadable.append(
+                {
+                    "task_id": str(task_id),
+                    "status": task.status,
+                    "reason": "not_completed",
+                }
+            )
+        elif not task.upstream_task_id:
+            non_downloadable.append(
+                {
+                    "task_id": str(task_id),
+                    "status": task.status,
+                    "reason": "missing_upstream_task_id",
+                }
+            )
+
+    if non_downloadable:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": "One or more tasks are not available for download",
+                "non_downloadable": non_downloadable,
+            },
+        )
+
+    included: list[dict[str, str]] = []
+    skipped: list[dict[str, str]] = []
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for task_id in body.task_ids:
+            task = tasks_by_id[task_id]
+            upstream_task_id: str = task.upstream_task_id  # type: ignore[assignment]
+
+            try:
+                upstream_resp = await upstream.get_task_result(upstream_task_id)
+            except Exception as exc:
+                skipped.append(
+                    {
+                        "task_id": str(task_id),
+                        "entry": _fallback_entry_name(task),
+                        "reason": "upstream_error",
+                        "detail": str(exc),
+                    }
+                )
+                continue
+
+            if upstream_resp.status_code != 200:
+                skipped.append(
+                    {
+                        "task_id": str(task_id),
+                        "entry": _fallback_entry_name(task),
+                        "reason": "upstream_error",
+                        "detail": f"HTTP {upstream_resp.status_code}",
+                    }
+                )
+                continue
+
+            entry = _build_result_entry_name(task, upstream_resp)
+            zf.writestr(entry, upstream_resp.content)
+            included.append({"task_id": str(task_id), "entry": entry})
+
+        manifest = {"included": included, "skipped": skipped}
+        zf.writestr("_manifest.json", json.dumps(manifest, indent=2))
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="results.zip"'},
+    )
+
+
+def _extract_cd_filename(content_disposition: str) -> str | None:
+    """Extract filename from Content-Disposition header value."""
+    if not content_disposition:
+        return None
+    match = re.search(r'filename[^;=\n]*=["\']?([^"\'\s;]+)["\']?', content_disposition)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _guess_extension(content_type: str | None) -> str:
+    """Guess file extension from Content-Type header."""
+    if not content_type:
+        return ".bin"
+    ext = mimetypes.guess_extension(content_type.split(";")[0].strip())
+    if ext is None:
+        return ".bin"
+    return ext
+
+
+def _fallback_entry_name(task: Any) -> str:
+    """Build entry name for skipped tasks (rules 6b/6c/6d with .bin fallback)."""
+    if task.file_names and len(task.file_names) > 0:
+        base = task.file_names[0]
+        dot = base.rfind(".")
+        if dot > 0:
+            base = base[:dot]
+        return f"{base}/result.bin"
+    return f"{task.id}/result.bin"
+
+
+def _build_result_entry_name(task: Any, upstream_resp: Any) -> str:
+    """Build zip entry name from task metadata and upstream response.
+
+    Priority (spec step 6):
+    a. Content-Disposition filename from upstream
+    b. file_names[0] without ext /result.<extension>
+    c. task_id / result.<extension>
+    d. .bin fallback
+    """
+    cd_filename = _extract_cd_filename(
+        upstream_resp.headers.get("content-disposition", "")
+    )
+    if cd_filename:
+        return cd_filename
+
+    ext = _guess_extension(upstream_resp.headers.get("content-type"))
+
+    if task.file_names and len(task.file_names) > 0:
+        base = task.file_names[0]
+        dot = base.rfind(".")
+        if dot > 0:
+            base = base[:dot]
+        return f"{base}/result{ext}"
+
+    return f"{task.id}/result{ext}"
 
 
 @router.post("/cancel", response_model=BatchCancelResponse)
