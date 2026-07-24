@@ -316,83 +316,23 @@ GET /tasks/stats:
 
 **规模**：~40 行
 
-### B6. 批量任务 🟠 P2
+### ~~B6. 批量任务 🟠 P2~~
 
-**触发条件**：用户需要一次提交并追踪一组文件（如 50 篇论文），共享解析参数，统一获取结果。
+状态：调整为前端驱动。原方案（`batches` 表 + 状态机 + 6 端点）经评估后放弃，理由：
 
-**方案**：
+1. **幂等缺失** — 批量场景最需要「这批提交过没？」，但原方案列为非目标。前端方案直接复用已实现的 `X-Idempotency-Key`。
+2. **复杂度收益比** — 200 行代码 + 1 迁移 + 状态机 + 背景循环钩子 + 逻辑裂缝（100% 失败批次终态矛盾、`pending→processing` 无触发），换来的是前端通过现有 API 已经能做的事：`POST /tasks`（带幂等）、`GET /tasks`（状态轮询和聚合）、`DELETE /tasks/{id}`（取消）。
+3. **前端更灵活** — 本地分组不限层级、精确重试失败文件、自定义并发数、暂停/恢复，均无需服务端参与。
 
-**数据模型**：
+剩余两个后端不可替代的能力拆为轻量端点（均无新数据模型、无迁移）：
 
-```python
-class Batch(Base):
-    __tablename__ = "batches"
-    id: Mapped[uuid.UUID] = Uuid(), PK, default=uuid7
-    api_key_id: Mapped[uuid.UUID] = ForeignKey("api_keys.id"), index
-    label: Mapped[str] = default=""
-    file_count: Mapped[int] = default=0  # 提交文件数，进度分母
-    completed_tasks: Mapped[int] = default=0  # 已完成数，进度分子
-    parse_params: Mapped[dict] = JSON, default=dict  # 与 TaskRecord.parse_params 格式一致
-    status: Mapped[str] = String(20), default="pending"  # pending | processing | completed | partial_failed | failed
-    created_at: Mapped[datetime]
-    completed_at: Mapped[datetime | None]
+#### B6a. 多任务结果 zip 下载 🟢 P2
 
-    # Relationships
-    task_records: Mapped[list["TaskRecord"]] = relationship(
-        "TaskRecord", back_populates="batch"
-    )
-```
+`POST /tasks/result-zip` 接受 `{"task_ids": [...]}`，流式返回 zip（每个 task 的结果从上游拉取、边读边写入 zip entry）。规格见 `specs/batch-lightweight-endpoints.md`。
 
-**设计说明**：
-- 仅保留 `completed_tasks` 一个计数器，用于列表页展示进度（`completed_tasks / file_count`）——高频读取路径。
-  `status_sync` 在子任务进入 terminal success 时原子递增。
-- `Batch.status` 由 `status_sync` 维护：子任务终态变更时，额外查一次
-  `COUNT(*) WHERE batch_id=X AND status IN ('pending', 'processing')`；
-  无活跃子任务 + `completed_tasks == file_count` → `completed`，否则 → `partial_failed`。
-  此查询仅在子任务状态变更时触发（低频），不影响列表页性能。
-- `parse_params` 与 `TaskRecord.parse_params` 格式一致，提交时直接复制，无需字段映射。
-- `file_count` 为提交时刻快照（不可变），其余指标（`total_bytes`、各状态计数）均可按需从子任务实时聚合推导。
-- 子任务排序使用 `TaskRecord.created_at`（UUIDv7 时间有序）
+#### B6b. 批量取消 🟢 P2
 
-**TaskRecord 扩展**：
-
-```python
-batch_id: Mapped[uuid.UUID | None] = mapped_column(
-    Uuid(), ForeignKey("batches.id"), nullable=True, index=True
-)
-batch: Mapped["Batch | None"] = relationship("Batch", back_populates="task_records")
-```
-
-**端点**：
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/batches` | 批量提交（multipart，多个 file 字段），返回 `batch_id` + `task_ids[]` |
-| GET | `/batches/{id}` | 批次详情：汇总状态、各子任务列表 |
-| GET | `/batches/{id}/tasks` | 批次内任务分页列表 |
-| GET | `/batches/{id}/result` | 下载聚合结果（zip：所有子任务的结果打包） |
-| GET | `/batches` | 当前 Key 的批次列表（带分页） |
-| DELETE | `/batches/{id}` | 取消批次（取消所有 `pending` 子任务） |
-
-**提交行为**：
-
-- 共享 `parse_params`（含所有解析参数，如 `backend`、`lang_list` 等），所有文件用相同参数提交
-- 每个文件生成一个独立 `TaskRecord`（关联 `batch_id`），走现有 handler
-- 返回 202 + `{"batch_id": "...", "task_ids": [...], "queued_ahead": N}`
-- 批量提交的并发计入限流/全局 cap（每个子任务独立计数）
-
-**状态聚合**：
-
-- `Batch.status` 由子任务决定：
-  - 全部 `completed` → `completed`
-  - 全部 `failed`/`cancelled` → `failed`
-  - 混合 → `partial_failed`
-  - 有 `processing`/`pending` → `processing`
-- **聚合策略**：`GET /batches/{id}` 时实时 `count(*) group by status`，不维护预计算计数器列。（参见[设计说明](#数据模型-4)中关于预计算 vs 实时聚合的讨论。）
-
-**规模**：~200 行（model, routes, handler 改造）+ 1 migration
-
-**依赖**：无（复用现有提交流程）
+`POST /tasks/cancel` 接受 `{"task_ids": [...]}`，每个 task 走现有取消逻辑（仅 `pending` 可取消，`processing` 不动），返回成功/失败明细。规格见 `specs/batch-lightweight-endpoints.md`。
 
 ### B7. 结果预取到本地磁盘 🟠 P2
 
