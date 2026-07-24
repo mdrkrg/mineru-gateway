@@ -327,21 +327,40 @@ GET /tasks/stats:
 ```python
 class Batch(Base):
     __tablename__ = "batches"
-    id: Mapped[str] = String(36), PK
-    api_key_id: Mapped[str] = ForeignKey("api_keys.id")
-    label: Mapped[str | None]
-    total_tasks: Mapped[int] = default=0
-    completed_tasks: Mapped[int] = default=0
-    failed_tasks: Mapped[int] = default=0
-    status: Mapped[str] = default="pending"  # pending | processing | completed | partial_failed | failed
+    id: Mapped[uuid.UUID] = Uuid(), PK, default=uuid7
+    api_key_id: Mapped[uuid.UUID] = ForeignKey("api_keys.id"), index
+    label: Mapped[str] = default=""
+    file_count: Mapped[int] = default=0  # 提交文件数，进度分母
+    completed_tasks: Mapped[int] = default=0  # 已完成数，进度分子
+    parse_params: Mapped[dict] = JSON, default=dict  # 与 TaskRecord.parse_params 格式一致
+    status: Mapped[str] = String(20), default="pending"  # pending | processing | completed | partial_failed | failed
     created_at: Mapped[datetime]
     completed_at: Mapped[datetime | None]
+
+    # Relationships
+    task_records: Mapped[list["TaskRecord"]] = relationship(
+        "TaskRecord", back_populates="batch"
+    )
 ```
+
+**设计说明**：
+- 仅保留 `completed_tasks` 一个计数器，用于列表页展示进度（`completed_tasks / file_count`）——高频读取路径。
+  `status_sync` 在子任务进入 terminal success 时原子递增。
+- `Batch.status` 由 `status_sync` 维护：子任务终态变更时，额外查一次
+  `COUNT(*) WHERE batch_id=X AND status IN ('pending', 'processing')`；
+  无活跃子任务 + `completed_tasks == file_count` → `completed`，否则 → `partial_failed`。
+  此查询仅在子任务状态变更时触发（低频），不影响列表页性能。
+- `parse_params` 与 `TaskRecord.parse_params` 格式一致，提交时直接复制，无需字段映射。
+- `file_count` 为提交时刻快照（不可变），其余指标（`total_bytes`、各状态计数）均可按需从子任务实时聚合推导。
+- 子任务排序使用 `TaskRecord.created_at`（UUIDv7 时间有序）
 
 **TaskRecord 扩展**：
 
 ```python
-batch_id: Mapped[str | None] = ForeignKey("batches.id")
+batch_id: Mapped[uuid.UUID | None] = mapped_column(
+    Uuid(), ForeignKey("batches.id"), nullable=True, index=True
+)
+batch: Mapped["Batch | None"] = relationship("Batch", back_populates="task_records")
 ```
 
 **端点**：
@@ -357,7 +376,7 @@ batch_id: Mapped[str | None] = ForeignKey("batches.id")
 
 **提交行为**：
 
-- 共享一套解析参数（`lang_list`、`backend` 等），所有文件用相同参数提交
+- 共享 `parse_params`（含所有解析参数，如 `backend`、`lang_list` 等），所有文件用相同参数提交
 - 每个文件生成一个独立 `TaskRecord`（关联 `batch_id`），走现有 handler
 - 返回 202 + `{"batch_id": "...", "task_ids": [...], "queued_ahead": N}`
 - 批量提交的并发计入限流/全局 cap（每个子任务独立计数）
@@ -369,9 +388,7 @@ batch_id: Mapped[str | None] = ForeignKey("batches.id")
   - 全部 `failed`/`cancelled` → `failed`
   - 混合 → `partial_failed`
   - 有 `processing`/`pending` → `processing`
-- **聚合策略二选一**：
-  - 方案 A（简单）：`GET /batches/{id}` 时实时 `count(*) group by status`，不维护预计算列
-  - 方案 B（高频场景）：`status_sync` 子任务状态变更时异步更新 Batch 计数字段
+- **聚合策略**：`GET /batches/{id}` 时实时 `count(*) group by status`，不维护预计算计数器列。（参见[设计说明](#数据模型-4)中关于预计算 vs 实时聚合的讨论。）
 
 **规模**：~200 行（model, routes, handler 改造）+ 1 migration
 
