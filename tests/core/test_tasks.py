@@ -406,8 +406,22 @@ async def test_result_zip_all_completed_200(client, api_key):
 
     with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
         names = zf.namelist()
-        assert len(names) >= 3
         assert "_manifest.json" in names
+        assert names[-1] == "_manifest.json"
+
+        manifest = json.loads(zf.read("_manifest.json"))
+        assert len(manifest["included"]) == 3
+        assert len(manifest["skipped"]) == 0
+        for item in manifest["included"]:
+            assert "task_id" in item
+            assert "entry" in item
+            assert len(item["entry"]) > 0
+
+        result_names = [n for n in names if n != "_manifest.json"]
+        assert len(result_names) == 3
+        for name in result_names:
+            content = zf.read(name)
+            assert len(content) > 0
 
 
 async def test_result_zip_partial_non_completed(client, api_key):
@@ -502,6 +516,8 @@ async def test_result_zip_upstream_partial_failure(client, api_key):
         assert len(manifest["skipped"]) == 1
         assert manifest["skipped"][0]["task_id"] == tid2
         assert manifest["skipped"][0]["reason"] == "upstream_error"
+        assert "detail" in manifest["skipped"][0]
+        assert "500" in manifest["skipped"][0]["detail"]
 
 
 async def test_result_zip_entry_naming_with_filename(client, api_key):
@@ -528,6 +544,8 @@ async def test_result_zip_entry_naming_with_filename(client, api_key):
         names = zf.namelist()
         assert "_manifest.json" in names
         assert "thesis/result.zip" in names
+        manifest = json.loads(zf.read("_manifest.json"))
+        assert manifest["included"][0]["entry"] == "thesis/result.zip"
 
 
 async def test_result_zip_entry_naming_fallback_to_task_id(client, api_key):
@@ -554,6 +572,8 @@ async def test_result_zip_entry_naming_fallback_to_task_id(client, api_key):
         names = zf.namelist()
         assert "_manifest.json" in names
         assert f"{tid}/result.zip" in names
+        manifest = json.loads(zf.read("_manifest.json"))
+        assert manifest["included"][0]["entry"] == f"{tid}/result.zip"
 
 
 async def test_result_zip_all_upstream_fail(client, api_key):
@@ -585,6 +605,8 @@ async def test_result_zip_all_upstream_fail(client, api_key):
         assert len(manifest["skipped"]) == 2
         for skipped in manifest["skipped"]:
             assert skipped["reason"] == "upstream_error"
+            assert "detail" in skipped
+            assert "500" in skipped["detail"]
 
 
 async def test_result_zip_manifest_is_last_entry(client, api_key):
@@ -608,6 +630,9 @@ async def test_result_zip_manifest_is_last_entry(client, api_key):
         manifest = json.loads(zf.read("_manifest.json"))
         assert len(manifest["included"]) == 3
         assert len(manifest["skipped"]) == 0
+        for item in manifest["included"]:
+            assert "entry" in item
+            assert len(item["entry"]) > 0
 
 
 # ===== POST /tasks/cancel (spec: batch-endpoints.md §2) =====
@@ -715,3 +740,202 @@ async def test_batch_cancel_empty_ids(client, api_key):
         headers={"X-API-Key": api_key},
     )
     assert resp.status_code == 422
+
+
+# ===== Additional tests from spec review (batch-endpoints.md) =====
+
+
+async def test_result_zip_empty_ids(client, api_key):
+    """§1.2 step 2 review: empty task_ids -> 422."""
+    resp = await client.post(
+        "/tasks/result-zip",
+        json={"task_ids": []},
+        headers={"X-API-Key": api_key},
+    )
+    assert resp.status_code == 422
+
+
+async def test_result_zip_requires_auth(client):
+    """§1.2 step 1 review: no API key -> 401."""
+    resp = await client.post(
+        "/tasks/result-zip",
+        json={"task_ids": [str(uuid.uuid4())]},
+    )
+    assert resp.status_code == 401
+
+
+async def test_result_zip_missing_upstream_task_id(client, api_key):
+    """§1.2 step 4 review: completed task without upstream_task_id -> 409 with missing_upstream_task_id."""
+    from sqlalchemy import select
+
+    from mineru_gateway.models import ApiKey
+    from mineru_gateway.tasks import service
+
+    db = client._transport.app.state.db
+    async with db.session_factory() as session:
+        key = (await session.execute(select(ApiKey))).scalars().first()
+        task = await service.create(
+            session,
+            api_key_id=key.id,
+            status="completed",
+            upstream_url="http://mock-upstream",
+            upstream_task_id=None,
+            file_names=["test.pdf"],
+            file_count=1,
+        )
+        task.completed_at = datetime.now(timezone.utc)
+        await session.commit()
+        tid = str(task.id)
+
+    resp = await client.post(
+        "/tasks/result-zip",
+        json={"task_ids": [tid]},
+        headers={"X-API-Key": api_key},
+    )
+    assert resp.status_code == 409
+    body = resp.json()
+    assert len(body["non_downloadable"]) == 1
+    assert body["non_downloadable"][0]["reason"] == "missing_upstream_task_id"
+
+
+async def test_result_zip_entry_naming_from_content_disposition(client, api_key):
+    """§1.2 step 6a review: upstream Content-Disposition filename is used for entry name."""
+    from mineru_gateway import models
+
+    tid, _ = await _submit_and_set_status(client, api_key, "completed")
+    db = client._transport.app.state.db
+    async with db.session_factory() as session:
+        task = await session.get(models.TaskRecord, uuid.UUID(tid))
+        task.file_names = ["ignored.pdf"]
+        await session.commit()
+
+    mock_state.result_content_disposition = 'attachment; filename="upstream-name.zip"'
+
+    resp = await client.post(
+        "/tasks/result-zip",
+        json={"task_ids": [tid]},
+        headers={"X-API-Key": api_key},
+    )
+    assert resp.status_code == 200
+
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        names = zf.namelist()
+        assert "upstream-name.zip" in names
+        manifest = json.loads(zf.read("_manifest.json"))
+        assert manifest["included"][0]["entry"] == "upstream-name.zip"
+
+
+async def test_result_zip_ownership_checked_before_downloadability(
+    client, admin_headers, api_key
+):
+    """§1.2 steps 3-4 review: ownership check (404) takes priority over downloadability (409)."""
+    tid_owned, _ = await _submit_and_set_status(client, api_key, "processing")
+    other_key = (
+        await client.post("/auth/keys", json={"label": "other"}, headers=admin_headers)
+    ).json()["api_key"]
+
+    resp = await client.post(
+        "/tasks/result-zip",
+        json={"task_ids": [tid_owned]},
+        headers={"X-API-Key": other_key},
+    )
+    assert resp.status_code == 404
+    assert "non_downloadable" not in resp.json()
+
+
+async def test_result_zip_bin_extension_fallback(client, api_key):
+    """§1.2 step 6d review: unknown Content-Type -> extension defaults to .bin."""
+    tid, _ = await _submit_and_set_status(client, api_key, "completed")
+
+    mock_state.result_content_type = None
+
+    resp = await client.post(
+        "/tasks/result-zip",
+        json={"task_ids": [tid]},
+        headers={"X-API-Key": api_key},
+    )
+    assert resp.status_code == 200
+
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        names = zf.namelist()
+        result_names = [n for n in names if n != "_manifest.json"]
+        assert len(result_names) == 1
+        assert result_names[0].endswith("result.bin")
+
+
+async def test_batch_cancel_too_many_ids(client, api_key):
+    """§2.2 step 2 review: >200 task_ids -> 422."""
+    fake_ids = [str(uuid.uuid4()) for _ in range(201)]
+    resp = await client.post(
+        "/tasks/cancel",
+        json={"task_ids": fake_ids},
+        headers={"X-API-Key": api_key},
+    )
+    assert resp.status_code == 422
+
+
+async def test_batch_cancel_requires_auth(client):
+    """§2.2 step 1 review: no API key -> 401."""
+    resp = await client.post(
+        "/tasks/cancel",
+        json={"task_ids": [str(uuid.uuid4())]},
+    )
+    assert resp.status_code == 401
+
+
+async def test_batch_cancel_retry_pending_not_cancellable(client, api_key):
+    """§2.4 review: retry_pending tasks are not cancellable."""
+    tid, _ = await _submit_and_set_status(client, api_key, "retry_pending")
+
+    resp = await client.post(
+        "/tasks/cancel",
+        json={"task_ids": [tid]},
+        headers={"X-API-Key": api_key},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["cancelled_count"] == 0
+    assert len(body["errors"]) == 1
+    assert body["errors"][0]["task_id"] == tid
+    assert body["errors"][0]["reason"] == "not_cancellable"
+    assert body["errors"][0]["current_status"] == "retry_pending"
+
+
+async def test_batch_cancel_releases_cache(client, api_key, app):
+    """§2.2 step 3d review: cancelled tasks have their cache_dir released."""
+    import os
+
+    ids = []
+    for _ in range(2):
+        tid, _ = await _submit_and_set_status(client, api_key, "pending")
+        ids.append(tid)
+
+    from mineru_gateway.tasks import service
+
+    cache_dirs = []
+    async with app.state.db.session_factory() as session:
+        for tid in ids:
+            task = await service.get(session, uuid.UUID(tid))
+            cache_dirs.append(task.cache_dir)
+
+    resp = await client.post(
+        "/tasks/cancel",
+        json={"task_ids": ids},
+        headers={"X-API-Key": api_key},
+    )
+    assert resp.status_code == 200
+
+    for cd in cache_dirs:
+        assert not os.path.exists(cd)
+    async with app.state.db.session_factory() as session:
+        for tid in ids:
+            task = await service.get(session, uuid.UUID(tid))
+            assert task.cache_dir is None
+
+
+async def test_cancel_single_retry_pending_409(client, api_key):
+    """§2.4: single DELETE /tasks/{id} rejects retry_pending with 409."""
+    tid, _ = await _submit_and_set_status(client, api_key, "retry_pending")
+
+    resp = await client.delete(f"/tasks/{tid}", headers={"X-API-Key": api_key})
+    assert resp.status_code == 409
