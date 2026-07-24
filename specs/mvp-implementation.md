@@ -187,25 +187,21 @@ class TaskRecord(Base):
     file_count:      int
     file_total_bytes: int
 
-    # 解析参数
+    # 解析参数 - 查询/过滤依赖的保留为独立列
     backend:         str
-    parse_method:    str
-    lang_list:       JSON
-    effort:          str
-    formula_enable:  bool
-    table_enable:    bool
-    image_analysis:  bool
-    return_md:       bool
-    return_middle_json: bool
-    return_model_output: bool
-    return_content_list: bool
-    return_images:   bool
-    response_format_zip: bool
-    return_original_file: bool
-    client_side_output_generation: bool
-    server_url:      str
-    start_page_id:   int
-    end_page_id:     int
+    parse_method:    str | None
+    effort:          str | None
+
+    # 解析参数 - 全部字段在此存一份副本（含上述 3 个列）
+    # 职责：读路径展开为 API 响应、Batch 复制参数；gateway 不决策，上游新增参数无需 migration
+    parse_params:    JSON (default={})
+    # 包含全部上游提交参数，与旧有 17 列一一对应：
+    #   backend, parse_method, effort,
+    #   lang_list, formula_enable, table_enable, image_analysis,
+    #   return_md, return_middle_json, return_model_output,
+    #   return_content_list, return_images,
+    #   response_format_zip, return_original_file, client_side_output_generation,
+    #   server_url, start_page_id, end_page_id
 
     # 上游映射
     upstream_url:        str
@@ -253,6 +249,8 @@ class TaskRecord(Base):
 | `GET` | `/health` | 聚合 Gateway 自身 + 上游状态 |
 
 ### 5.2 旧端点的响应头
+
+> **数据层简化保证**：TaskRecord 中 `backend` / `parse_method` / `effort` 保留列供 SQL 查询，全部解析参数（含这 3 个）均存一份在 `parse_params: JSON`。所有对外响应中，`parse_params` 通过一行 `response.update(task.parse_params)` 展开全部字段，客户端看到的字段名、层级与上游原 API 完全一致，零特殊处理。
 
 ```http
 HTTP/1.1 202 Accepted
@@ -396,74 +394,21 @@ async def handle_task_submission(
     request: Request,
     form: dict,
     files: list[UploadFile],
-    api_key: ApiKey | None,     # 认证主体；匿名模式下可为 None
+    api_key: ApiKey | None,
 ) -> JSONResponse:
-    """处理 POST /tasks 请求"""
-
-    # 0. 认证门控：默认禁止匿名（实际拦截在依赖 require_api_key 完成，此处防御性断言）
-    if api_key is None and not config.ALLOW_ANONYMOUS:
-        raise HTTPException(401, detail="API key required")
-
-    # 1. 速率限制（按 Key，内存令牌桶）
-    if api_key and not await rate_limiter.acquire(str(api_key.id)):
-        raise HTTPException(429, detail="Rate limit exceeded", headers={"Retry-After": "60"})
-
-    # 2. 健康感知门控（上游 /health 字段：max_concurrent_requests / queued_tasks / processing_tasks）
-    health = await upstream.get_health()
-    free_slots = health.max_concurrent - health.queued - health.processing
-    if free_slots <= 0:
-        raise HTTPException(
-            503,
-            detail=f"No free slots (max={health.max_concurrent}, "
-                   f"queued={health.queued}, processing={health.processing})",
-            headers={"Retry-After": "5"},
-        )
-
-    # 3. 匿名请求（仅 ALLOW_ANONYMOUS=true 时可达此处）：纯透传，不缓存、不记录
-    if api_key is None:
-        upstream_resp = await upstream_client.submit_task(form, files)
-        return _relay_response(upstream_resp)   # 原样透传上游状态码/头/体
-
-    # 4. 认证请求：缓存原始文件到暂存区（用于崩溃重提）
-    #    注意：store() 会消费 UploadFile 流；返回前必须将每个文件 seek(0)，
-    #    否则下方 submit_task 会读到空内容。转发时从暂存目录读取更稳妥。
-    cache_dir = await file_cache.store(form, files)
-
-    # 5. 流式转发到上游（从暂存文件读取，避免依赖已被消费的原始流）
-    upstream_resp = await upstream_client.submit_task(form, files)
-    if upstream_resp.status_code != 202:
-        await file_cache.release(cache_dir)
-        raise HTTPException(upstream_resp.status_code, detail=upstream_resp.text)
-    upstream_payload = upstream_resp.json()
-
-    # 6. 创建 Gateway 任务记录
-    task = await task_service.create(
-        api_key_id=api_key.id,
-        upstream_url=config.UPSTREAM_URL,
-        upstream_task_id=upstream_payload["task_id"],
-        file_names=upstream_payload.get("file_names", []),
-        backend=form.get("backend", "hybrid-engine"),
-        cache_dir=cache_dir,
-        # ... 其他解析参数
-    )
-
-    # 7. 返回 Gateway 版本响应（见下方「响应格式说明」）
-    return JSONResponse(
-        status_code=202,
-        content={
-            "task_id": str(task.id),
-            "status": "pending",
-            "backend": task.backend,
-            "file_names": task.file_names,
-            "created_at": task.created_at.isoformat(),
-            "status_url": f"{config.GATEWAY_URL}/tasks/{task.id}",
-            "result_url": f"{config.GATEWAY_URL}/tasks/{task.id}/result",
-            "message": "Task submitted successfully",
-        },
-    )
+    """处理 POST /tasks 请求。行为要点：
+    - 认证门控：默认拒绝匿名；ALLOW_ANONYMOUS=true 时匿名请求纯透传不记录
+    - 速率限制：按 Key 内存令牌桶拦截
+    - 健康门控：上游 free_slots <= 0 时拒绝并返回 Retry-After
+    - 文件暂存：认证请求的 multipart 落盘后转发上游（用于崩溃重提）
+    - 参数存储：backend / parse_method / effort 独立列 + 全部参数入 parse_params JSON 副本
+    - 任务记录：DB 持久化上游 task_id 映射 + 文件元信息 + 解析参数
+    - 响应兼容：response.update(task.parse_params) 展开为顶层平铺字段，一行完成，零特殊字段
+    """
 ```
 
-> **响应格式说明**：认证模式下，`task_id` 被替换为 **Gateway 的 ID**（后续状态/结果查询都用它），并额外附带 `status_url`/`result_url` 等字段——这是上游响应的**超集且字段兼容**（保留上游原有字段语义，仅替换 id 并追加字段），客户端仍可按原有字段解析。匿名模式（步骤 3）为**原样透传**：状态码与响应体不变，仅剥离 hop-by-hop 头（见 §5.1），响应体与上游一致。§3.3/§5.1 所述「格式一致」即指此兼容关系。
+> **响应格式说明**：认证模式下，`task_id` 被替换为 **Gateway 的 ID**，响应体通过展开 `parse_params` 将 JSON blob 变为顶层平铺字段，客户端看到与原 API 一致的 `lang_list`、`formula_enable` 等字段，兼容性不变。匿名模式下为**原样透传**：状态码与响应体不变，仅剥离 h
+op-by-hop 头（见 §5.1），响应体与上游一致。§3.3/§5.1 所述「格式一致」即指此兼容关系。
 
 ### 6.3 后台状态同步 (`background/status_sync.py`)
 
@@ -703,3 +648,32 @@ volumes:
 | # | 项 | 说明 |
 |---|----|------|
 | R1 | 同步与取消竞态 | `sync_once` 取快照后逐任务处理；若期间任务经 API 取消，上游 `completed` 可能覆盖本地 `cancelled` 状态。窗口窄，`cache_dir` 已清空故无重复释放；暂不处理 |
+
+### 8.2 parse_params 精简迁移
+
+> MVP 第一阶段已实现 17 列解析参数，以下为向 3+1 JSON 模式的迁移方案。
+
+**迁移步骤**（1 个 Alembic migration）：
+
+1. 新增 `tasks.parse_params` 列（`JSON, NOT NULL, default={}`）
+2. 将全部 17 个旧列的值序列化写入 `parse_params`（含 `backend` / `parse_method` / `effort`；它们保留为列但也入 JSON，供读路径一行展开）
+3. 删除 14 个旧列（保留下来的 3 列除外）：
+   `lang_list`, `formula_enable`, `table_enable`, `image_analysis`,
+   `return_md`, `return_middle_json`, `return_model_output`, `return_content_list`,
+   `return_images`, `response_format_zip`, `return_original_file`,
+   `client_side_output_generation`, `server_url`, `start_page_id`, `end_page_id`
+4. 回退路径：恢复 14 个旧列，从 `parse_params` 反序列化填充，再删 `parse_params`
+
+**影响的模块**：
+
+| 模块 | 需要发生的改动 |
+|------|--------------|
+| `models.py` | 14 列 → 1 列 `parse_params`（`default={}`） |
+| `proxy/handler.py` | `_parse_params()` 输出从 17 kwarg → `backend` / `parse_method` / `effort` 列 + 全部 17 字段的 `parse_params` dict |
+| `tasks/service.py` | 读出时 `response.update(task.parse_params)` 一行展开全部字段（含 `backend` 等），无特判 |
+| `tasks/schemas.py` | 响应模型移除 14 个可选字段，改为 `parse_params: dict = {}` |
+
+**设计约束**：
+- `backend` / `parse_method` / `effort` 同时存在于列和 JSON 中：列供 SQL 查询，JSON 供读路径展开
+- 三者在任务创建后不可变，一致性问题可忽略
+- API 响应对客户端透明：`parse_params` 在返回时展开为平铺字段（见 §5.2）
