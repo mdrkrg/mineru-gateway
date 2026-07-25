@@ -74,10 +74,9 @@ async def test_cleanup_releases_cache_of_expired_records(app, tmp_path):
     """§3.4: 过期记录被删除时, 其暂存文件目录一并清理."""
     db = app.state.db
     cache = FileCache(str(tmp_path))
-    cache_dir = await cache.store(
-        {"backend": "pipeline"},
-        [("files", ("a.pdf", b"%PDF-1.4 data", "application/pdf"))],
-    )
+    writer = cache.create_streaming_cache()
+    writer.write_file_chunk("files", "a.pdf", "application/pdf", b"%PDF-1.4 data")
+    cache_dir = writer.finish({"backend": "pipeline"})
     assert os.path.isdir(cache_dir)
 
     async with db.session_factory() as session:

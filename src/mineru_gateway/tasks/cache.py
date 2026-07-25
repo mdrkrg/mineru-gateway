@@ -103,31 +103,6 @@ class FileCache:
     def create_streaming_cache(self) -> CacheWriter:
         return CacheWriter(self.base_dir)
 
-    async def store(self, data: dict, files: Files) -> str:
-        cache_dir = os.path.join(self.base_dir, uuid.uuid4().hex)
-        os.makedirs(cache_dir, exist_ok=True)
-
-        manifest = []
-        for idx, (field, (filename, content, content_type)) in enumerate(files):
-            blob_name = f"blob-{idx}"
-            with open(os.path.join(cache_dir, blob_name), "wb") as fh:
-                fh.write(content)
-            manifest.append(
-                {
-                    "field": field,
-                    "filename": filename,
-                    "content_type": content_type,
-                    "blob": blob_name,
-                }
-            )
-
-        with open(os.path.join(cache_dir, "form.json"), "w") as fh:
-            json.dump(data, fh)
-        with open(os.path.join(cache_dir, "files.json"), "w") as fh:
-            json.dump(manifest, fh)
-
-        return cache_dir
-
     async def restore(self, cache_dir: str) -> tuple[dict, Files]:
         with open(os.path.join(cache_dir, "form.json")) as fh:
             data = json.load(fh)
