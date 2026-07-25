@@ -26,7 +26,7 @@ Files = list[tuple[str, tuple[str, bytes, str]]]
 class CacheWriter:
     """Streaming writer that builds a cache directory incrementally.
 
-    spec: streaming-upload.md §2.1
+    spec: streaming-upload.md sec 2.1
 
     Files are written chunk-by-chunk via *write_file_chunk*.  The first chunk
     of a new (field, filename) pair creates a new blob; subsequent chunks for
@@ -37,11 +37,12 @@ class CacheWriter:
     def __init__(self, base_dir: str) -> None:
         self._dir = os.path.join(base_dir, uuid.uuid4().hex)
         os.makedirs(self._dir, exist_ok=True)
-        # _entries: ordered list of (field, filename, content_type, bytearray)
-        self._entries: list[tuple[str, str, str, bytearray]] = []
-        # _index: (field, filename) -> position in _entries
+        self._entries: list[dict] = []
         self._index: dict[tuple[str, str], int] = {}
         self._closed = False
+
+    def _blob_path(self, idx: int) -> str:
+        return os.path.join(self._dir, f"blob-{idx}")
 
     def write_file_chunk(
         self, field: str, filename: str, content_type: str, data: bytes
@@ -50,24 +51,34 @@ class CacheWriter:
             raise RuntimeError("CacheWriter is closed")
         key = (field, filename)
         if key not in self._index:
-            self._index[key] = len(self._entries)
-            self._entries.append((field, filename, content_type, bytearray()))
-        self._entries[self._index[key]][3].extend(data)
+            idx = len(self._entries)
+            self._index[key] = idx
+            self._entries.append(
+                {
+                    "field": field,
+                    "filename": filename,
+                    "content_type": content_type,
+                    "blob": f"blob-{idx}",
+                }
+            )
+            with open(self._blob_path(idx), "wb") as fh:
+                fh.write(data)
+        else:
+            idx = self._index[key]
+            with open(self._blob_path(idx), "ab") as fh:
+                fh.write(data)
 
     def finish(self, form_fields: dict) -> str:
         if self._closed:
             raise RuntimeError("CacheWriter already finished or cancelled")
         manifest: list[dict] = []
-        for idx, (field, filename, content_type, buf) in enumerate(self._entries):
-            blob_name = f"blob-{idx}"
-            with open(os.path.join(self._dir, blob_name), "wb") as fh:
-                fh.write(bytes(buf))
+        for entry in self._entries:
             manifest.append(
                 {
-                    "field": field,
-                    "filename": filename,
-                    "content_type": content_type,
-                    "blob": blob_name,
+                    "field": entry["field"],
+                    "filename": entry["filename"],
+                    "content_type": entry["content_type"],
+                    "blob": entry["blob"],
                 }
             )
         with open(os.path.join(self._dir, "form.json"), "w") as fh:

@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -268,17 +268,36 @@ async def test_t5_streaming_parser_uses_request_stream(tmp_path):
     from mineru_gateway.tasks.cache import FileCache
 
     request = AsyncMock()
+    request.headers = MagicMock()
+    request.headers.get.return_value = (
+        "multipart/form-data; boundary=------testboundary"
+    )
     request.form = AsyncMock(return_value=FormData())
 
-    async def mock_stream():
-        boundary = b"------testboundary"
-        yield b"--" + boundary + b"\r\n"
-        yield b'Content-Disposition: form-data; name="files"; filename="t.pdf"\r\n'
-        yield b"Content-Type: application/pdf\r\n\r\n"
-        yield b"fake-pdf-bytes\r\n"
-        yield b"--" + boundary + b"--\r\n"
+    # Real async generator for request.stream()
+    class _MockStream:
+        def __init__(self):
+            boundary = b"------testboundary"
+            self._chunks = [
+                b"--" + boundary + b"\r\n",
+                b'Content-Disposition: form-data; name="files"; filename="t.pdf"\r\n',
+                b"Content-Type: application/pdf\r\n\r\n",
+                b"fake-pdf-bytes\r\n",
+                b"--" + boundary + b"--\r\n",
+            ]
+            self._i = 0
 
-    request.stream.return_value.__aiter__.return_value = mock_stream()
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if self._i >= len(self._chunks):
+                raise StopAsyncIteration
+            chunk = self._chunks[self._i]
+            self._i += 1
+            return chunk
+
+    request.stream = MagicMock(return_value=_MockStream())
 
     cache = FileCache(str(tmp_path / "t5-cache"))
 
@@ -425,7 +444,7 @@ def test_t9_cache_writer_cancel_cleans_directory(tmp_path):
 
     cache_dir = writer._dir
     assert os.path.isdir(cache_dir)
-    assert len(os.listdir(cache_dir)) == 0  # no blobs written yet, only dir exists
+    assert len(os.listdir(cache_dir)) == 2  # blobs written immediately (real streaming)
 
     writer.cancel()
     assert not os.path.isdir(cache_dir), "cancel() must remove the directory"
@@ -607,8 +626,17 @@ async def test_t11_idempotency_conflict_releases_cache(client, api_key):
     headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
 
     original_create = task_service.create
+    original_get = task_service.get_by_idempotency_key
+    call_count = 0
     lock = asyncio.Lock()
     first_committed = False
+
+    async def fake_get_by_key(session, key_id, key):
+        nonlocal call_count
+        call_count += 1
+        if call_count <= 2:
+            return None
+        return await original_get(session, key_id, key)
 
     async def racing_create(session, **fields):
         nonlocal first_committed
@@ -623,14 +651,19 @@ async def test_t11_idempotency_conflict_releases_cache(client, api_key):
             first_committed = True
             return result
 
-    with patch.object(task_service, "create", side_effect=racing_create):
-        with patch.object(FileCache, "release", new_callable=AsyncMock) as mock_release:
-            mock_release.return_value = None
-            r1, r2 = await asyncio.gather(
-                client.post("/tasks", headers=headers, files=_example_files()),
-                client.post("/tasks", headers=headers, files=_example_files()),
-                return_exceptions=True,
-            )
+    with patch.object(
+        task_service, "get_by_idempotency_key", side_effect=fake_get_by_key
+    ):
+        with patch.object(task_service, "create", side_effect=racing_create):
+            with patch.object(
+                FileCache, "release", new_callable=AsyncMock
+            ) as mock_release:
+                mock_release.return_value = None
+                r1, r2 = await asyncio.gather(
+                    client.post("/tasks", headers=headers, files=_example_files()),
+                    client.post("/tasks", headers=headers, files=_example_files()),
+                    return_exceptions=True,
+                )
 
     assert not isinstance(r1, Exception), f"r1 raised {r1}"
     assert not isinstance(r2, Exception), f"r2 raised {r2}"

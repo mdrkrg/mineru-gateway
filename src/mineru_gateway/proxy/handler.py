@@ -112,20 +112,118 @@ async def _extract_multipart(
 async def _extract_multipart_streaming(
     request: Request, max_upload_size: int, cache: FileCache
 ) -> tuple[dict, str, list[str], int]:
-    """Streaming multipart parser (stub, spec: streaming-upload.md sec 1.1).
+    """Streaming multipart parser using request.stream().
 
-    Currently delegates to _extract_multipart for full buffering and writes
-    files into the streaming CacheWriter.  Real streaming implementation will
-    replace this with chunk-by-chunk processing via request.stream().
+    spec: streaming-upload.md sec 1.1
+
+    Reads the multipart body in bounded chunks via request.stream() and
+    delegates each part to a MultipartParser.  Form-field values accumulate
+    in memory; file bytes are written directly to disk via CacheWriter.
+    Cumulative byte count (all received bytes) is checked per chunk — if
+    *max_upload_size* is exceeded the stream is abandoned, the partial
+    cache is cancelled, and a 413 is raised.
     """
-    data, files, file_names, total_bytes = await _extract_multipart(
-        request, max_upload_size
-    )
+    from python_multipart.multipart import MultipartParser, parse_options_header
+
+    content_type = request.headers.get("content-type", "")
+    if "boundary=" not in content_type:
+        raise HTTPException(status_code=400, detail="Missing multipart boundary")
+
+    boundary = content_type.rsplit("boundary=", 1)[-1].strip().strip('"')
     writer = cache.create_streaming_cache()
-    for field, (filename, content, content_type) in files:
-        writer.write_file_chunk(field, filename, content_type, content)
+
+    data: dict = {}
+    file_names: list[str] = []
+    total_bytes = 0
+    file_bytes = 0
+    pending: list[tuple[str, str, str, bytes]] = []
+
+    current_field: str | None = None
+    current_filename: str | None = None
+    current_content_type = "application/octet-stream"
+    current_is_file = False
+    current_form_buf = bytearray()
+    header_field = ""
+
+    def on_part_begin() -> None:
+        nonlocal current_field, current_filename, current_content_type
+        nonlocal current_is_file, current_form_buf
+        current_field = None
+        current_filename = None
+        current_content_type = "application/octet-stream"
+        current_is_file = False
+        current_form_buf = bytearray()
+
+    def on_header_field(data: bytes, start: int, end: int) -> None:
+        nonlocal header_field
+        header_field = data[start:end].decode("latin-1").lower()
+
+    def on_header_value(data: bytes, start: int, end: int) -> None:
+        nonlocal header_field, current_field, current_filename
+        nonlocal current_content_type, current_is_file
+        value = data[start:end].decode("latin-1")
+        if header_field == "content-disposition":
+            _, params = parse_options_header(data[start:end])
+            name = params.get(b"name")
+            current_field = name.decode("utf-8") if name else None
+            fn = params.get(b"filename")
+            if fn:
+                current_filename = fn.decode("utf-8")
+                current_is_file = True
+        elif header_field == "content-type" and current_is_file:
+            current_content_type = value
+
+    def on_part_data(data: bytes, start: int, end: int) -> None:
+        nonlocal total_bytes, file_bytes
+        chunk = data[start:end]
+        chunk_len = len(chunk)
+        total_bytes += chunk_len
+        if total_bytes > max_upload_size:
+            writer.cancel()
+            raise HTTPException(
+                status_code=413,
+                detail=f"Upload exceeds max size ({max_upload_size} bytes)",
+            )
+        if current_is_file:
+            file_bytes += chunk_len
+            writer.write_file_chunk(
+                current_field or "file",
+                current_filename or "unnamed",
+                current_content_type,
+                chunk,
+            )
+        else:
+            current_form_buf.extend(chunk)
+
+    def on_part_end() -> None:
+        nonlocal current_form_buf
+        if not current_is_file and current_field is not None:
+            data[current_field] = current_form_buf.decode("utf-8")
+            current_form_buf = bytearray()
+        if current_is_file and current_filename:
+            file_names.append(current_filename)
+
+    callbacks: dict = {  # type: ignore[var-annotated]
+        "on_part_begin": on_part_begin,
+        "on_part_data": on_part_data,
+        "on_part_end": on_part_end,
+        "on_header_field": on_header_field,
+        "on_header_value": on_header_value,
+    }
+
+    parser = MultipartParser(boundary.encode(), callbacks, max_size=float("inf"))
+
+    try:
+        async for chunk in request.stream():
+            parser.write(chunk)
+    except HTTPException:
+        raise
+    except BaseException:
+        writer.cancel()
+        raise
+
     cache_dir = writer.finish(data)
-    return data, cache_dir, file_names, total_bytes
+    return data, cache_dir, file_names, file_bytes
 
 
 def _relay_response(resp) -> Response:
