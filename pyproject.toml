@@ -5,6 +5,7 @@ description = "API-Key gateway in front of mineru-api / mineru-router"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "aiofiles>=24.1.0",
     "aiosqlite>=0.22.1",
     "alembic>=1.18.5",
     "fastapi>=0.139.0",

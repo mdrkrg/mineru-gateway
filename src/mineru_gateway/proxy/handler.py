@@ -109,6 +109,25 @@ async def _extract_multipart(
     return data, files, file_names, total_bytes
 
 
+async def _extract_multipart_streaming(
+    request: Request, max_upload_size: int, cache: FileCache
+) -> tuple[dict, str, list[str], int]:
+    """Streaming multipart parser (stub, spec: streaming-upload.md sec 1.1).
+
+    Currently delegates to _extract_multipart for full buffering and writes
+    files into the streaming CacheWriter.  Real streaming implementation will
+    replace this with chunk-by-chunk processing via request.stream().
+    """
+    data, files, file_names, total_bytes = await _extract_multipart(
+        request, max_upload_size
+    )
+    writer = cache.create_streaming_cache()
+    for field, (filename, content, content_type) in files:
+        writer.write_file_chunk(field, filename, content_type, content)
+    cache_dir = writer.finish(data)
+    return data, cache_dir, file_names, total_bytes
+
+
 def _relay_response(resp) -> Response:
     """Relay an upstream httpx.Response byte-for-byte."""
     excluded = {"content-length", "content-encoding", "transfer-encoding", "connection"}
@@ -194,13 +213,17 @@ async def handle_task_submission(
 
     await check_free_slot(upstream)
 
-    data, files, file_names, total_bytes = await _extract_multipart(
-        request, settings.max_upload_size
+    data, cache_dir, file_names, total_bytes = await _extract_multipart_streaming(
+        request, settings.max_upload_size, cache
     )
 
-    # Anonymous: pure passthrough, no caching, no record.
+    # Anonymous: read files from on-disk cache, forward to upstream,
+    # then release the cache directory immediately (no record kept).
+    # spec: streaming-upload.md sec 1.2
     if api_key is None:
+        _, files = await cache.restore(cache_dir)
         upstream_resp = await upstream.submit_task(data, files)
+        await cache.release(cache_dir)
         return _relay_response(upstream_resp)
 
     # Authenticated: stage the original multipart for crash recovery, then
@@ -209,6 +232,7 @@ async def handle_task_submission(
     if settings.max_concurrent_tasks > 0:
         in_flight = await task_service.count_in_flight(session)
         if in_flight >= settings.max_concurrent_tasks:
+            await cache.release(cache_dir)
             raise HTTPException(
                 status_code=503,
                 detail=(
@@ -218,7 +242,7 @@ async def handle_task_submission(
                 headers={"Retry-After": "10"},
             )
 
-    cache_dir = await cache.store(data, files)
+    _, files = await cache.restore(cache_dir)
     upstream_resp = await upstream.submit_task(data, files)
     if upstream_resp.status_code != 202:
         await cache.release(cache_dir)

@@ -1,4 +1,4 @@
-"""File staging for crash recovery (§6.2 步骤4, §6.4 restore).
+"""File staging for crash recovery (§6.2 step4, §6.4 restore).
 
 Authenticated submissions persist their original multipart (form fields + file
 bytes) to a per-task directory under ``base_dir``. On upstream crash the retry
@@ -23,9 +23,74 @@ import uuid
 Files = list[tuple[str, tuple[str, bytes, str]]]
 
 
+class CacheWriter:
+    """Streaming writer that builds a cache directory incrementally.
+
+    spec: streaming-upload.md §2.1
+
+    Files are written chunk-by-chunk via *write_file_chunk*.  The first chunk
+    of a new (field, filename) pair creates a new blob; subsequent chunks for
+    the same pair append to the same blob.  *finish* finalises the directory
+    (writes form.json + files.json).  *cancel* removes the directory.
+    """
+
+    def __init__(self, base_dir: str) -> None:
+        self._dir = os.path.join(base_dir, uuid.uuid4().hex)
+        os.makedirs(self._dir, exist_ok=True)
+        # _entries: ordered list of (field, filename, content_type, bytearray)
+        self._entries: list[tuple[str, str, str, bytearray]] = []
+        # _index: (field, filename) -> position in _entries
+        self._index: dict[tuple[str, str], int] = {}
+        self._closed = False
+
+    def write_file_chunk(
+        self, field: str, filename: str, content_type: str, data: bytes
+    ) -> None:
+        if self._closed:
+            raise RuntimeError("CacheWriter is closed")
+        key = (field, filename)
+        if key not in self._index:
+            self._index[key] = len(self._entries)
+            self._entries.append((field, filename, content_type, bytearray()))
+        self._entries[self._index[key]][3].extend(data)
+
+    def finish(self, form_fields: dict) -> str:
+        if self._closed:
+            raise RuntimeError("CacheWriter already finished or cancelled")
+        self._closed = True
+        manifest: list[dict] = []
+        for idx, (field, filename, content_type, buf) in enumerate(self._entries):
+            blob_name = f"blob-{idx}"
+            with open(os.path.join(self._dir, blob_name), "wb") as fh:
+                fh.write(bytes(buf))
+            manifest.append(
+                {
+                    "field": field,
+                    "filename": filename,
+                    "content_type": content_type,
+                    "blob": blob_name,
+                }
+            )
+        with open(os.path.join(self._dir, "form.json"), "w") as fh:
+            json.dump(form_fields, fh)
+        with open(os.path.join(self._dir, "files.json"), "w") as fh:
+            json.dump(manifest, fh)
+        return self._dir
+
+    def cancel(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        if os.path.isdir(self._dir):
+            shutil.rmtree(self._dir, ignore_errors=True)
+
+
 class FileCache:
     def __init__(self, base_dir: str) -> None:
         self.base_dir = base_dir
+
+    def create_streaming_cache(self) -> CacheWriter:
+        return CacheWriter(self.base_dir)
 
     async def store(self, data: dict, files: Files) -> str:
         cache_dir = os.path.join(self.base_dir, uuid.uuid4().hex)
