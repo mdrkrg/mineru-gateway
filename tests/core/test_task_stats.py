@@ -44,9 +44,11 @@ Error cases
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date as _date, datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
+from freezegun import freeze_time
 
 from mineru_gateway.models import TaskRecord
 
@@ -260,11 +262,15 @@ async def test_task_stats_counts_by_status(app, client, admin_headers):
 
 
 # Spec: "today_completed / today_failed" filter by UTC calendar day
-
-
+# Patching date.today() forces the service's date-based computation to disagree
+# with the UTC clock, exposing any implementation that derives today_start from
+# the local calendar date instead of datetime.now(timezone.utc).
+@freeze_time("2026-07-01T12:00:00")
+@patch("datetime.date.today", return_value=_date(2026, 7, 2))
 async def test_task_stats_today_counts_are_utc_scoped(app, client, admin_headers):
-    now_utc = datetime.now(timezone.utc)
-    today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
     yesterday = today_start - timedelta(days=1)
 
     resp = await client.post(
@@ -275,16 +281,16 @@ async def test_task_stats_today_counts_are_utc_scoped(app, client, admin_headers
     api_key_str = key_data["api_key"]
     api_key_id = key_data["key_id"]
 
-    # Today's completed tasks
+    # Today (July 1) completed tasks
     await _seed_task(app, api_key_id, "completed", completed_at=today_start)
     await _seed_task(
         app, api_key_id, "completed", completed_at=datetime.now(timezone.utc)
     )
-    # Yesterday's completed -- should NOT count in today_completed
+    # Yesterday (June 30) completed -- should NOT count in today_completed
     await _seed_task(app, api_key_id, "completed", completed_at=yesterday)
-    # Today's failed
+    # Today (July 1) failed
     await _seed_task(app, api_key_id, "failed", completed_at=today_start)
-    # Yesterday's failed -- should NOT count in today_failed
+    # Yesterday (June 30) failed -- should NOT count in today_failed
     await _seed_task(app, api_key_id, "failed", completed_at=yesterday)
 
     resp = await client.get("/tasks/stats", headers={"X-API-Key": api_key_str})
