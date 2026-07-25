@@ -251,7 +251,9 @@ async def delete_expired(session: AsyncSession, retention_days: int) -> list[str
 
 
 async def get_stats(session: AsyncSession, api_key_id: uuid.UUID) -> dict:
-    today_start = datetime.combine(date.today(), time.min, tzinfo=timezone.utc)
+    today_start = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
 
     agg = await session.execute(
         select(
