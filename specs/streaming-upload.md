@@ -63,6 +63,11 @@ _extract_multipart_streaming(request, max_upload_size, cache)
 - `data` dict 中 form 字段的 key/value 对与变更前完全一致。
 - `file_names` 列表的顺序和内容与变更前完全一致（来自 multipart 各 part 的 `filename` 字段）。
 - `total_bytes` 的最终值（所有文件累计字节）与变更前完全一致。
+
+> **注意**：返回值中的 `total_bytes` 仅计文件字节，与 §3.2 中用于大小检查的
+> “累计接收的字节数”（含表单字段字节 + 文件字节）是**不同的计数器**。
+> 实现中使用两个独立变量：一个用于全量字节检查和 413 判定，另一个用于
+> `total_bytes` 返回值（与 TaskRecord.file_total_bytes 对应）。
 - 布尔字段转换（`_coerce`）、`_extract_parse_params` 对 data dict 的处理完全不变——它们只读取 `data`，不依赖 `files`。
 
 ### 1.2 后续流程适应性变更
@@ -221,7 +226,8 @@ create_streaming_cache() → CacheWriter
 
 ### 3.2 变更后
 
-流式解析过程中，每接收到一个 chunk，计算 `total_bytes + len(chunk)`。若结果超过 `max_upload_size`：
+流式解析过程中，每接收到一个 chunk，计算**累计接收的字节数**（含表单字段字节 + 文件字节）
+与 `max_upload_size` 的比较。若结果超过 `max_upload_size`：
 
 1. 立即停止从 `request.stream()` 读取后续数据。
 2. 调用 `CacheWriter.cancel()` 移除当前缓存目录。
