@@ -194,6 +194,13 @@ async def test_t3_form_fields_passthrough(client, api_key):
     assert form.get("parse_method") == "auto"
     assert form.get("return_md") == "true"
 
+    # Verify upstream received the same form fields (spec sec 6.1 S3)
+    assert len(mock_state.submitted) == 1
+    upstream_form = mock_state.submitted[0]["form"]
+    assert upstream_form.get("backend") == "pipeline"
+    assert upstream_form.get("parse_method") == "auto"
+    assert upstream_form.get("return_md") == "true"
+
 
 # ---------------------------------------------------------------------------
 # T4 -- Anonymous submission (regression)
@@ -254,7 +261,7 @@ async def test_t4_anonymous_submit(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-async def test_t5_streaming_parser_uses_request_stream():
+async def test_t5_streaming_parser_uses_request_stream(tmp_path):
     from starlette.datastructures import FormData
 
     from mineru_gateway.proxy.handler import _extract_multipart_streaming
@@ -273,12 +280,9 @@ async def test_t5_streaming_parser_uses_request_stream():
 
     request.stream.return_value.__aiter__.return_value = mock_stream()
 
-    cache = FileCache("/tmp/t5-cache")
+    cache = FileCache(str(tmp_path / "t5-cache"))
 
-    try:
-        await _extract_multipart_streaming(request, 10_000_000, cache)
-    except Exception:
-        pass
+    await _extract_multipart_streaming(request, 10_000_000, cache)
 
     request.form.assert_not_called()
 
@@ -639,6 +643,13 @@ async def test_t11_idempotency_conflict_releases_cache(client, api_key):
 
     task_ids = [r.json()["task_id"] for r in [r1, r2]]
     assert task_ids[0] == task_ids[1]
+
+    # Only one TaskRecord in DB (spec sec 6.3 S11)
+    from sqlalchemy import func, select
+
+    async with client._transport.app.state.db.session_factory() as session:
+        count = await session.scalar(select(func.count()).select_from(TaskRecord))
+        assert count == 1
 
 
 # ---------------------------------------------------------------------------

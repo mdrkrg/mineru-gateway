@@ -99,12 +99,14 @@ def create_mock_upstream() -> FastAPI:
         if state.submit_raises:
             raise RuntimeError("upstream unreachable")
         form = await request.form()
-        file_names = [
-            v.filename
-            for _, v in form.multi_items()
-            if hasattr(v, "filename") and v.filename
-        ]
-        state.submitted.append({"file_names": file_names})
+        form_data: dict = {}
+        file_names: list[str] = []
+        for f_name, value in form.multi_items():
+            if hasattr(value, "filename") and value.filename:  # type: ignore[union-attr]
+                file_names.append(value.filename)  # type: ignore[union-attr]
+            else:
+                form_data[f_name] = str(value)
+        state.submitted.append({"file_names": file_names, "form": form_data})
         if state.submit_status != 202:
             return JSONResponse(
                 status_code=state.submit_status, content={"detail": "upstream error"}
