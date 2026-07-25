@@ -57,7 +57,6 @@ class CacheWriter:
     def finish(self, form_fields: dict) -> str:
         if self._closed:
             raise RuntimeError("CacheWriter already finished or cancelled")
-        self._closed = True
         manifest: list[dict] = []
         for idx, (field, filename, content_type, buf) in enumerate(self._entries):
             blob_name = f"blob-{idx}"
@@ -75,6 +74,7 @@ class CacheWriter:
             json.dump(form_fields, fh)
         with open(os.path.join(self._dir, "files.json"), "w") as fh:
             json.dump(manifest, fh)
+        self._closed = True
         return self._dir
 
     def cancel(self) -> None:

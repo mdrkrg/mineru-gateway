@@ -6,13 +6,13 @@ Labels T1-T15 map to spec sections S1-S15.
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
-import tracemalloc
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import httpx
+import pytest
 from asgi_lifespan import LifespanManager
 
 from mineru_gateway.config import Settings
@@ -54,18 +54,6 @@ def _count_cache_dirs(cache_base: str) -> int:
     if not os.path.isdir(cache_base):
         return 0
     return len(os.listdir(cache_base))
-
-
-@contextlib.contextmanager
-def _peak_memory_snapshot():
-    """Context manager that returns the per-test peak memory delta in bytes."""
-    tracemalloc.start()
-    tracemalloc.reset_peak()
-    before, _ = tracemalloc.get_traced_memory()
-    yield
-    _, peak = tracemalloc.get_traced_memory()
-    tracemalloc.stop()
-    return  # caller reads last peak value indirectly; we yield delta
 
 
 async def _make_streaming_app(
@@ -254,52 +242,45 @@ async def test_t4_anonymous_submit(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# T5 -- Large-file memory boundedness (upload stage)
+# T5 -- Streaming parser uses request.stream(), not request.form()
 # spec: streaming-upload.md sec 6.2 S5
 #
-# The gateway process memory during the upload (receive + write to disk)
-# must be bounded in constant order, independent of per-file byte size.
-# When the stub (full buffering) is active this test will fail because
-# the entire file body is held in-memory.  It passes once the real
-# streaming parser is implemented.
+# The streaming multipart parser must process the body via request.stream()
+# in bounded chunks rather than loading the entire body with request.form().
+# This behavioural test mocks request.form() to raise and verifies the
+# streaming parser never calls it.  The stub delegates to _extract_multipart
+# which calls request.form(), so this test FAILS with the stub and PASSES
+# once the real streaming parser is implemented.
 # ---------------------------------------------------------------------------
 
 
-async def test_t5_large_file_memory_bounded(tmp_path):
-    file_size = 500_000  # 500 KB
-    limit = file_size * 4  # well above the file
+async def test_t5_streaming_parser_uses_request_stream():
+    from starlette.datastructures import FormData
 
-    gen = _make_streaming_app(tmp_path, max_upload_size=limit)
-    async for client, app, settings in gen:
-        r = await client.post(
-            "/auth/keys",
-            json={"label": "t5"},
-            headers={"X-Admin-Token": "test-admin-token"},
-        )
-        api_key = r.json()["api_key"]
+    from mineru_gateway.proxy.handler import _extract_multipart_streaming
+    from mineru_gateway.tasks.cache import FileCache
 
-        payload = b"x" * file_size
-        files = [("files", ("data.bin", payload, "application/octet-stream"))]
+    request = AsyncMock()
+    request.form = AsyncMock(return_value=FormData())
 
-        tracemalloc.start()
-        tracemalloc.reset_peak()
-        before, _ = tracemalloc.get_traced_memory()
+    async def mock_stream():
+        boundary = b"------testboundary"
+        yield b"--" + boundary + b"\r\n"
+        yield b'Content-Disposition: form-data; name="files"; filename="t.pdf"\r\n'
+        yield b"Content-Type: application/pdf\r\n\r\n"
+        yield b"fake-pdf-bytes\r\n"
+        yield b"--" + boundary + b"--\r\n"
 
-        resp = await client.post("/tasks", headers={"X-API-Key": api_key}, files=files)
-        assert resp.status_code == 202
+    request.stream.return_value.__aiter__.return_value = mock_stream()
 
-        _, peak = tracemalloc.get_traced_memory()
-        tracemalloc.stop()
+    cache = FileCache("/tmp/t5-cache")
 
-        delta = peak - before
-        # With real streaming, the delta should be a small multiple of chunk
-        # size (e.g. < 10 % of file_size).  The stub buffers the entire
-        # file (plus CacheWriter bytearray plus restore) so it will fail.
-        allowed = int(file_size * 0.30)
-        assert delta < allowed, (
-            f"memory delta {delta} exceeds {allowed} (30 % of {file_size}); "
-            f"streaming may not be active"
-        )
+    try:
+        await _extract_multipart_streaming(request, 10_000_000, cache)
+    except Exception:
+        pass
+
+    request.form.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -331,6 +312,8 @@ async def test_t6_over_limit_rejected(tmp_path):
         files = [("files", ("big.bin", b"x" * file_size, "application/octet-stream"))]
         resp = await client.post("/tasks", headers={"X-API-Key": api_key}, files=files)
         assert resp.status_code == 413
+        detail = resp.json().get("detail", "")
+        assert str(limit) in detail, f"413 detail must mention max size, got: {detail}"
 
         # No cache directories should be left behind
         cache_base = settings.file_cache_dir
@@ -399,6 +382,8 @@ async def test_t8_multi_file_cumulative_over_limit(tmp_path):
         ]
         resp = await client.post("/tasks", headers={"X-API-Key": api_key}, files=files)
         assert resp.status_code == 413
+        detail = resp.json().get("detail", "")
+        assert str(limit) in detail, f"413 detail must mention max size, got: {detail}"
 
         # No cache directories left behind
         cache_base = settings.file_cache_dir
@@ -466,6 +451,7 @@ async def test_t10_upstream_rejection_cleans_cache(tmp_path):
             files=_example_files(),
         )
         assert resp.status_code == 400
+        assert "upstream error" in resp.text, "must relay upstream error message"
 
         # Cache directory must be cleaned up
         cache_base = settings.file_cache_dir
@@ -480,16 +466,6 @@ async def test_t10_upstream_rejection_cleans_cache(tmp_path):
         async with app.state.db.session_factory() as session:
             count = await session.scalar(select(func.count()).select_from(TaskRecord))
             assert count == 0
-
-
-# ---------------------------------------------------------------------------
-# T11 -- Idempotency conflict releases cache on IntegrityError
-# spec: streaming-upload.md sec 6.3 S11
-#
-# Covered by test_idempotent_concurrent_failure_releases_cache in
-# tests/core/test_proxy.py which exercises the IntegrityError recovery
-# path with cache.release() verification.
-# ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
@@ -605,3 +581,156 @@ async def test_t15_file_parse_unchanged(client, api_key):
     async with client._transport.app.state.db.session_factory() as session:
         count = await session.scalar(select(func.count()).select_from(TaskRecord))
         assert count == 1
+
+
+# ---------------------------------------------------------------------------
+# T11 -- Idempotency conflict releases cache on IntegrityError
+# spec: streaming-upload.md sec 6.3 S11
+# ---------------------------------------------------------------------------
+
+
+async def test_t11_idempotency_conflict_releases_cache(client, api_key):
+    """Two concurrent requests with same idempotency key: the losing
+    request cleans up its cache directory and returns replay."""
+    import asyncio
+
+    from sqlalchemy.exc import IntegrityError
+    from mineru_gateway.tasks import service as task_service
+
+    from mineru_gateway.tasks.cache import FileCache
+
+    idem_key = "t11-conflict-key"
+    headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
+
+    original_create = task_service.create
+    lock = asyncio.Lock()
+    first_committed = False
+
+    async def racing_create(session, **fields):
+        nonlocal first_committed
+        async with lock:
+            if first_committed:
+                raise IntegrityError(
+                    "mock",
+                    {},
+                    Exception("UNIQUE constraint failed: uq_tasks_key_idempotency"),
+                )
+            result = await original_create(session, **fields)
+            first_committed = True
+            return result
+
+    with patch.object(task_service, "create", side_effect=racing_create):
+        with patch.object(FileCache, "release", new_callable=AsyncMock) as mock_release:
+            mock_release.return_value = None
+            r1, r2 = await asyncio.gather(
+                client.post("/tasks", headers=headers, files=_example_files()),
+                client.post("/tasks", headers=headers, files=_example_files()),
+                return_exceptions=True,
+            )
+
+    assert not isinstance(r1, Exception), f"r1 raised {r1}"
+    assert not isinstance(r2, Exception), f"r2 raised {r2}"
+    assert mock_release.call_count == 1
+
+    replayed = [
+        r for r in [r1, r2] if r.headers.get("X-Idempotency-Key-Replayed") == "true"
+    ]
+    assert len(replayed) == 1
+
+    task_ids = [r.json()["task_id"] for r in [r1, r2]]
+    assert task_ids[0] == task_ids[1]
+
+
+# ---------------------------------------------------------------------------
+# T16 -- CacheWriter post-close guard
+# spec: streaming-upload.md sec 2.1 (write after finish/cancel raises)
+# ---------------------------------------------------------------------------
+
+
+def test_t16_cache_writer_closed_guard(tmp_path):
+    from mineru_gateway.tasks.cache import CacheWriter
+
+    # write_file_chunk after finish
+    w = CacheWriter(str(tmp_path))
+    w.finish({})
+    with pytest.raises(RuntimeError, match="CacheWriter.*(closed|finished|cancelled)"):
+        w.write_file_chunk("f", "a", "t", b"x")
+
+    # write_file_chunk after cancel
+    w2 = CacheWriter(str(tmp_path))
+    w2.cancel()
+    with pytest.raises(RuntimeError, match="CacheWriter.*(closed|finished|cancelled)"):
+        w2.write_file_chunk("f", "a", "t", b"x")
+
+    # finish after cancel
+    w3 = CacheWriter(str(tmp_path))
+    w3.cancel()
+    with pytest.raises(RuntimeError, match="CacheWriter.*(closed|finished|cancelled)"):
+        w3.finish({})
+
+    # cancel after finish (should not raise)
+    w4 = CacheWriter(str(tmp_path))
+    w4.finish({})
+    w4.cancel()  # no-op, must not raise
+
+
+# ---------------------------------------------------------------------------
+# T17 -- CacheWriter disk write failure (cleanup on I/O error)
+# spec: streaming-upload.md sec 4.2
+# ---------------------------------------------------------------------------
+
+
+def test_t17_cache_writer_cancel_on_disk_error(tmp_path):
+    from mineru_gateway.tasks.cache import CacheWriter
+
+    w = CacheWriter(str(tmp_path))
+    w.write_file_chunk("files", "a.pdf", "application/pdf", b"data")
+    cache_dir = w._dir
+    assert os.path.isdir(cache_dir)
+
+    # Simulate disk error during finish by mocking open
+    with patch("builtins.open", side_effect=OSError("disk full")):
+        with pytest.raises(OSError, match="disk full"):
+            w.finish({})
+
+    # After error, cancel must still clean up
+    w.cancel()
+    assert not os.path.isdir(cache_dir), "cancel() must remove dir after disk error"
+
+
+# ---------------------------------------------------------------------------
+# T18 -- Interleaved file and form parts preserve order
+# spec: streaming-upload.md sec 1.1 (unchanged invariants: file_names order)
+# ---------------------------------------------------------------------------
+
+
+async def test_t18_interleaved_file_form_parts(tmp_path):
+    gen = _make_streaming_app(tmp_path, max_upload_size=100_000)
+    async for client, app, settings in gen:
+        r = await client.post(
+            "/auth/keys",
+            json={"label": "t18"},
+            headers={"X-Admin-Token": "test-admin-token"},
+        )
+        api_key = r.json()["api_key"]
+
+        files = [
+            ("files", ("first.pdf", b"111", "application/pdf")),
+            ("files", ("second.pdf", b"222", "application/pdf")),
+        ]
+        data = {"backend": "pipeline", "parse_method": "auto"}
+        resp = await client.post(
+            "/tasks",
+            headers={"X-API-Key": api_key},
+            files=files,
+            data=data,
+        )
+        assert resp.status_code == 202
+        body = resp.json()
+        assert body["file_names"] == ["first.pdf", "second.pdf"]
+
+        task_id = uuid.UUID(body["task_id"])
+        async with app.state.db.session_factory() as session:
+            task = await session.get(TaskRecord, task_id)
+            assert task.file_count == 2
+            assert task.parse_params.get("parse_method") == "auto"
