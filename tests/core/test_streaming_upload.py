@@ -6,8 +6,10 @@ Labels T1-T15 map to spec sections S1-S15.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import tracemalloc
 import uuid
 
 import httpx
@@ -46,6 +48,53 @@ def _read_form_json(cache_dir: str) -> dict:
 def _read_files_json(cache_dir: str) -> list[dict]:
     with open(os.path.join(cache_dir, "files.json")) as fh:
         return json.load(fh)
+
+
+def _count_cache_dirs(cache_base: str) -> int:
+    if not os.path.isdir(cache_base):
+        return 0
+    return len(os.listdir(cache_base))
+
+
+@contextlib.contextmanager
+def _peak_memory_snapshot():
+    """Context manager that returns the per-test peak memory delta in bytes."""
+    tracemalloc.start()
+    tracemalloc.reset_peak()
+    before, _ = tracemalloc.get_traced_memory()
+    yield
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    return  # caller reads last peak value indirectly; we yield delta
+
+
+async def _make_streaming_app(
+    tmp_path, *, max_upload_size: int, allow_anonymous: bool = False
+):
+    """Create a test app + httpx client with a configurable max_upload_size."""
+    settings = Settings(
+        upstream_url="http://mock-upstream",
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'stream.db'}",
+        admin_token="test-admin-token",
+        allow_anonymous=allow_anonymous,
+        gateway_url="http://testserver",
+        max_upload_size=max_upload_size,
+        file_cache_dir=str(tmp_path / "cache"),
+        enable_background=False,
+        json_logs=False,
+        create_tables=True,
+    )
+    upstream = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_mock_upstream()),
+        base_url="http://mock-upstream",
+    )
+    app = create_app(settings=settings, upstream_client=upstream)
+    async with LifespanManager(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as c:
+            yield c, app, settings
 
 
 # ---------------------------------------------------------------------------
@@ -202,3 +251,163 @@ async def test_t4_anonymous_submit(tmp_path):
         if os.path.isdir(cache_base):
             contents = os.listdir(cache_base)
             assert len(contents) == 0, f"orphaned cache dirs: {contents}"
+
+
+# ---------------------------------------------------------------------------
+# T5 -- Large-file memory boundedness (upload stage)
+# spec: streaming-upload.md sec 6.2 S5
+#
+# The gateway process memory during the upload (receive + write to disk)
+# must be bounded in constant order, independent of per-file byte size.
+# When the stub (full buffering) is active this test will fail because
+# the entire file body is held in-memory.  It passes once the real
+# streaming parser is implemented.
+# ---------------------------------------------------------------------------
+
+
+async def test_t5_large_file_memory_bounded(tmp_path):
+    file_size = 500_000  # 500 KB
+    limit = file_size * 4  # well above the file
+
+    gen = _make_streaming_app(tmp_path, max_upload_size=limit)
+    async for client, app, settings in gen:
+        r = await client.post(
+            "/auth/keys",
+            json={"label": "t5"},
+            headers={"X-Admin-Token": "test-admin-token"},
+        )
+        api_key = r.json()["api_key"]
+
+        payload = b"x" * file_size
+        files = [("files", ("data.bin", payload, "application/octet-stream"))]
+
+        tracemalloc.start()
+        tracemalloc.reset_peak()
+        before, _ = tracemalloc.get_traced_memory()
+
+        resp = await client.post("/tasks", headers={"X-API-Key": api_key}, files=files)
+        assert resp.status_code == 202
+
+        _, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+
+        delta = peak - before
+        # With real streaming, the delta should be a small multiple of chunk
+        # size (e.g. < 10 % of file_size).  The stub buffers the entire
+        # file (plus CacheWriter bytearray plus restore) so it will fail.
+        allowed = int(file_size * 0.30)
+        assert delta < allowed, (
+            f"memory delta {delta} exceeds {allowed} (30 % of {file_size}); "
+            f"streaming may not be active"
+        )
+
+
+# ---------------------------------------------------------------------------
+# T6 -- Over-limit immediate rejection
+# spec: streaming-upload.md sec 6.2 S6
+#
+# When cumulative received bytes exceed max_upload_size the server must:
+#   - return 413 immediately (stop consuming the stream)
+#   - leave no on-disk cache directory
+#   - create no TaskRecord
+# Immediate-stream-stop is observable only with real sockets; this test
+# verifies 413 + no residues.
+# ---------------------------------------------------------------------------
+
+
+async def test_t6_over_limit_rejected(tmp_path):
+    limit = 50_000
+    file_size = limit + 10_000  # definitely over
+
+    gen = _make_streaming_app(tmp_path, max_upload_size=limit)
+    async for client, app, settings in gen:
+        r = await client.post(
+            "/auth/keys",
+            json={"label": "t6"},
+            headers={"X-Admin-Token": "test-admin-token"},
+        )
+        api_key = r.json()["api_key"]
+
+        files = [("files", ("big.bin", b"x" * file_size, "application/octet-stream"))]
+        resp = await client.post("/tasks", headers={"X-API-Key": api_key}, files=files)
+        assert resp.status_code == 413
+
+        # No cache directories should be left behind
+        cache_base = settings.file_cache_dir
+        if os.path.isdir(cache_base):
+            assert _count_cache_dirs(cache_base) == 0, "orphaned cache dir after 413"
+
+        # No TaskRecord
+        from sqlalchemy import func, select
+
+        async with app.state.db.session_factory() as session:
+            count = await session.scalar(select(func.count()).select_from(TaskRecord))
+            assert count == 0
+
+
+# ---------------------------------------------------------------------------
+# T7 -- Upload at exact max_upload_size boundary
+# spec: streaming-upload.md sec 6.2 S7
+# ---------------------------------------------------------------------------
+
+
+async def test_t7_exact_limit_passes(tmp_path):
+    limit = 80_000
+    gen = _make_streaming_app(tmp_path, max_upload_size=limit)
+    async for client, app, settings in gen:
+        r = await client.post(
+            "/auth/keys",
+            json={"label": "t7"},
+            headers={"X-Admin-Token": "test-admin-token"},
+        )
+        api_key = r.json()["api_key"]
+
+        files = [("files", ("exact.bin", b"y" * limit, "application/octet-stream"))]
+        resp = await client.post("/tasks", headers={"X-API-Key": api_key}, files=files)
+        assert resp.status_code == 202
+        body = resp.json()
+        assert body["task_id"]
+
+        task_id = uuid.UUID(body["task_id"])
+        async with app.state.db.session_factory() as session:
+            task = await session.get(TaskRecord, task_id)
+            assert task.file_total_bytes == limit
+
+
+# ---------------------------------------------------------------------------
+# T8 -- Multi-file cumulative over-limit
+# spec: streaming-upload.md sec 6.2 S8
+# ---------------------------------------------------------------------------
+
+
+async def test_t8_multi_file_cumulative_over_limit(tmp_path):
+    limit = 60_000
+    per_file = 25_000  # 3 * 25000 = 75000 > 60000
+    gen = _make_streaming_app(tmp_path, max_upload_size=limit)
+    async for client, app, settings in gen:
+        r = await client.post(
+            "/auth/keys",
+            json={"label": "t8"},
+            headers={"X-Admin-Token": "test-admin-token"},
+        )
+        api_key = r.json()["api_key"]
+
+        files = [
+            ("files", ("a.bin", b"a" * per_file, "application/octet-stream")),
+            ("files", ("b.bin", b"b" * per_file, "application/octet-stream")),
+            ("files", ("c.bin", b"c" * per_file, "application/octet-stream")),
+        ]
+        resp = await client.post("/tasks", headers={"X-API-Key": api_key}, files=files)
+        assert resp.status_code == 413
+
+        # No cache directories left behind
+        cache_base = settings.file_cache_dir
+        if os.path.isdir(cache_base):
+            assert _count_cache_dirs(cache_base) == 0, "orphaned cache dir after 413"
+
+        # No TaskRecord
+        from sqlalchemy import func, select
+
+        async with app.state.db.session_factory() as session:
+            count = await session.scalar(select(func.count()).select_from(TaskRecord))
+            assert count == 0

@@ -630,18 +630,21 @@ async def test_idempotent_concurrent_failure_releases_cache(
     from mineru_gateway.tasks.cache import FileCache
 
     original_create = task_service.create
-    _first_done = False
+    lock = asyncio.Lock()
+    first_committed = False
 
     async def racing_create(session, **fields):
-        nonlocal _first_done
-        if _first_done:
-            raise IntegrityError(
-                "mock",
-                {},
-                Exception("UNIQUE constraint failed: uq_tasks_key_idempotency"),
-            )
-        _first_done = True
-        return await original_create(session, **fields)
+        nonlocal first_committed
+        async with lock:
+            if first_committed:
+                raise IntegrityError(
+                    "mock",
+                    {},
+                    Exception("UNIQUE constraint failed: uq_tasks_key_idempotency"),
+                )
+            result = await original_create(session, **fields)
+            first_committed = True
+            return result
 
     original_lookup = task_service.get_by_idempotency_key
     _lookup_count = 0
