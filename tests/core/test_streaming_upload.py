@@ -490,3 +490,65 @@ async def test_t10_upstream_rejection_cleans_cache(tmp_path):
 # tests/core/test_proxy.py which exercises the IntegrityError recovery
 # path with cache.release() verification.
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# T12 -- Idempotency hit does not read request body
+# spec: streaming-upload.md sec 6.4 S12
+#
+# When an existing idempotency key is replayed, the server must return
+# 202 + X-Idempotency-Key-Replayed without reading the multipart body.
+# This test verifies that no file bytes are written to a cache directory
+# for the replay request.
+# ---------------------------------------------------------------------------
+
+
+async def test_t12_idempotent_replay_does_not_read_body(client, api_key):
+    idem_key = "t12-no-body-key"
+    headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
+
+    # First request: normal submission
+    resp1 = await client.post("/tasks", headers=headers, files=_example_files())
+    assert resp1.status_code == 202
+    assert "X-Idempotency-Key-Replayed" not in resp1.headers
+
+    # Count cache directories after first request
+    cache_base = client._transport.app.state.settings.file_cache_dir
+    dir_count_after_first = _count_cache_dirs(cache_base)
+
+    # Second request with same key: replay without reading body
+    large_file = [("files", ("huge.bin", b"x" * 50_000, "application/octet-stream"))]
+    resp2 = await client.post("/tasks", headers=headers, files=large_file)
+    assert resp2.status_code == 202
+    assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
+
+    # No new cache directory should be created for the replay
+    dir_count_after_replay = _count_cache_dirs(cache_base)
+    assert dir_count_after_replay == dir_count_after_first, (
+        f"cache dirs changed from {dir_count_after_first} to {dir_count_after_replay}; "
+        f"replay should not create cache"
+    )
+
+
+# ---------------------------------------------------------------------------
+# T13 -- Idempotency hit not rejected by upload size limit
+# spec: streaming-upload.md sec 6.4 S13
+# ---------------------------------------------------------------------------
+
+
+async def test_t13_idempotent_replay_skips_size_check(client, api_key):
+    idem_key = "t13-size-key"
+    headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
+    max_size = client._transport.app.state.settings.max_upload_size
+
+    # First request: normal submission (must fit within the small test limit)
+    resp1 = await client.post("/tasks", headers=headers, files=_example_files())
+    assert resp1.status_code == 202
+
+    # Second request: same key, file exceeds max_upload_size
+    over_limit = b"z" * (max_size + 100)
+    files = [("files", ("oversized.bin", over_limit, "application/octet-stream"))]
+    resp2 = await client.post("/tasks", headers=headers, files=files)
+    assert resp2.status_code == 202, f"expected 202 (replay), got {resp2.status_code}"
+    assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
+    assert resp1.json()["task_id"] == resp2.json()["task_id"]
