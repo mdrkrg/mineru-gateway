@@ -552,8 +552,10 @@ async def test_idempotent_concurrent_same_key(client, api_key, sample_files):
     """T9 sec 6.4: two concurrent requests with same idempotency key.
     Only one task record created, both return 202, second gets replay.
 
-    Uses a mock on task_service.create to simulate a race condition:
-    first call succeeds, second raises IntegrityError."""
+    Mocks task_service.create to simulate a race condition: first call
+    succeeds, second raises IntegrityError.  Also mocks get_by_idempotency_key
+    to return None for the first two calls so both requests pass the
+    idempotency check and reach create."""
     idem_key = "t9-race-key"
     headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
 
@@ -574,12 +576,25 @@ async def test_idempotent_concurrent_same_key(client, api_key, sample_files):
         _first_done = True
         return await original_create(session, **fields)
 
+    original_lookup = task_service.get_by_idempotency_key
+    _lookup_count = 0
+
+    async def racing_lookup(session, api_key_id, key):
+        nonlocal _lookup_count
+        _lookup_count += 1
+        if _lookup_count <= 2:
+            return None
+        return await original_lookup(session, api_key_id, key)
+
     with patch.object(task_service, "create", side_effect=racing_create):
-        r1, r2 = await asyncio.gather(
-            client.post("/tasks", headers=headers, files=sample_files),
-            client.post("/tasks", headers=headers, files=sample_files),
-            return_exceptions=True,
-        )
+        with patch.object(
+            task_service, "get_by_idempotency_key", side_effect=racing_lookup
+        ):
+            r1, r2 = await asyncio.gather(
+                client.post("/tasks", headers=headers, files=sample_files),
+                client.post("/tasks", headers=headers, files=sample_files),
+                return_exceptions=True,
+            )
 
     assert not isinstance(r1, Exception), f"r1 raised {r1}"
     assert not isinstance(r2, Exception), f"r2 raised {r2}"
@@ -628,14 +643,29 @@ async def test_idempotent_concurrent_failure_releases_cache(
         _first_done = True
         return await original_create(session, **fields)
 
+    original_lookup = task_service.get_by_idempotency_key
+    _lookup_count = 0
+
+    async def racing_lookup(session, api_key_id, key):
+        nonlocal _lookup_count
+        _lookup_count += 1
+        if _lookup_count <= 2:
+            return None
+        return await original_lookup(session, api_key_id, key)
+
     with patch.object(task_service, "create", side_effect=racing_create):
-        with patch.object(FileCache, "release", new_callable=AsyncMock) as mock_release:
-            mock_release.return_value = None
-            r1, r2 = await asyncio.gather(
-                client.post("/tasks", headers=headers, files=sample_files),
-                client.post("/tasks", headers=headers, files=sample_files),
-                return_exceptions=True,
-            )
+        with patch.object(
+            task_service, "get_by_idempotency_key", side_effect=racing_lookup
+        ):
+            with patch.object(
+                FileCache, "release", new_callable=AsyncMock
+            ) as mock_release:
+                mock_release.return_value = None
+                r1, r2 = await asyncio.gather(
+                    client.post("/tasks", headers=headers, files=sample_files),
+                    client.post("/tasks", headers=headers, files=sample_files),
+                    return_exceptions=True,
+                )
 
     assert not isinstance(r1, Exception), f"r1 raised {r1}"
     assert not isinstance(r2, Exception), f"r2 raised {r2}"
