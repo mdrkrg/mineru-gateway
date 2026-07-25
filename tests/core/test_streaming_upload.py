@@ -552,3 +552,56 @@ async def test_t13_idempotent_replay_skips_size_check(client, api_key):
     assert resp2.status_code == 202, f"expected 202 (replay), got {resp2.status_code}"
     assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
     assert resp1.json()["task_id"] == resp2.json()["task_id"]
+
+
+# ---------------------------------------------------------------------------
+# T14 -- Retry loop restores files from streaming cache
+# spec: streaming-upload.md sec 6.5 S14
+#
+# The retry loop calls cache.restore(cache_dir) to recover files written
+# by the streaming parser.  This test verifies that CacheWriter produces a
+# directory that is fully compatible with cache.restore().
+# ---------------------------------------------------------------------------
+
+
+async def test_t14_restore_streaming_cache(tmp_path):
+    from mineru_gateway.tasks.cache import FileCache
+
+    cache = FileCache(str(tmp_path / "cache"))
+
+    writer = cache.create_streaming_cache()
+    writer.write_file_chunk("files", "a.pdf", "application/pdf", b"hello")
+    writer.write_file_chunk("files", "b.txt", "text/plain", b"world")
+    cache_dir = writer.finish({"backend": "pipeline", "parse_method": "auto"})
+
+    data, files = await cache.restore(cache_dir)
+    assert data["backend"] == "pipeline"
+    assert data["parse_method"] == "auto"
+    assert len(files) == 2
+    assert files[0][0] == "files"
+    assert files[0][1] == ("a.pdf", b"hello", "application/pdf")
+    assert files[1][0] == "files"
+    assert files[1][1] == ("b.txt", b"world", "text/plain")
+
+
+# ---------------------------------------------------------------------------
+# T15 -- file_parse behaviour unchanged (uses old _extract_multipart)
+# spec: streaming-upload.md sec 6.6 S15
+# ---------------------------------------------------------------------------
+
+
+async def test_t15_file_parse_unchanged(client, api_key):
+    from sqlalchemy import func, select
+
+    resp = await client.post(
+        "/file_parse",
+        headers={"X-API-Key": api_key},
+        files=_example_files(),
+        data={"backend": "pipeline"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["markdown"] == "# parsed"
+
+    async with client._transport.app.state.db.session_factory() as session:
+        count = await session.scalar(select(func.count()).select_from(TaskRecord))
+        assert count == 1
