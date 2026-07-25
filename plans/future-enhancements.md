@@ -130,7 +130,77 @@
 
 **规模**：~20 行
 
-## B. 功能性需求 — 按优先级
+### A9. 流式上传（消除内存双缓冲） 🔴
+
+**背景**：当前 `_extract_multipart` 通过 `request.form()` + `value.read()` 将整个 multipart body
+和所有文件完整读入内存（`bytes`），再通过 httpx `files=` 参数完整发送到上游。一个 500 MB 文件
+实际消耗约 **1.5 GB 内存**（Starlette form parser + httpx request body + FileCache 写盘缓冲区）。
+
+同时 FileCache 使用同步 `open/write`，大文件写盘时长时间阻塞事件循环，所有并发请求都会排队等待。
+
+**方案**：
+
+- 引入 `aiofiles` 依赖；将 `_extract_multipart` 改为流式 multipart parser（使用
+  `python-multipart` 的 `MultipartParser` + `request.stream()`）
+- 文件字段流式写入 FileCache（`aiofiles.open` 边读边写），form 字段累积到内存（通常很小）
+- `total_bytes` 在流式读取过程中动态累加，超限时立即中断流并返回 413（不再需要完整读取后再判断）
+- 上游转发改为流式：用 `httpx.AsyncClient.stream("POST", ...)` 边读缓存文件边发送，
+  或分两步（先缓存 → 再转发，减少上游超时风险）
+- 幂等提交命中时，由于跳过 multipart 解析（已实现），流式路径不受影响
+
+**新增依赖**：`aiofiles`
+
+**影响**：`proxy/handler.py`（`_extract_multipart` + 提交流程）、`tasks/cache.py`（流式 write）、
+`upstream/client.py`（流式 submit）
+
+**规模**：~200 行
+
+### A10. 流式下载（消除结果内存缓冲） 🔴
+
+**背景**：`get_task_result` 和 `_relay_response` 均通过 `resp.content` 将上游响应完整读入内存，
+再构造 `Response(content=...)` 返回。对于大结果文件（数百 MB 的解析产物），这会导致 OOM。
+`POST /tasks/result-zip` 同样将所有结果和最终 zip 完全放在 `BytesIO` 内存中。
+
+**方案**：
+
+- `GET /tasks/{id}/result` 改用 `httpx.AsyncClient.stream(...)` + `StreamingResponse`：
+  ```python
+  req = client.build_request("GET", url)
+  resp = await client.send(req, stream=True)
+  return StreamingResponse(
+      resp.aiter_bytes(),
+      status_code=resp.status_code,
+      headers=...,
+  )
+  ```
+- `_relay_response` 同样切换为 `StreamingResponse`
+- `POST /tasks/result-zip` 改用 `zipfile.ZipFile` 的流式模式配合 `StreamingResponse`：
+  使用 `asyncio` 队列 + 生产者-消费者模式，边拉取上游结果边写入 zip entry 边流式返回
+
+**影响**：`tasks/routes.py`（result 和 result-zip 端点）、`proxy/handler.py`（`_relay_response`）
+
+**规模**：~40 行（result + relay_response）；result-zip 流式改造单独 ~100 行
+
+### A11. 异步文件 I/O 🔴
+
+**背景**：`FileCache.store()/restore()/release()` 全部使用同步 `open()`、`read()`、`write()`、
+`shutil.rmtree()`。这些方法虽然声明为 `async`，但内部 I/O 100% 阻塞事件循环。在 `store()` 写 500 MB
+文件时，所有其他请求（包括 health check）都会卡住数秒到数十秒。
+
+**方案**：
+
+- `FileCache.store()`：文件写入改用 `aiofiles.open().write()`，JSON 元数据文件改用
+  `asyncio.to_thread()`（JSON 序列化后再异步写盘）
+- `FileCache.restore()`：文件读取改用 `aiofiles.open().read()`，JSON 解析同样用 `to_thread()`
+- `FileCache.release()`：`shutil.rmtree` 是重度阻塞操作（大目录可能数秒），用
+  `asyncio.to_thread(shutil.rmtree, ...)`
+- `FileCache.exists()`：`os.path.isdir` 轻量操作，无需改动
+
+**依赖**：`aiofiles`（与 A9 共享）
+
+**影响**：`tasks/cache.py`
+
+**规模**：~30 行
 
 ### ~~B1. 幂等提交（X-Idempotency-Key） 🟡 P1~~
 
@@ -499,12 +569,15 @@ class RedisTokenBucket:
 
 1. 阶段 1: 立刻补漏
     - A1 多 worker 守卫（防生产事故）
+    - A11 异步文件 I/O（防事件循环阻塞，大文件写盘时不卡死所有请求）
+    - A10 流式下载（防大结果 OOM）
     - A8 启动配置校验（防配置漂移）
     - C  日志采样（防日志风暴）
 2. 阶段 2: 部署前加固
     - A2 优雅停机（部署重启不丢请求）
     - A3 Gateway 自检端点（Docker healthcheck）
     - A5 上游超时可配（大文件处理）
+    - A9 流式上传（消除内存双缓冲，大文件内存从 ~1.5GB 降到几十 KB）
     - C  错误格式统一（API 一致性）
 3. 阶段 3: 快速价值
     - B1 幂等提交（高 RoI，无外部依赖）
