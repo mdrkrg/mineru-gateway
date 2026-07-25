@@ -186,11 +186,13 @@ async def _extract_multipart_streaming(
             )
         if current_is_file:
             file_bytes += chunk_len
-            writer.write_file_chunk(
-                current_field or "file",
-                current_filename or "unnamed",
-                current_content_type,
-                chunk,
+            pending.append(
+                (
+                    current_field or "file",
+                    current_filename or "unnamed",
+                    current_content_type,
+                    chunk,
+                )
             )
         else:
             current_form_buf.extend(chunk)
@@ -216,13 +218,16 @@ async def _extract_multipart_streaming(
     try:
         async for chunk in request.stream():
             parser.write(chunk)
+            for args in pending:
+                await writer.write_file_chunk(*args)
+            pending.clear()
     except HTTPException:
         raise
     except BaseException:
         writer.cancel()
         raise
 
-    cache_dir = writer.finish(data)
+    cache_dir = await writer.finish(data)
     return data, cache_dir, file_names, file_bytes
 
 

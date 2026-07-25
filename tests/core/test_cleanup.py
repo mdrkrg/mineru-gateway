@@ -75,8 +75,8 @@ async def test_cleanup_releases_cache_of_expired_records(app, tmp_path):
     db = app.state.db
     cache = FileCache(str(tmp_path))
     writer = cache.create_streaming_cache()
-    writer.write_file_chunk("files", "a.pdf", "application/pdf", b"%PDF-1.4 data")
-    cache_dir = writer.finish({"backend": "pipeline"})
+    await writer.write_file_chunk("files", "a.pdf", "application/pdf", b"%PDF-1.4 data")
+    cache_dir = await writer.finish({"backend": "pipeline"})
     assert os.path.isdir(cache_dir)
 
     async with db.session_factory() as session:

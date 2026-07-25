@@ -159,8 +159,8 @@ async def test_sync_releases_cache_on_terminal_state(app, upstream_client, tmp_p
     upstream = UpstreamClient(upstream_client)
     cache = FileCache(str(tmp_path))
     writer = cache.create_streaming_cache()
-    writer.write_file_chunk("files", "a.pdf", "application/pdf", b"%PDF-1.4 data")
-    cache_dir = writer.finish({"backend": "pipeline"})
+    await writer.write_file_chunk("files", "a.pdf", "application/pdf", b"%PDF-1.4 data")
+    cache_dir = await writer.finish({"backend": "pipeline"})
     assert os.path.isdir(cache_dir)
 
     async with db.session_factory() as session:

@@ -434,13 +434,13 @@ async def test_t8_multi_file_cumulative_over_limit(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_t9_cache_writer_cancel_cleans_directory(tmp_path):
+async def test_t9_cache_writer_cancel_cleans_directory(tmp_path):
     from mineru_gateway.tasks.cache import CacheWriter
 
     writer = CacheWriter(str(tmp_path))
-    writer.write_file_chunk("files", "a.pdf", "application/pdf", b"part1")
-    writer.write_file_chunk("files", "a.pdf", "application/pdf", b"part2")
-    writer.write_file_chunk("files", "b.pdf", "application/pdf", b"more")
+    await writer.write_file_chunk("files", "a.pdf", "application/pdf", b"part1")
+    await writer.write_file_chunk("files", "a.pdf", "application/pdf", b"part2")
+    await writer.write_file_chunk("files", "b.pdf", "application/pdf", b"more")
 
     cache_dir = writer._dir
     assert os.path.isdir(cache_dir)
@@ -569,9 +569,9 @@ async def test_t14_restore_streaming_cache(tmp_path):
     cache = FileCache(str(tmp_path / "cache"))
 
     writer = cache.create_streaming_cache()
-    writer.write_file_chunk("files", "a.pdf", "application/pdf", b"hello")
-    writer.write_file_chunk("files", "b.txt", "text/plain", b"world")
-    cache_dir = writer.finish({"backend": "pipeline", "parse_method": "auto"})
+    await writer.write_file_chunk("files", "a.pdf", "application/pdf", b"hello")
+    await writer.write_file_chunk("files", "b.txt", "text/plain", b"world")
+    cache_dir = await writer.finish({"backend": "pipeline", "parse_method": "auto"})
 
     data, files = await cache.restore(cache_dir)
     assert data["backend"] == "pipeline"
@@ -691,30 +691,30 @@ async def test_t11_idempotency_conflict_releases_cache(client, api_key):
 # ---------------------------------------------------------------------------
 
 
-def test_t16_cache_writer_closed_guard(tmp_path):
+async def test_t16_cache_writer_closed_guard(tmp_path):
     from mineru_gateway.tasks.cache import CacheWriter
 
     # write_file_chunk after finish
     w = CacheWriter(str(tmp_path))
-    w.finish({})
+    await w.finish({})
     with pytest.raises(RuntimeError, match="CacheWriter.*(closed|finished|cancelled)"):
-        w.write_file_chunk("f", "a", "t", b"x")
+        await w.write_file_chunk("f", "a", "t", b"x")
 
     # write_file_chunk after cancel
     w2 = CacheWriter(str(tmp_path))
     w2.cancel()
     with pytest.raises(RuntimeError, match="CacheWriter.*(closed|finished|cancelled)"):
-        w2.write_file_chunk("f", "a", "t", b"x")
+        await w2.write_file_chunk("f", "a", "t", b"x")
 
     # finish after cancel
     w3 = CacheWriter(str(tmp_path))
     w3.cancel()
     with pytest.raises(RuntimeError, match="CacheWriter.*(closed|finished|cancelled)"):
-        w3.finish({})
+        await w3.finish({})
 
     # cancel after finish (should not raise)
     w4 = CacheWriter(str(tmp_path))
-    w4.finish({})
+    await w4.finish({})
     w4.cancel()  # no-op, must not raise
 
 
@@ -724,18 +724,18 @@ def test_t16_cache_writer_closed_guard(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_t17_cache_writer_cancel_on_disk_error(tmp_path):
+async def test_t17_cache_writer_cancel_on_disk_error(tmp_path):
     from mineru_gateway.tasks.cache import CacheWriter
 
     w = CacheWriter(str(tmp_path))
-    w.write_file_chunk("files", "a.pdf", "application/pdf", b"data")
+    await w.write_file_chunk("files", "a.pdf", "application/pdf", b"data")
     cache_dir = w._dir
     assert os.path.isdir(cache_dir)
 
-    # Simulate disk error during finish by mocking open
-    with patch("builtins.open", side_effect=OSError("disk full")):
+    # Simulate disk error during finish by mocking aiofiles.open
+    with patch("aiofiles.open", side_effect=OSError("disk full")):
         with pytest.raises(OSError, match="disk full"):
-            w.finish({})
+            await w.finish({})
 
     # After error, cancel must still clean up
     w.cancel()

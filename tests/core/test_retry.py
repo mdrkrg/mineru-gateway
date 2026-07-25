@@ -28,8 +28,8 @@ async def _seed_key(session):
 
 async def _retryable_task(session, cache, api_key_id, **overrides):
     writer = cache.create_streaming_cache()
-    writer.write_file_chunk("files", "a.pdf", "application/pdf", b"%PDF-1.4 data")
-    cache_dir = writer.finish({"backend": "pipeline"})
+    await writer.write_file_chunk("files", "a.pdf", "application/pdf", b"%PDF-1.4 data")
+    cache_dir = await writer.finish({"backend": "pipeline"})
     fields = dict(
         api_key_id=api_key_id,
         status="retry_pending",

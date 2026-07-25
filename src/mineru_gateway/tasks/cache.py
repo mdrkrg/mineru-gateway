@@ -20,6 +20,8 @@ import os
 import shutil
 import uuid
 
+import aiofiles
+
 Files = list[tuple[str, tuple[str, bytes, str]]]
 
 
@@ -32,6 +34,9 @@ class CacheWriter:
     of a new (field, filename) pair creates a new blob; subsequent chunks for
     the same pair append to the same blob.  *finish* finalises the directory
     (writes form.json + files.json).  *cancel* removes the directory.
+
+    All I/O methods are async and use *aiofiles* to avoid blocking the
+    event loop during upload streaming.
     """
 
     def __init__(self, base_dir: str) -> None:
@@ -44,7 +49,7 @@ class CacheWriter:
     def _blob_path(self, idx: int) -> str:
         return os.path.join(self._dir, f"blob-{idx}")
 
-    def write_file_chunk(
+    async def write_file_chunk(
         self, field: str, filename: str, content_type: str, data: bytes
     ) -> None:
         if self._closed:
@@ -61,14 +66,14 @@ class CacheWriter:
                     "blob": f"blob-{idx}",
                 }
             )
-            with open(self._blob_path(idx), "wb") as fh:
-                fh.write(data)
+            async with aiofiles.open(self._blob_path(idx), "wb") as fh:
+                await fh.write(data)
         else:
             idx = self._index[key]
-            with open(self._blob_path(idx), "ab") as fh:
-                fh.write(data)
+            async with aiofiles.open(self._blob_path(idx), "ab") as fh:
+                await fh.write(data)
 
-    def finish(self, form_fields: dict) -> str:
+    async def finish(self, form_fields: dict) -> str:
         if self._closed:
             raise RuntimeError("CacheWriter already finished or cancelled")
         manifest: list[dict] = []
@@ -81,10 +86,10 @@ class CacheWriter:
                     "blob": entry["blob"],
                 }
             )
-        with open(os.path.join(self._dir, "form.json"), "w") as fh:
-            json.dump(form_fields, fh)
-        with open(os.path.join(self._dir, "files.json"), "w") as fh:
-            json.dump(manifest, fh)
+        async with aiofiles.open(os.path.join(self._dir, "form.json"), "w") as fh:
+            await fh.write(json.dumps(form_fields))
+        async with aiofiles.open(os.path.join(self._dir, "files.json"), "w") as fh:
+            await fh.write(json.dumps(manifest))
         self._closed = True
         return self._dir
 
