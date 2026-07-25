@@ -19,7 +19,7 @@ from mineru_gateway.config import Settings
 from mineru_gateway.main import create_app
 from mineru_gateway.models import TaskRecord
 
-from tests.mock_upstream import create_mock_upstream
+from tests.mock_upstream import create_mock_upstream, state as mock_state
 
 
 # ---------------------------------------------------------------------------
@@ -411,3 +411,82 @@ async def test_t8_multi_file_cumulative_over_limit(tmp_path):
         async with app.state.db.session_factory() as session:
             count = await session.scalar(select(func.count()).select_from(TaskRecord))
             assert count == 0
+
+
+# ---------------------------------------------------------------------------
+# T9 -- CacheWriter.cancel() cleans partial directory
+# spec: streaming-upload.md sec 6.3 S9
+#
+# When a client disconnects mid-stream or an upload is aborted, the
+# partially written cache directory must be removed.  This test verifies
+# that CacheWriter.cancel() deletes the directory and all partial files.
+# The full integration scenario (request.stream() raises mid-parse, handler
+# calls cancel()) will be verified once the real streaming parser is
+# implemented.
+# ---------------------------------------------------------------------------
+
+
+def test_t9_cache_writer_cancel_cleans_directory(tmp_path):
+    from mineru_gateway.tasks.cache import CacheWriter
+
+    writer = CacheWriter(str(tmp_path))
+    writer.write_file_chunk("files", "a.pdf", "application/pdf", b"part1")
+    writer.write_file_chunk("files", "a.pdf", "application/pdf", b"part2")
+    writer.write_file_chunk("files", "b.pdf", "application/pdf", b"more")
+
+    cache_dir = writer._dir
+    assert os.path.isdir(cache_dir)
+    assert len(os.listdir(cache_dir)) == 0  # no blobs written yet, only dir exists
+
+    writer.cancel()
+    assert not os.path.isdir(cache_dir), "cancel() must remove the directory"
+
+
+# ---------------------------------------------------------------------------
+# T10 -- Upstream rejection cleans cache and surfaces error
+# spec: streaming-upload.md sec 6.3 S10
+# ---------------------------------------------------------------------------
+
+
+async def test_t10_upstream_rejection_cleans_cache(tmp_path):
+    mock_state.submit_status = 400
+
+    gen = _make_streaming_app(tmp_path, max_upload_size=100_000)
+    async for client, app, settings in gen:
+        r = await client.post(
+            "/auth/keys",
+            json={"label": "t10"},
+            headers={"X-Admin-Token": "test-admin-token"},
+        )
+        api_key = r.json()["api_key"]
+
+        resp = await client.post(
+            "/tasks",
+            headers={"X-API-Key": api_key},
+            files=_example_files(),
+        )
+        assert resp.status_code == 400
+
+        # Cache directory must be cleaned up
+        cache_base = settings.file_cache_dir
+        if os.path.isdir(cache_base):
+            assert _count_cache_dirs(cache_base) == 0, (
+                "orphaned cache dir after rejection"
+            )
+
+        # No TaskRecord created
+        from sqlalchemy import func, select
+
+        async with app.state.db.session_factory() as session:
+            count = await session.scalar(select(func.count()).select_from(TaskRecord))
+            assert count == 0
+
+
+# ---------------------------------------------------------------------------
+# T11 -- Idempotency conflict releases cache on IntegrityError
+# spec: streaming-upload.md sec 6.3 S11
+#
+# Covered by test_idempotent_concurrent_failure_releases_cache in
+# tests/core/test_proxy.py which exercises the IntegrityError recovery
+# path with cache.release() verification.
+# ---------------------------------------------------------------------------
