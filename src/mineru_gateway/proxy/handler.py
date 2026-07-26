@@ -221,13 +221,14 @@ async def _extract_multipart_streaming(
             for args in pending:
                 await writer.write_file_chunk(*args)
             pending.clear()
+
+        cache_dir = await writer.finish(data)
     except HTTPException:
         raise
     except BaseException:
         writer.cancel()
         raise
 
-    cache_dir = await writer.finish(data)
     return data, cache_dir, file_names, file_bytes
 
 

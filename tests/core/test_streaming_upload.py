@@ -506,9 +506,7 @@ async def test_t9b_finish_failure_calls_cancel(tmp_path):
 
     request.stream = MagicMock(return_value=_MockStream())
 
-    with patch.object(
-        _FailFinishWriter, "cancel", wraps=_FailFinishWriter.cancel
-    ) as mock_cancel:
+    with patch.object(_FailFinishWriter, "cancel") as mock_cancel:
         with pytest.raises(OSError, match="disk full during finish"):
             await _extract_multipart_streaming(request, 100_000, cache)
 
