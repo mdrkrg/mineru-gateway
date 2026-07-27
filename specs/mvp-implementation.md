@@ -476,7 +476,15 @@ async def retry_loop(interval: float = 10.0):
             try:
                 files, form_data = await file_cache.restore(task.cache_dir)
                 upstream_resp = await upstream_client.submit_task(form_data, files)
-                payload = upstream_resp.json()
+                try:
+                    payload = upstream_resp.json()
+                except (ValueError, Exception) as e:
+                    # 上游返回非 JSON 202：格式异常，非瞬时故障，直接判失败，不消耗重试
+                    await task_service.mark_failed(
+                        task.id, f"unexpected upstream response: {e}"
+                    )
+                    await file_cache.release(task.cache_dir)
+                    continue
                 if upstream_resp.status_code != 202 or "task_id" not in payload:
                     # 上游返回格式异常：非瞬时故障，直接判失败，不消耗重试
                     await task_service.mark_failed(
