@@ -349,7 +349,11 @@ async def handle_task_submission(
     if upstream_resp.status_code != 202:
         await cache.release(cache_dir)
         return _relay_response(upstream_resp)
-    payload = upstream_resp.json()
+    try:
+        payload = upstream_resp.json()
+    except ValueError:
+        await cache.release(cache_dir)
+        raise HTTPException(status_code=502, detail="Invalid upstream response")
 
     qa = payload.get("queued_ahead")
     queued_ahead: int | None = qa if isinstance(qa, int) else None
