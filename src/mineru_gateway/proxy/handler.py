@@ -315,8 +315,6 @@ async def handle_task_submission(
             headers={"Retry-After": "60"},
         )
 
-    await check_free_slot(upstream)
-
     data, cache_dir, file_names, total_bytes = await _extract_multipart_streaming(
         request, settings.max_upload_size, cache
     )
