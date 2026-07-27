@@ -266,7 +266,6 @@ async def test_task_stats_counts_by_status(app, client, admin_headers):
 # with the UTC clock, exposing any implementation that derives today_start from
 # the local calendar date instead of datetime.now(timezone.utc).
 @freeze_time("2026-07-01T12:00:00")
-@patch("datetime.date.today", return_value=_date(2026, 7, 2))
 async def test_task_stats_today_counts_are_utc_scoped(app, client, admin_headers):
     today_start = datetime.now(timezone.utc).replace(
         hour=0, minute=0, second=0, microsecond=0
@@ -293,7 +292,11 @@ async def test_task_stats_today_counts_are_utc_scoped(app, client, admin_headers
     # Yesterday (June 30) failed -- should NOT count in today_failed
     await _seed_task(app, api_key_id, "failed", completed_at=yesterday)
 
-    resp = await client.get("/tasks/stats", headers={"X-API-Key": api_key_str})
+    with patch(
+        "datetime.date.today",
+        return_value=_date(2026, 7, 2),
+    ):
+        resp = await client.get("/tasks/stats", headers={"X-API-Key": api_key_str})
     assert resp.status_code == 200
     body = resp.json()
     # All-time counts include everything
