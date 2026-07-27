@@ -18,6 +18,10 @@
     "vite-plugin-solid": "^2.11.8"
   },
   "dependencies": {
+    "arktype": "^2.2.3",
+    "change-case": "^5.4.4",
+    "ky": "^2.0.2",
+    "neverthrow": "^8.2.0",
     "solid-js": "^1.9.9"
   }
 }
