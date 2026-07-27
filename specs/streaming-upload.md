@@ -138,8 +138,8 @@ _extract_multipart_streaming(request, max_upload_size, cache)
 7. 从磁盘缓存目录读取文件
    转发 multipart 到上游
    如果 上游返回非 202:
-       删除磁盘缓存目录
-       返回上游错误状态码和消息                  ← 终止
+        删除磁盘缓存目录
+        返回上游响应（状态码、头部、body）原样透传   ← 终止
 
 8. 在数据库中写入任务记录（含 cache_dir、idempotency_key）
    如果 写入成功:
