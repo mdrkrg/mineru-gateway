@@ -348,9 +348,7 @@ async def handle_task_submission(
     upstream_resp = await upstream.submit_task(data, files)
     if upstream_resp.status_code != 202:
         await cache.release(cache_dir)
-        raise HTTPException(
-            status_code=upstream_resp.status_code, detail=upstream_resp.text
-        )
+        return _relay_response(upstream_resp)
     payload = upstream_resp.json()
 
     qa = payload.get("queued_ahead")
