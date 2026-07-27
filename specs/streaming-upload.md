@@ -89,10 +89,8 @@ _extract_multipart_streaming(request, max_upload_size, cache)
 - 步骤 1（认证门控）：`require_api_key` 解析 `X-API-Key`，行为不变。
 - 步骤 2（幂等检查）：在流式解析**之前**执行。命中时返回 202 + 重构响应，跳过所有后续步骤包括 multipart body 读取——**与当前行为完全一致**。
 - 步骤 3（速率限制）：`limiter.acquire` 在幂等检查之后、流式解析之前执行。行为不变。
-- 步骤 4（上游健康门控）：`check_free_slot` 在流式解析之前执行。行为不变。
-- 步骤 7（全局并发检查）：`count_in_flight` 在流式解析之后、上游转发之前执行。行为不变。
-- 步骤 9（TaskRecord 创建）：`task_service.create` 的参数和返回值不变。数据库 schema 不变。
-- 步骤 10（响应构造）：返回的 JSON body 结构和响应头不变。
+- 步骤 6（全局并发检查）：`count_in_flight` 在流式解析之后、上游转发之前执行。行为不变。
+- 步骤 8（TaskRecord 创建）：`task_service.create` 的参数和返回值不变，响应体 JSON 结构和响应头不变。数据库 schema 不变。
 - `handle_file_parse`：完全不变——继续使用现有的 `_extract_multipart`（全量缓冲方式）。
 
 ### 1.4 处理步骤概览（变更后）
@@ -112,12 +110,9 @@ _extract_multipart_streaming(request, max_upload_size, cache)
 
 3. 如果 是认证请求:
      按 key 扣减令牌桶
-     如果 无可用令牌 → 返回 429 Retry-After: 60（不变）
+      如果 无可用令牌 → 返回 429 Retry-After: 60（不变）
 
-4. 查询上游 /health
-   如果 上游无空闲位 → 返回 503 Retry-After: 5（不变）
-
-5. 流式解析 multipart body:                          ← 变更
+4. 流式解析 multipart body:                          ← 变更
      - 遍历客户端字节流，每个 part 按 chunk 读取
      - 表单字段 → 累积到 data dict（内存）
      - 文件字段 → 每 chunk 直接写入磁盘缓存目录（不驻留内存）
@@ -131,22 +126,22 @@ _extract_multipart_streaming(request, max_upload_size, cache)
           total_bytes += len(chunk)
           写入 chunk 到磁盘
 
-6. 如果 是匿名请求:
+5. 如果 是匿名请求:
       从磁盘缓存目录全量读取文件
       转发 multipart 到上游
       删除磁盘缓存目录（不留存）
       返回上游响应                              ← 终止
 
-7. 统计当前 in-flight 任务数
+6. 统计当前 in-flight 任务数
    如果 达到全局并发上限 → 返回 503 Retry-After: 10（不变）
 
-8. 从磁盘缓存目录读取文件
+7. 从磁盘缓存目录读取文件
    转发 multipart 到上游
    如果 上游返回非 202:
        删除磁盘缓存目录
        返回上游错误状态码和消息                  ← 终止
 
-9. 在数据库中写入任务记录（含 cache_dir、idempotency_key）
+8. 在数据库中写入任务记录（含 cache_dir、idempotency_key）
    如果 写入成功:
        返回 202 + Gateway 响应体
    如果 唯一约束冲突（并发 idempotency_key）:
@@ -266,11 +261,11 @@ create_streaming_cache() → CacheWriter
 
 ### 5.1 幂等命中时（已有记录）
 
-不受影响——幂等检查发生在上游健康门控之前、流式解析之前。命中时跳过所有后续步骤，不读取 multipart body。详见 §1.4 步骤 2。
+不受影响——幂等检查发生在流式解析之前。命中时跳过所有后续步骤，不读取 multipart body。详见 §1.4 步骤 2。
 
 ### 5.2 幂等未命中、但并发冲突时（IntegrityError）
 
-不受影响——唯一约束冲突后的恢复路径调用 `cache.release(cache_dir)` 清理缓存目录，该 API 不受流式改造影响。详见 §1.4 步骤 9。
+不受影响——唯一约束冲突后的恢复路径调用 `cache.release(cache_dir)` 清理缓存目录，该 API 不受流式改造影响。详见 §1.4 步骤 8。
 
 ## 6. 测试场景
 

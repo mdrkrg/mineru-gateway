@@ -121,7 +121,7 @@
 
 | 功能 | 说明 |
 |------|------|
-| 健康感知提交门控 | 读取上游 `/health`（mineru-router v3.4.0 字段名为 `max_concurrent_requests` / `queued_tasks` / `processing_tasks`），计算 `free_slots = max_concurrent_requests - queued_tasks - processing_tasks`，不足 1 → 503 + `Retry-After` |
+| 健康感知提交门控（`/file_parse`） | 仅同步端点：读取上游 `/health`，计算 `free_slots = max_concurrent_requests - queued_tasks - processing_tasks`，不足 1 → 503 + `Retry-After`。异步 `POST /tasks` 不走此门控——MinerU 始终接受（无界 `asyncio.Queue`），Gateway 依赖按 Key 限流 + 全局并发上限提供背压。 |
 | 按 Key 内存限流 | 进程内令牌桶，可配置每 Key 每秒请求数（单实例单 worker 有效） |
 | 全局并发限制 | DB 中 `pending + processing + retry_pending` 上限，超出 503（`retry_pending` 为待重提的在制任务，同样占用额度）|
 | 文件大小限制 | 单文件最大 `MAX_UPLOAD_SIZE`（默认 500MB） |
@@ -145,6 +145,7 @@ Gateway 定位为认证/持久化/容灾层，以下行为与真实 router 不�
 | 任务状态流转 | 仅 `pending` / `processing` / `completed` / `failed` | 增加 `cancelled` / `retry_pending` | Gateway 扩展 |
 | `GET /tasks/{id}/result` 非终态 | 返回 `202` + 状态体 | 返回 `409` | MVP 简化（从 DB 镜像判断，不额外查询上游） |
 | `POST /tasks` 响应体 | 含 `started_at` / `completed_at` / `error`（null 时仍出现） | 已补齐 `started_at` / `completed_at` / `error`（均 null） | ✓ 已对齐 |
+| `POST /tasks` 提交前上游健康检查 | **不做**（始终接受，无界 `asyncio.Queue`） | **不做**（对齐上游行为，依赖按 Key 限流 + 全局并发上限提供背压） | ✓ 已对齐 |
 
 | 功能 | 说明 |
 |------|------|
@@ -399,7 +400,6 @@ async def handle_task_submission(
     """处理 POST /tasks 请求。行为要点：
     - 认证门控：默认拒绝匿名；ALLOW_ANONYMOUS=true 时匿名请求纯透传不记录
     - 速率限制：按 Key 内存令牌桶拦截
-    - 健康门控：上游 free_slots <= 0 时拒绝并返回 Retry-After
     - 文件暂存：认证请求的 multipart 落盘后转发上游（用于崩溃重提）
     - 参数存储：backend / parse_method / effort 独立列 + 全部参数入 parse_params JSON 副本
     - 任务记录：DB 持久化上游 task_id 映射 + 文件元信息 + 解析参数

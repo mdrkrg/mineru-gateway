@@ -8,7 +8,7 @@
 ### 目标
 
 1. 客户端通过 `X-Idempotency-Key` 请求头实现 `POST /tasks` 的幂等提交：同一 API Key 下相同 idempotency key 的重复请求，返回首次请求的结果，不会创建重复任务。
-2. 幂等命中时跳过限流、上游健康门控、multipart body 读取、全局并发检查——重试成本为一次极轻量数据库查询。
+2. 幂等命中时跳过限流、multipart body 读取、全局并发检查——重试成本为一次极轻量数据库查询。
 3. 并发场景下（同一 idempotency key 的多个请求几乎同时到达），通过数据库唯一约束保证最终仅有一条任务记录落库。
 
 ### 非目标
@@ -91,7 +91,6 @@ X-Idempotency-Key-Replayed: true
 |------|------|
 | `require_api_key` | 解析 `X-API-Key` 请求头，返回 `ApiKey` 对象。若未提供 Key 且 `GATEWAY_ALLOW_ANONYMOUS=true`（环境变量，默认 `false`）则返回 `None` |
 | `MemoryTokenBucket` | 进程内按 Key 的令牌桶限流器。默认速率 10 令牌/秒，桶容量 burst=30。通过 `limiter.acquire(key_id)` 消费令牌 |
-| `check_free_slot` | 读取上游 `/health` 端点，计算空闲位：`max_concurrent_requests - queued_tasks - processing_tasks`。若空闲位 ≤ 0 则返回 503 |
 | `_extract_multipart` | 全量读取 multipart form 到内存，逐文件校验大小 ≤ `max_upload_size`（默认 500MB）。返回 data dict + files 列表 |
 | `count_in_flight` | 统计 DB 中 `status IN ('pending', 'processing', 'retry_pending')` 的任务数。超出 `max_concurrent_tasks`（默认 0 = 不限）时返回 503 |
 | `cache.store` | 将 multipart 暂存到本地磁盘目录 `file_cache_dir`，返回 `cache_dir` 路径。用于崩溃后重提 |
@@ -111,9 +110,6 @@ X-Idempotency-Key-Replayed: true
                     │
                     ▼
              速率限制 (MemoryTokenBucket)
-                    │
-                    ▼
-             上游健康门控 (check_free_slot)
                     │
                     ▼
              提取 multipart body (_extract_multipart)
@@ -164,22 +160,21 @@ X-Idempotency-Key-Replayed: true
 **关键行为**：
 
 - 命中时**不消耗限流令牌**，不调用 `limiter.acquire`。
-- 命中时**不检查上游健康**，不调用 `check_free_slot`。
 - 命中时**不读取 multipart body**，不解码请求体，避免大文件内存开销。
 - 命中时不等同于 "任务已完成"。返回的 `status` 始终为 `"pending"`（首次提交时的值），客户端仍需通过 `GET /tasks/{task_id}` 轮询最终状态。
 - 匿名请求跳过此步骤，`X-Idempotency-Key` 被忽略。
 
-### 4.4 步骤 3-8：现有提交流程（行为不变，仅新增 idempotency_key 传递）
+### 4.4 步骤 3-7：现有提交流程（行为不变，仅新增 idempotency_key 传递）
 
-速率限制、健康门控、multipart 提取、并发检查、文件暂存、上游提交均保持现有行为不变。唯一差异：创建 `TaskRecord` 时写入 `idempotency_key`（见步骤 9）。
+速率限制、multipart 提取、并发检查、文件暂存、上游提交均保持现有行为不变。唯一差异：创建 `TaskRecord` 时写入 `idempotency_key`（见步骤 8）。
 
-### 4.5 步骤 9：创建 TaskRecord（现有行为 + 新增字段 + 新增并发处理）
+### 4.5 步骤 8：创建 TaskRecord（现有行为 + 新增字段 + 新增并发处理）
 
 调用 `task_service.create` 时传入 `idempotency_key` 字段。
 
 **并发冲突处理**：
 
-若两个请求携带相同 `X-Idempotency-Key` 几乎同时到达，在步骤 2 时两者均未查到已有记录，均执行了完整提交流程。当两者都到达步骤 9 尝试写入数据库时：
+若两个请求携带相同 `X-Idempotency-Key` 几乎同时到达，在步骤 2 时两者均未查到已有记录，均执行了完整提交流程。当两者都到达步骤 8 尝试写入数据库时：
 
 1. 第一个完成 `INSERT` 的请求成功创建 `TaskRecord`，返回 `202`。
 2. 第二个请求在 `INSERT` 时触发唯一约束冲突（`IntegrityError`）。
@@ -259,10 +254,10 @@ T1 的任务变为 `failed`。客户端再次使用相同 key 提交。行为与
 ### 6.4 并发竞争
 
 **T9 — 两个并发请求，相同 idempotency key**
-两个请求携带相同的 API Key 和 idempotency key，几乎同时到达。两者在步骤 2 均未查到已有记录（第一个尚未写入），均执行了完整提交流程。第一个成功创建 `TaskRecord`；第二个在步骤 9 触发唯一约束冲突（`IntegrityError`），经过冲突恢复返回 `202` + `X-Idempotency-Key-Replayed: true`。数据库中仅一条记录，`task_id` 与两个响应一致。
+两个请求携带相同的 API Key 和 idempotency key，几乎同时到达。两者在步骤 2 均未查到已有记录（第一个尚未写入），均执行了完整提交流程。第一个成功创建 `TaskRecord`；第二个在步骤 8 触发唯一约束冲突（`IntegrityError`），经过冲突恢复返回 `202` + `X-Idempotency-Key-Replayed: true`。数据库中仅一条记录，`task_id` 与两个响应一致。
 
 **T10 — 并发竞争失败方释放文件暂存**
-T9 中竞争失败的请求在步骤 8 已暂存了 multipart 文件（`cache_dir` 非空）。冲突恢复流程需释放此目录，不留孤儿缓存文件。通过检查文件系统或 mock `cache.release` 调用次数验证。
+T9 中竞争失败的请求在步骤 7 已暂存了 multipart 文件（`cache_dir` 非空）。冲突恢复流程需释放此目录，不留孤儿缓存文件。通过检查文件系统或 mock `cache.release` 调用次数验证。
 
 ### 6.5 校验
 
@@ -271,9 +266,6 @@ T9 中竞争失败的请求在步骤 8 已暂存了 multipart 文件（`cache_di
 
 **T12 — 幂等命中不消耗限流令牌**
 T1 首次提交后限流令牌已耗尽（使用 `rate=1` 且令牌桶 `burst=1` 的限流器实例；`MemoryTokenBucket` 默认 `burst=30`，需在测试中显式构造为 1 以使得单次请求即耗尽令牌）。T2 携带相同 idempotency key 提交——应在步骤 2 命中并返回 202，不因限流返回 429。验证重试请求不经过 `limiter.acquire`。
-
-**T12b — 幂等命中不触发上游健康门控**
-Mock 上游 `/health` 返回 `free_slots=0`（无空位）。携带已在数据库中存在的 idempotency key 提交。系统在步骤 2 命中，不调用 `check_free_slot`，正常返回 202。
 
 ### 6.6 生命周期
 

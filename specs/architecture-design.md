@@ -63,9 +63,10 @@ mineru-gateway 是位于客户端与 mineru-api / mineru-router 之间的**网�
 - 认证请求的原始文件暂存到磁盘，上游恢复后重提。
 - MVP 采用固定次数的简单重提，不做可配置重试状态机 / 断点续传（断点续传需上游支持 checkpoint）。
 
-### 3.4 保护：面向上游健康的门控
+### 3.4 保护：面向上游健康的门控（仅同步端点）与多层背压
 
-- 提交前读上游 `/health`，无空闲 slot 直接 503 + `Retry-After`（拒绝而非排队）。
+- **同步门控**（`POST /file_parse`）：提交前读上游 `/health`，无空闲 slot 直接 503 + `Retry-After`（拒绝而非排队）。同步端点霸占 HTTP 连接并立即消耗信号量位，饱和时快速失败避免客户端无谓等待。
+- **异步排队**（`POST /tasks`）：不做提交前健康门控。MinerU 任务队列为无界 `asyncio.Queue`——提交始终返回 202，信号量（`_request_semaphore`）仅限制并发处理数而非接受数。Gateway 通过按 Key 限流 + 全局并发上限（`max_concurrent_tasks`）提供背压，与 MinerU "总是接受" 的设计一致。
 - 按 Key 限流、全局并发上限、单文件大小限制。
 
 ### 3.5 部署：单实例单 worker 起步
