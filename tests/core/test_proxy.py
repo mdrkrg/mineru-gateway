@@ -107,10 +107,10 @@ async def test_submit_upstream_non_202_surfaces_error(client, api_key, sample_fi
 
 
 async def test_submit_accepted_when_upstream_full(client, api_key, sample_files):
-    """arch-design s3.4 / mvp s3.5: async POST /tasks no longer checks upstream
-    health (free_slots) before submission. MinerU always returns 202 -- the
-    semaphore limits processing, not acceptance. Submission still succeeds
-    even when upstream has no free slots."""
+    """arch-design s3.4 / mvp s3.5: async POST /tasks does not check upstream
+    free_slots before submission (no health gating). Gateway relies on per-key
+    rate limiting and max_concurrent_tasks for backpressure. Submission
+    succeeds (202) even when upstream has no free slots."""
     mock_state.processing = mock_state.max_concurrent
     resp = await client.post(
         "/tasks", headers={"X-API-Key": api_key}, files=sample_files
