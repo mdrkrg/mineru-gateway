@@ -106,14 +106,16 @@ async def test_submit_upstream_non_202_surfaces_error(client, api_key, sample_fi
     assert resp.status_code == 500
 
 
-async def test_submit_503_when_no_free_slots(client, api_key, sample_files):
-    """§3.5 / §6.2 步骤2: 健康感知门控, free_slots<=0 → 503 + Retry-After."""
+async def test_submit_accepted_when_upstream_full(client, api_key, sample_files):
+    """arch-design s3.4 / mvp s3.5: async POST /tasks no longer checks upstream
+    health (free_slots) before submission. MinerU always returns 202 -- the
+    semaphore limits processing, not acceptance. Submission still succeeds
+    even when upstream has no free slots."""
     mock_state.processing = mock_state.max_concurrent
     resp = await client.post(
         "/tasks", headers={"X-API-Key": api_key}, files=sample_files
     )
-    assert resp.status_code == 503
-    assert resp.headers.get("Retry-After") == "5"
+    assert resp.status_code == 202
 
 
 async def test_file_parse_authenticated_relays_result(client, api_key, sample_files):
@@ -793,9 +795,13 @@ async def test_idempotent_blank_keys_do_not_collide(client, api_key, sample_file
         assert count == 2
 
 
-async def test_idempotent_replay_skips_health_check(client, api_key, sample_files):
-    """T12b sec 6.5: idempotent replay skips upstream health gating.
-    When upstream is full (free_slots=0), replay still returns 202."""
+async def test_idempotent_replay_still_accepted_when_upstream_full(
+    client, api_key, sample_files
+):
+    """arch-design s3.4 / mvp s3.5: idempotent replay for async POST /tasks
+    succeeds even when upstream has no free slots, because the health gate
+    was removed from the /tasks path. Both fresh submissions and replays
+    are accepted (202)."""
     idem_key = "t12b-health-key"
     headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
 
@@ -808,7 +814,9 @@ async def test_idempotent_replay_skips_health_check(client, api_key, sample_file
     assert resp2.status_code == 202
     assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
 
-    # Control: a different key should be blocked by health gate (503)
+    # Control: a fresh submission with a different idempotency key
+    # is also accepted (202) since async /tasks no longer checks
+    # upstream free_slots.
     resp3 = await client.post(
         "/tasks",
         headers={
@@ -817,7 +825,7 @@ async def test_idempotent_replay_skips_health_check(client, api_key, sample_file
         },
         files=sample_files,
     )
-    assert resp3.status_code == 503
+    assert resp3.status_code == 202
 
 
 async def test_idempotent_key_reusable_after_cleanup(client, api_key, sample_files):
