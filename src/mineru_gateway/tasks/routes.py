@@ -29,6 +29,8 @@ from .schemas import (
     BatchCancelError,
     BatchCancelRequest,
     BatchCancelResponse,
+    NonDownloadableError,
+    NonDownloadableItem,
     ResultZipRequest,
     TaskCancelResponse,
     TaskDetail,
@@ -194,7 +196,7 @@ async def cancel_task(
     )
 
 
-@router.post("/result-zip")
+@router.post("/result-zip", responses={409: {"model": NonDownloadableError}})
 async def result_zip(
     body: ResultZipRequest,
     api_key: ApiKey | None = Depends(require_api_key),
@@ -212,33 +214,33 @@ async def result_zip(
             )
         tasks_by_id[task.id] = task  # Use the task's uuid, not the request param
 
-    non_downloadable: list[dict[str, Any]] = []
+    non_downloadable: list[NonDownloadableItem] = []
     for task_id in body.task_ids:
         task = tasks_by_id[task_id]
         if task.status != "completed":
             non_downloadable.append(
-                {
-                    "task_id": str(task_id),
-                    "status": task.status,
-                    "reason": "not_completed",
-                }
+                NonDownloadableItem(
+                    task_id=task_id,
+                    status=task.status,
+                    reason="not_completed",
+                )
             )
         elif not task.upstream_task_id:
             non_downloadable.append(
-                {
-                    "task_id": str(task_id),
-                    "status": task.status,
-                    "reason": "missing_upstream_task_id",
-                }
+                NonDownloadableItem(
+                    task_id=task_id,
+                    status=task.status,
+                    reason="missing_upstream_task_id",
+                )
             )
 
     if non_downloadable:
         return JSONResponse(
             status_code=409,
-            content={
-                "detail": "One or more tasks are not available for download",
-                "non_downloadable": non_downloadable,
-            },
+            content=NonDownloadableError(
+                detail="One or more tasks are not available for download",
+                non_downloadable=non_downloadable,
+            ).model_dump(mode="json"),
         )
 
     included: list[dict[str, str]] = []
