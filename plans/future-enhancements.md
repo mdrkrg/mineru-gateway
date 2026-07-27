@@ -563,7 +563,7 @@ class RedisTokenBucket:
 | **并发/大文件集成测试** | 当前 91 个单元测试，缺乏真正的大文件（>100MB）传输、高并发提交、DB 竞争场景的集成测试 | 持续补充 |
 | **端到端回归测试** | 当前仅手动 e2e 测试接真实 upstream，建议 Docker Compose 起 mineru-api 做 CI 回归 | `scripts/e2e.sh` + CI job |
 | **日志采样** | 高频端点（如 `/health`）会产生大量访问日志；可加 sampling 配置 | 10 行 |
-| **CORS 配置** | 当前无 CORS 中间件；若被浏览器前端消费需加 | 5 行 + 配置 |
+| **CORS 配置** | ~~当前无 CORS 中间件；若被浏览器前端消费需加~~ 已实现 (`CORSMiddleware` + `GATEWAY_CORS_*` 配置) | 5 行 + 配置 |
 
 ## D. 建议执行顺序
 
