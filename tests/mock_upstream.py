@@ -28,6 +28,7 @@ class MockState:
     health_raises: bool = False  # simulate upstream /health being unreachable
     submit_status: int = 202  # status code returned by POST /tasks
     submit_malformed: bool = False  # return 202 without a task_id
+    submit_raw_body: str | None = None  # return 202 with raw text body (non-JSON)
     parse_status: int = 200  # status code returned by POST /file_parse
     cancel_raises: bool = False  # simulate DELETE /tasks/{id} being unreachable
     submit_raises: bool = False  # simulate POST /tasks connection failure
@@ -56,6 +57,7 @@ class MockState:
         self.health_raises = False
         self.submit_status = 202
         self.submit_malformed = False
+        self.submit_raw_body = None
         self.parse_status = 200
         self.cancel_raises = False
         self.submit_raises = False
@@ -98,6 +100,8 @@ def create_mock_upstream() -> FastAPI:
     async def submit_task(request: Request):
         if state.submit_raises:
             raise RuntimeError("upstream unreachable")
+        if state.submit_raw_body is not None:
+            return PlainTextResponse(status_code=202, content=state.submit_raw_body)
         form = await request.form()
         form_data: dict = {}
         file_names: list[str] = []

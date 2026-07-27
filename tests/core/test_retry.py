@@ -123,3 +123,22 @@ async def test_retry_marks_failed_on_malformed_response(app, upstream_client, tm
         assert refreshed.status == "failed"
         # Non-transient failure must NOT consume a retry.
         assert refreshed.retry_count == 0
+
+
+async def test_retry_marks_failed_on_non_json_202(app, upstream_client, tmp_path):
+    """§6.4: 上游返回 202 但 body 非 JSON → 非瞬时故障, 直接判 failed, 不消耗重试."""
+    db = app.state.db
+    upstream = UpstreamClient(upstream_client)
+    cache = FileCache(str(tmp_path))
+    async with db.session_factory() as session:
+        key_id = await _seed_key(session)
+        task = await _retryable_task(session, cache, key_id)
+        task_id = task.id
+
+    mock_state.submit_raw_body = "not json"
+    await retry.retry_once(db, upstream, cache, max_retries=3)
+
+    async with db.session_factory() as session:
+        refreshed = await service.get(session, task_id)
+        assert refreshed.status == "failed"
+        assert refreshed.retry_count == 0
