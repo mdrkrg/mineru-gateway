@@ -142,3 +142,26 @@ async def test_retry_marks_failed_on_non_json_202(app, upstream_client, tmp_path
         refreshed = await service.get(session, task_id)
         assert refreshed.status == "failed"
         assert refreshed.retry_count == 0
+        assert "not json" in refreshed.error_message
+
+
+async def test_retry_captures_upstream_error_body_on_reject(
+    app, upstream_client, tmp_path
+):
+    """§6.4: 上游拒绝 (非 202) 时, 将上游错误 body 写入 error_message 供诊断."""
+    db = app.state.db
+    upstream = UpstreamClient(upstream_client)
+    cache = FileCache(str(tmp_path))
+    async with db.session_factory() as session:
+        key_id = await _seed_key(session)
+        task = await _retryable_task(session, cache, key_id)
+        task_id = task.id
+
+    mock_state.submit_status = 400
+    await retry.retry_once(db, upstream, cache, max_retries=3)
+
+    async with db.session_factory() as session:
+        refreshed = await service.get(session, task_id)
+        assert refreshed.status == "failed"
+        assert refreshed.retry_count == 0
+        assert "upstream error" in refreshed.error_message
