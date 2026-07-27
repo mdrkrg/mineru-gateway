@@ -107,6 +107,23 @@ async def test_submit_upstream_non_202_surfaces_error(client, api_key, sample_fi
     assert resp.json() == {"detail": "upstream error"}
 
 
+async def test_submit_upstream_non_json_202_returns_502(client, api_key, sample_files):
+    """§6.2: 上游返回 202 但 body 非 JSON → 502, 不创建 TaskRecord."""
+    mock_state.submit_raw_body = "not json"
+    resp = await client.post(
+        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+    )
+    assert resp.status_code == 502
+
+    from sqlalchemy import func, select
+
+    from mineru_gateway.models import TaskRecord
+
+    async with client._transport.app.state.db.session_factory() as session:
+        count = await session.scalar(select(func.count()).select_from(TaskRecord))
+        assert count == 0
+
+
 async def test_submit_accepted_when_upstream_full(client, api_key, sample_files):
     """arch-design s3.4 / mvp s3.5: async POST /tasks does not check upstream
     free_slots before submission (no health gating). Gateway relies on per-key
