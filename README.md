@@ -99,6 +99,11 @@ All settings use the `GATEWAY_` env prefix.
 | `GATEWAY_POLL_FAILURE_THRESHOLD` | `3` | Consecutive poll failures before marking retryable |
 | `GATEWAY_JSON_LOGS` | `true` | Emit structured JSON logs |
 | `GATEWAY_LOG_LEVEL` | `INFO` | Log level |
+| `GATEWAY_CORS_ALLOW_ORIGINS` | `*` | Allowed origins (comma-separated or JSON array) |
+| `GATEWAY_CORS_ALLOW_METHODS` | `*` | Allowed HTTP methods |
+| `GATEWAY_CORS_ALLOW_HEADERS` | `*` | Allowed request headers |
+| `GATEWAY_CORS_ALLOW_CREDENTIALS` | `false` | Allow credentials in cross-origin requests |
+| `GATEWAY_CORS_MAX_AGE` | `600` | Preflight response cache duration (s) |
 
 ## Development
 

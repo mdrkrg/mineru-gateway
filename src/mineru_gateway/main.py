@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from .auth.api_keys_me import router as api_keys_me_router
 from .auth.jwt_routes import router as jwt_router
@@ -132,6 +133,14 @@ def create_app(
 
     app = FastAPI(title="mineru-gateway", version="0.1.0", lifespan=lifespan)
     app.add_middleware(RequestLoggingMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allow_origins,
+        allow_methods=settings.cors_allow_methods,
+        allow_headers=settings.cors_allow_headers,
+        allow_credentials=settings.cors_allow_credentials,
+        max_age=settings.cors_max_age,
+    )
 
     # Section 6.3: always-registered routes
     app.include_router(auth_router)

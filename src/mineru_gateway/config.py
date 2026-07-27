@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -64,6 +65,39 @@ class Settings(BaseSettings):
     oidc_providers: list[OIDCProviderConfig] = []
     oauth_redirect_base_url: str = ""
     oauth_frontend_redirect_url: str = ""
+
+    # --- CORS ---
+    cors_allow_origins: list[str] = ["*"]
+    cors_allow_methods: list[str] = ["*"]
+    cors_allow_headers: list[str] = ["*"]
+    cors_allow_credentials: bool = False
+    cors_max_age: int = 600
+
+    @field_validator(
+        "cors_allow_origins",
+        "cors_allow_methods",
+        "cors_allow_headers",
+        mode="before",
+    )
+    @classmethod
+    def _parse_cors_list(cls, v: object, info: ValidationInfo) -> list[str]:
+        if isinstance(v, str):
+            v = v.strip()
+            if v.startswith("[") and v.endswith("]"):
+                try:
+                    parsed = json.loads(v)
+                except json.JSONDecodeError:
+                    raise ValueError(
+                        f"{info.field_name} must be a valid JSON array or "
+                        f"a comma-separated list, got: {v!r}"
+                    ) from None
+                if not isinstance(parsed, list):
+                    raise ValueError(
+                        f"{info.field_name} must be a JSON array, got {type(parsed).__name__}"
+                    )
+                return parsed
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return v  # type: ignore[return-value]
 
 
 @lru_cache
