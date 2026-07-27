@@ -104,6 +104,7 @@ async def test_submit_upstream_non_202_surfaces_error(client, api_key, sample_fi
         "/tasks", headers={"X-API-Key": api_key}, files=sample_files
     )
     assert resp.status_code == 500
+    assert resp.json() == {"detail": "upstream error"}
 
 
 async def test_submit_accepted_when_upstream_full(client, api_key, sample_files):

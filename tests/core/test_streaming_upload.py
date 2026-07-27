@@ -537,6 +537,7 @@ async def test_t10_upstream_rejection_cleans_cache(tmp_path):
             files=_example_files(),
         )
         assert resp.status_code == 400
+        assert resp.json() == {"detail": "upstream error"}
         assert "upstream error" in resp.text, "must relay upstream error message"
 
         # Cache directory must be cleaned up
