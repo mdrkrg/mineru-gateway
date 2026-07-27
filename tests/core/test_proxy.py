@@ -891,3 +891,28 @@ async def test_file_parse_ignores_idempotency_key(client, api_key, sample_files)
     assert resp2.status_code == 200
     assert "X-Idempotency-Key-Replayed" not in resp2.headers
     assert resp2.json()["markdown"] == "# parsed"
+
+
+async def test_unhandled_exception_returns_500_json(app, api_key, sample_files):
+    """Unhandled exceptions produce JSON {"detail": "Internal server error"}."""
+    import httpx
+    from unittest.mock import patch
+
+    from mineru_gateway.tasks import service as task_service
+
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as c:
+        resp = await c.post(
+            "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+        )
+        task_id = resp.json()["task_id"]
+
+        with patch.object(task_service, "get_owned", side_effect=RuntimeError("boom")):
+            resp = await c.get(
+                f"/tasks/{task_id}",
+                headers={"X-API-Key": api_key},
+            )
+        assert resp.status_code == 500
+        assert resp.json() == {"detail": "Internal server error"}

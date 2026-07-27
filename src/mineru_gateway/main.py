@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from .auth.api_keys_me import router as api_keys_me_router
 from .auth.jwt_routes import router as jwt_router
@@ -141,6 +144,15 @@ def create_app(
         allow_credentials=settings.cors_allow_credentials,
         max_age=settings.cors_max_age,
     )
+
+    logger = logging.getLogger("mineru_gateway")
+
+    @app.exception_handler(Exception)
+    async def _exception_handler(_request: Request, exc: Exception) -> JSONResponse:
+        logger.exception("Unhandled exception: %s", exc)
+        return JSONResponse(
+            status_code=500, content={"detail": "Internal server error"}
+        )
 
     # Section 6.3: always-registered routes
     app.include_router(auth_router)
