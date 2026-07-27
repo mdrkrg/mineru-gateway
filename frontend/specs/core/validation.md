@@ -18,13 +18,13 @@
 function validate<S extends Type>(
   schema: S,
   data: unknown,
-): Result<S['infer'], type.errors>
+): Result<S['infer'], ArkErrors>
 ```
 
 断言：
 
 - 调用 `schema(data)`。
-- 返回值是 `type.errors` 实例 → `err(thatInstance)`。
+- 返回值是 `ArkErrors` 实例 → `err(thatInstance)`。
 - 否则 → `ok(data as S['infer'])`。
 - 泛型签名为 `validate<S extends Type>`，保证 `S['infer']` 正确推导。此签名适用于 morphing Type：当 schema 含 `.pipe(camelCase)` 等 morph 时，`S['infer']` 是 morph 后的输出类型，`schema(data)` 返回变换后的值。
 
@@ -41,8 +41,8 @@ function validateSuccess<S extends Type>(
 1. 输入 `data: unknown`（来自 `parseJson` 的原始 snake_case JSON.parsed 值，或调用方手动传入）。
 2. 调用 `validate(schema, data)`：schema 的 morph（`.pipe(camelCase)`）将 snake_case 键转为 camelCase。
    - 成功 → `ok(validated)`，类型 `S['infer']`（camelCase，因为 `infer` 取 morph 后的输出类型）。
-   - 失败 → `err({ _type: 'ValidationError', summary: <string>, issues: <type.errors 实例> })`。
-3. `summary` 取自 `type.errors` 实例的 `.summary`；若无该字段，实现可合成非空描述字符串（如 `"Schema validation failed"`）。本 spec 只要求 `summary` 为非空字符串。
+   - 失败 → `err({ _type: 'ValidationError', summary: <string>, issues: <ArkErrors 实例> })`。
+3. `summary` 取自 `ArkErrors` 实例的 `.summary`；若无该字段，实现可合成非空描述字符串（如 `"Schema validation failed"`）。本 spec 只要求 `summary` 为非空字符串。
 4. 返回的错误类型参数为 `ApiError<never>`——即"不再含 HttpError"，因为这是成功分支的失败转化，不携带 HTTP 状态码信息。
 
 ## 错误校验 `validateFailure`
@@ -71,7 +71,7 @@ function validateFailure<
       - `data` 保留请求层传入的值（空体时为 `undefined`，见 [`error-model.md` 空体约定](./error-model.md#空体约定)）。
    - **有 schema 匹配**：调用 `validate(schema, error.data)`：schema 的 morph（`.pipe(camelCase)`）将错误 body 的 snake_case 键转为 camelCase。
      - 成功 → `err(createHttpError(status, validated))`，类型 `HttpError<status, schema['infer']>`（`Data` 为 camelCase）。
-     - 失败 → `err({ _type: 'ValidationError', summary: "Schema mismatch for HTTP ${status}: ${validateError.summary}", issues: <type.errors> })`。
+     - 失败 → `err({ _type: 'ValidationError', summary: "Schema mismatch for HTTP ${status}: ${validateError.summary}", issues: <ArkErrors> })`。
 4. 返回值恒为 `err(...)`（`Result<never, ...>`），因为该函数仅在错误分支工作，不产生成功值。
 5. `InferHttpErrors<F, FB>` 的推导规则见 `error-model.md`：每个 `failures` 数字键产生 `HttpError<K, F[K]['infer']>`；`fallback` 产生 `HttpError<number, FB['infer']>`。
 
@@ -190,7 +190,7 @@ function validateRequest<S extends Type>(
 - 输入待发送 body（camelCase domain type）。
 - 调用 `validate(schema, body)`：schema 的 morph（`.pipe(snakeCase)`）将 camelCase 键转为 snake_case（wire format）。
   - 成功 → `ok(validated)`，类型 `S['infer']`（snake_case wire format），调用方将其作为 `options.json` 发送。
-  - 失败 → `err({ _type: 'ValidationError', summary: 'Request body schema mismatch: ...', issues: <type.errors> })`。
+  - 失败 → `err({ _type: 'ValidationError', summary: 'Request body schema mismatch: ...', issues: <ArkErrors> })`。
 - 失败时**不发请求**（在 `request` 之前短路）。
 - 该 composable **可选**：不需要出站校验的端点可跳过。
 
@@ -214,7 +214,7 @@ function logNonHttpErrors<E extends HttpError<number, unknown>>(
 ## 不变量清单（可测试断言）
 
 1. `validate(SchemaA, validData)` 返回 `ok`，值类型为 `SchemaA['infer']`。
-2. `validate(SchemaA, invalidData)` 返回 `err`，值为 `type.errors` 实例。
+2. `validate(SchemaA, invalidData)` 返回 `err`，值为 `ArkErrors` 实例。
 3. `validateSuccess(SchemaA)(invalidData)` 返回 `err`，`_type === 'ValidationError'`，`summary` 非空。
 4. `validateFailure({ 422: SchemaA })(createHttpError(422, validA))` 返回 `err`，值 `_type === 'HttpError'`、`status === 422`、`data` 类型为 `SchemaA['infer']`。
 5. `validateFailure({ 422: SchemaA })(createHttpError(404, whatever))` 返回 `err`，值 `_type === 'UnhandledStatusError'`、`status === 404`。

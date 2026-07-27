@@ -135,9 +135,11 @@ function passthrough(response: RawResponse): Result<RawResponse, ApiError<never>
 
 请求层基于一个预配置的 ky 实例（`ky.extend(...)`）。本 spec 定义该实例**必须**暴露的配置点，**不**定义具体策略（留给后续 auth-flow spec）。
 
+> **ky 2.x 运行时事实**：ky 实例是函数（非普通对象），hooks 在 `ky.extend({ hooks: {...} })` 时注入闭包，**不**作为实例属性暴露（`instance.hooks` 为 `undefined`）。因此本 spec 的"hook 点暴露"指**创建时可配置 + 运行时由 ky 内部调用**，非运行时数组可追加。
+
 ### `prefix`
 
-- 从环境配置读取。
+- 从 Vite 环境变量读取：`import.meta.env.VITE_API_PREFIX`，默认 `''`（同源，适用于反向代理或 Vite dev server proxy 场景）。
 - 调用点的 `url` 一律为相对路径（如 `'auth/jwt/login'`、`'tasks'`），base 由 `prefix` 提供。
 
 ### `hooks.beforeRequest`
@@ -154,7 +156,7 @@ hooks: {
 }
 ```
 
-- 该 hook 点**必须**暴露，用于 auth header 注入。
+- 该 hook 点**必须**在 ky 实例创建时可配置（通过 `ky.extend({ hooks: { beforeRequest: [...] } })`），用于 auth header 注入。
 - 注入策略（`X-API-Key` / `X-Admin-Token` / `Authorization` 三选一或组合）由后续 auth-flow spec 定义。
 - 本 spec 约束：hook 不得修改 `request.url`，只可设置 header。
 
@@ -173,7 +175,7 @@ hooks: {
 }
 ```
 
-- 该 hook 点**必须**暴露，用于 401→refresh→retry。重试通过返回 `ky.retry({ request: newReq, code: 'TOKEN_REFRESHED' })` 触发。
+- 该 hook 点**必须**在 ky 实例创建时可配置（通过 `ky.extend({ hooks: { afterResponse: [...] } })`），用于 401→refresh→retry。重试通过返回 `ky.retry({ request: newReq, code: 'TOKEN_REFRESHED' })` 触发。
 - 本 spec **不**定义实现，但声明后续 auth-flow spec 必须满足的约束（基于 `conventions.md` 前提 3）：
 
   1. **不轮换**：刷新请求 `POST /auth/jwt/refresh` 返回 `{access_token, token_type}`，不含新 `refresh_token`。retry hook 只更新存储的 `access_token`，**不得**期望或写入新 `refresh_token`。
@@ -198,7 +200,7 @@ hooks: {
 4. `options.signal` aborted → 结果为 `NetworkError`，`error.name === 'AbortError'`。
 5. `RawResponse.headers.get('x-mineru-task-id')` 在 `POST /tasks` 成功响应上返回非 null 字符串。
 6. `RawResponse.headers.get('content-disposition')` 在 `POST /tasks/result-zip` 成功响应上返回含 `filename="results.zip"` 的字符串。
-7. ky 实例的 `hooks.beforeRequest` 与 `hooks.afterResponse` 数组存在且可追加（hook 点可达）。
+7. ky 实例在创建时可通过 `ky.extend({ hooks: { beforeRequest: [...], afterResponse: [...] } })` 配置 hook；hook 在请求生命周期内由 ky 内部调用（hook 点可达）。
 8. 调用点的 `url` 是相对路径（无协议头），base 由 `prefix` 提供。
 9. `parseBlob` 返回的对象包含 `headers` 字段且其值等于 `RawResponse.headers`。
 10. `passthrough` 不调用任何 `reader` 方法，返回输入 `RawResponse`。

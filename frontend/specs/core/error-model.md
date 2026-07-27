@@ -43,7 +43,7 @@ function createHttpError<S extends number, D>(status: S, data: D): HttpError<S, 
 ```ts
 type ApiErrorBase =
   | { readonly _type: 'NetworkError'; readonly error: Error }
-  | { readonly _type: 'ValidationError'; readonly summary: string; readonly issues: type.errors | null }
+  | { readonly _type: 'ValidationError'; readonly summary: string; readonly issues: ArkErrors | null }
   | { readonly _type: 'UnhandledStatusError'; readonly status: number; readonly data: unknown }
   | { readonly _type: 'UnexpectedError'; readonly error: unknown }
 ```
@@ -53,7 +53,7 @@ type ApiErrorBase =
 | 变体 | 产生条件 |
 |------|----------|
 | `NetworkError` | 请求层捕获 `NetworkError`（ky 的 named export，网络错误，DNS 失败、连接拒绝等，`error.cause` 为原始 `Error`）、`TimeoutError`（ky 的 named export，超时）、`DOMException`（abort）。`error` 必须是 `Error` 实例。 |
-| `ValidationError` | arktype schema 校验失败，或 JSON 解析失败等无法产生 `type.errors` 的情况。`issues` 为 arktype 返回的 `type.errors` 实例（schema 校验失败时）；为 `null`（JSON 解析失败等无 arktype 错误的情况）。`summary` 是人类可读的非空字符串——schema 校验失败时取 `type.errors` 实例的 `.summary`，其他情况由实现合成描述。 |
+| `ValidationError` | arktype schema 校验失败，或 JSON 解析失败等无法产生 `ArkErrors` 的情况。`issues` 为 arktype 返回的 `ArkErrors` 实例（schema 校验失败时）；为 `null`（JSON 解析失败等无 arktype 错误的情况）。`summary` 是人类可读的非空字符串——schema 校验失败时取 `ArkErrors` 实例的 `.summary`，其他情况由实现合成描述。 |
 | `UnhandledStatusError` | 响应是 HttpError，但其状态码在调用方声明的 `failures` map 中无对应 schema，且未提供 `fallback`。`status` 为该状态码，`data` 为原始响应 body（空体时为 `undefined`）。 |
 | `UnexpectedError` | 请求层捕获到上述三类之外的任何抛出（如 ky 内部 bug、序列化异常）。`error` 为原始抛出值，类型 `unknown`。 |
 
@@ -64,7 +64,7 @@ type ApiError<E> = ApiErrorBase | E
 ```
 
 - `E`：端点 spec 注入的 `HttpError` 联合，形如 `HttpError<401, A> | HttpError<409, B>`。
-- 当 `E` 未注入（基础请求层）时，`ApiError<HttpError<number, unknown>>` = `ApiErrorBase | HttpError<number, unknown>`。
+- 当 `E` 使用默认值时（即 `ApiError` 不带泛型参数），`ApiError` = `ApiError<HttpError<number, unknown>>` = `ApiErrorBase | HttpError<number, unknown>`。
 - 经 `validateFailure` 后，`E` 被窄化为具体状态码 + schema 推导类型（见 [`InferHttpErrors`](#inferhttperrorsf-fb)）。
 
 **可扩展性契约**（核心约束）：
@@ -78,15 +78,16 @@ type ApiError<E> = ApiErrorBase | E
 每个变体提供类型守卫，签名与语义如下。守卫的实现通过检查 `_type` 字面量字段完成。
 
 ```ts
-function isHttpError<E>(error: ApiError<E>): error is Extract<ApiError<E>, { _type: 'HttpError' }>
-function isNetworkError<E>(error: ApiError<E>): error is Extract<ApiError<E>, { _type: 'NetworkError' }>
-function isValidationError<E>(error: ApiError<E>): error is Extract<ApiError<E>, { _type: 'ValidationError' }>
-function isUnhandledStatusError<E>(error: ApiError<E>): error is Extract<ApiError<E>, { _type: 'UnhandledStatusError' }>
-function isUnexpectedError<E>(error: ApiError<E>): error is Extract<ApiError<E>, { _type: 'UnexpectedError' }>
+function isHttpError<E extends HttpError<number, unknown>>(error: ApiError<E>): error is Extract<ApiError<E>, { _type: 'HttpError' }>
+function isNetworkError<E extends HttpError<number, unknown>>(error: ApiError<E>): error is Extract<ApiError<E>, { _type: 'NetworkError' }>
+function isValidationError<E extends HttpError<number, unknown>>(error: ApiError<E>): error is Extract<ApiError<E>, { _type: 'ValidationError' }>
+function isUnhandledStatusError<E extends HttpError<number, unknown>>(error: ApiError<E>): error is Extract<ApiError<E>, { _type: 'UnhandledStatusError' }>
+function isUnexpectedError<E extends HttpError<number, unknown>>(error: ApiError<E>): error is Extract<ApiError<E>, { _type: 'UnexpectedError' }>
 ```
 
 断言：
 
+- `E` 约束为 `HttpError<number, unknown>`，保证 `ApiError<E>` 始终是 `object`（`ApiErrorBase` 与 `HttpError` 均为 object），使 `'_type' in error` 类型安全。
 - 每个守卫仅检查对应 `_type` 字面量，返回 `boolean`。
 - 守卫对 `ApiError<E>` 中由 `E` 注入的 `HttpError` 变体同样适用：`isHttpError` 对任何 `HttpError<S, D>` 返回 `true`。
 

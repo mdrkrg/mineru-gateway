@@ -28,7 +28,7 @@
 |----|------|-------------------|
 | `ky` | HTTP 客户端 | `ky`（默认导出，调用形式 `ky(url, options)`）、`HTTPError`、`NetworkError`、`TimeoutError`、`isHTTPError`、`isNetworkError`、`isTimeoutError`、`Options`（`Parameters<typeof ky>[1]`）、`KyResponse` |
 | `neverthrow` | Result 类型 | `Result<T, E>`、`ResultAsync<T, E>`、`ok`、`err`、`ResultAsync` 构造器 |
-| `arktype` | 运行时 schema + 类型推导 | `type`（构造器，`type({...})` 返回 `Type`）、`Type`（schema 实例类型）、`Type['infer']`（推导出的输出 TS 类型）、`Type['inferIn']`（推导出的输入 TS 类型）、`type.errors`（校验错误类，同时也是错误值类型）、`.pipe()`（morph 链接）、`.as<>()`（编译期类型转换）、`.in` / `.out`（输入/输出 Type 提取） |
+| `arktype` | 运行时 schema + 类型推导 | `type`（构造器，`type({...})` 返回 `Type`）、`Type`（schema 实例类型）、`Type['infer']`（推导出的输出 TS 类型）、`Type['inferIn']`（推导出的输入 TS 类型）、`ArkErrors`（校验错误类 named export，等价于 `type.errors` 属性；在 TS 类型位置使用 `ArkErrors`，在运行时 `instanceof ArkErrors` 检查）、`.pipe()`（morph 链接）、`.as<>()`（编译期类型转换）、`.in` / `.out`（输入/输出 Type 提取） |
 | `change-case` | 对象键命名转换 | `camelCase`、`snakeCase`（均来自 `change-case/keys`，深度递归转换对象所有键） |
 
 ## 类型词汇表
@@ -41,13 +41,13 @@
 - `andTee`：**仅在成功分支**执行（回调接收 `T` 类型值），返回 `void`，不改变原 Result 值。
 - 本 spec 中所有 HTTP 请求与校验组合的返回值都是 `ResultAsync<T, E>` 或 `Result<T, E>`，**不**使用 `Promise` + `throw`。
 
-### arktype `Type` 与 `type.errors`
+### arktype `Type` 与 `ArkErrors`
 
 - `type({...})` 或 `type('...')` 构造一个 schema，其类型为 `Type`。
 - `Type['infer']`：从 schema 实例推导**输出** TS 类型（经 morph 变换后的类型）。若 schema 无 morph，`Type['infer']` 等于输入类型。
 - `Type['inferIn']`：从 schema 实例推导**输入** TS 类型（morph 变换前的类型）。若 schema 无 morph，`Type['inferIn']` 等于输出类型。
-- `schema(data)`：运行时校验。返回值要么是校验通过的数据（类型为 `Type['infer']`），要么是 `type.errors` 实例（校验失败）。若 schema 含 morph，校验通过时返回的数据是 morph 变换后的值。
-- `type.errors` 既是类也是值类型；其实例有 `.summary`（人类可读错误摘要字符串）属性。
+- `schema(data)`：运行时校验。返回值要么是校验通过的数据（类型为 `Type['infer']`），要么是 `ArkErrors` 实例（校验失败）。若 schema 含 morph，校验通过时返回的数据是 morph 变换后的值。
+- `ArkErrors`：arktype 的 named export，等价于 `type.errors` 属性（`type.errors === ArkErrors`）。既是类也是值类型；在 TS 类型位置使用 `ArkErrors`（不可用 `type.errors`，因 `type` 是 TS 关键字）；在运行时用 `instanceof ArkErrors` 检查。其实例有 `.summary`（人类可读错误摘要字符串）属性。
 - `.pipe(morphFn)`：将 schema 输出通过 morph 函数变换，产生新的 morphing Type。morphing Type 的 `inferIn` ≠ `infer`。
 
 ### ky `Options`
