@@ -48,7 +48,15 @@ async def retry_once(
         try:
             data, files = await cache.restore(str(task.cache_dir))
             resp = await upstream.submit_task(data, files)
-            payload = resp.json()
+            try:
+                payload = resp.json()
+            except (ValueError, Exception) as e:
+                # Non-transient: upstream returned 202 but body is not valid
+                # JSON. Fail immediately without consuming a retry.
+                async with db.session_factory() as session:
+                    await service.mark_failed(session, task.id, str(e))
+                await cache.release(task.cache_dir)
+                continue
             if resp.status_code != 202 or "task_id" not in payload:
                 # Non-transient: upstream rejected the request. Fail without
                 # consuming a retry.
