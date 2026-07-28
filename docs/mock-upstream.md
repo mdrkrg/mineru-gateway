@@ -30,7 +30,7 @@ All fields are settable via `POST /_mock/configure {"<field>": <value>}`.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `health_status` | `str` | `"healthy"` | `"healthy"` \| `"degraded"` — non-healthy → 503 |
-| `health_raises` | `bool` | `false` | Simulate `/health` unreachable (connection error) |
+| `health_raises` | `bool` | `false` | Raise `RuntimeError` in `/health` handler. FastAPI returns 500; gateway defaults to `status="unknown"` and returns 503. Does NOT simulate true unreachability (connection error). |
 | `max_concurrent` | `int` | `4` | Reported `max_concurrent_requests` in `/health` |
 | `queued` | `int` | `0` | Reported `queued_tasks` in `/health` |
 | `processing` | `int` | `0` | Reported `processing_tasks` in `/health` |
