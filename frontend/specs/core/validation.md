@@ -26,7 +26,7 @@ function validate<S extends Type>(
 - 调用 `schema(data)`。
 - 返回值是 `ArkErrors` 实例 → `err(thatInstance)`。
 - 否则 → `ok(data as S['infer'])`。
-- 泛型签名为 `validate<S extends Type>`，保证 `S['infer']` 正确推导。此签名适用于 morphing Type：当 schema 含 `.pipe(camelCase)` 等 morph 时，`S['infer']` 是 morph 后的输出类型，`schema(data)` 返回变换后的值。
+- 泛型签名为 `validate<S extends Type>`，保证 `S['infer']` 正确推导。此签名适用于 morphing Type：当 schema 含 `.pipe((x) => camelCase(x, Infinity))` 等 morph 时，`S['infer']` 是 morph 后的输出类型，`schema(data)` 返回变换后的值。
 
 ## 成功校验 `validateSuccess`
 
@@ -39,7 +39,7 @@ function validateSuccess<S extends Type>(
 断言：
 
 1. 输入 `data: unknown`（来自 `parseJson` 的原始 snake_case JSON.parsed 值，或调用方手动传入）。
-2. 调用 `validate(schema, data)`：schema 的 morph（`.pipe(camelCase)`）将 snake_case 键转为 camelCase。
+2. 调用 `validate(schema, data)`：schema 的 morph（`.pipe((x) => camelCase(x, Infinity))`）将 snake_case 键转为 camelCase。
    - 成功 → `ok(validated)`，类型 `S['infer']`（camelCase，因为 `infer` 取 morph 后的输出类型）。
    - 失败 → `err({ _type: 'ValidationError', summary: <string>, issues: <ArkErrors 实例> })`。
 3. `summary` 取自 `ArkErrors` 实例的 `.summary`；若无该字段，实现可合成非空描述字符串（如 `"Schema validation failed"`）。本 spec 只要求 `summary` 为非空字符串。
@@ -69,7 +69,7 @@ function validateFailure<
    - **无 schema 匹配**（既无 `failures[status]` 又无 `fallback`）：
       - 返回 `err({ _type: 'UnhandledStatusError', status, data: error.data })`。
       - `data` 保留请求层传入的值（空体时为 `undefined`，见 [`error-model.md` 空体约定](./error-model.md#空体约定)）。
-   - **有 schema 匹配**：调用 `validate(schema, error.data)`：schema 的 morph（`.pipe(camelCase)`）将错误 body 的 snake_case 键转为 camelCase。
+   - **有 schema 匹配**：调用 `validate(schema, error.data)`：schema 的 morph（`.pipe((x) => camelCase(x, Infinity))`）将错误 body 的 snake_case 键转为 camelCase。
      - 成功 → `err(createHttpError(status, validated))`，类型 `HttpError<status, schema['infer']>`（`Data` 为 camelCase）。
      - 失败 → `err({ _type: 'ValidationError', summary: "Schema mismatch for HTTP ${status}: ${validateError.summary}", issues: <ArkErrors> })`。
 4. 返回值恒为 `err(...)`（`Result<never, ...>`），因为该函数仅在错误分支工作，不产生成功值。
@@ -86,11 +86,11 @@ function validateFailure<
 断言（基于 `conventions.md` 前提 4 + 命名转换契约）：
 
 - `failures` **必须**逐状态码声明不同 schema。不存在"全局共享错误 schema"。
-- 每个 schema **必须**以 `.pipe(camelCase)` 结尾，并通过 `.as<{...}>()` 声明精确输出类型（`camelCase` 返回 `unknown`，见 [`conventions.md` 命名转换契约](./conventions.md#命名转换契约)）。
+- 每个 schema **必须**以 `.pipe((x) => camelCase(x, Infinity))` 结尾（`depth=Infinity` 强制深度递归；`change-case/keys` 默认 `depth=1` 仅转顶层键），并通过 `.as<{...}>()` 声明精确输出类型（`camelCase` 返回 `unknown`，见 [`conventions.md` 命名转换契约](./conventions.md#命名转换契约)）。
 - 举例（说明，非实现约束）：
-  - FastAPI 422：`failures: { 422: FastApiValidationErrorSchema }`，其中 `FastApiValidationErrorSchema = type({ detail: FastApiErrorEntrySchema.array() }).pipe(camelCase)`。`infer` = `{ detail: [...] }`（`detail` 本身无下划线，不变化）。
-  - `/tasks/result-zip` 409：`failures: { 409: ResultZipNonDownloadableSchema }`，其中 `ResultZipNonDownloadableSchema = type({ detail: 'string', non_downloadable: NonDownloadableItemSchema.array() }).pipe(camelCase)`。`inferIn` = `{ non_downloadable: [...] }`（wire format），`infer` = `{ nonDownloadable: [...] }`（domain type）。
-  - 业务错误 `{ detail: 'string' }`：`failures: { 401: type({ detail: 'string' }).pipe(camelCase) }) }`。
+  - FastAPI 422：`failures: { 422: FastApiValidationErrorSchema }`，其中 `FastApiValidationErrorSchema = type({ detail: FastApiErrorEntrySchema.array() }).pipe((x) => camelCase(x, Infinity))`。`infer` = `{ detail: [...] }`（`detail` 本身无下划线，不变化）。
+  - `/tasks/result-zip` 409：`failures: { 409: ResultZipNonDownloadableSchema }`，其中 `ResultZipNonDownloadableSchema = type({ detail: 'string', non_downloadable: NonDownloadableItemSchema.array() }).pipe((x) => camelCase(x, Infinity))`。`inferIn` = `{ non_downloadable: [...] }`（wire format），`infer` = `{ nonDownloadable: [...] }`（domain type）。**必须**传 `depth=Infinity`，否则内层 `non_downloadable[].task_id` 不会被转换。
+  - 业务错误 `{ detail: 'string' }`：`failures: { 401: type({ detail: 'string' }).pipe((x) => camelCase(x, Infinity)) }`。
 - 调用方未声明的状态码（且无 `fallback`）→ `UnhandledStatusError`，**不**静默吞掉。
 
 ## 组合契约
@@ -190,7 +190,7 @@ function validateRequest<S extends Type>(
 断言：
 
 - 输入待发送 body（camelCase domain type）。
-- 调用 `validate(schema, body)`：schema 的 morph（`.pipe(snakeCase)`）将 camelCase 键转为 snake_case（wire format）。
+- 调用 `validate(schema, body)`：schema 的 morph（`.pipe((x) => snakeCase(x, Infinity))`）将 camelCase 键转为 snake_case（wire format）。
   - 成功 → `ok(validated)`，类型 `S['infer']`（snake_case wire format），调用方将其作为 `options.json` 发送。
   - 失败 → `err({ _type: 'ValidationError', summary: 'Request body schema mismatch: ...', issues: <ArkErrors> })`。
 - 失败时**不发请求**（在 `request` 之前短路）。

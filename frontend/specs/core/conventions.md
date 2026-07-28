@@ -29,7 +29,7 @@
 | `ky` | HTTP 客户端 | `ky`（默认导出，调用形式 `ky(url, options)`）、`HTTPError`、`NetworkError`、`TimeoutError`、`isHTTPError`、`isNetworkError`、`isTimeoutError`、`Options`（`Parameters<typeof ky>[1]`）、`KyResponse` |
 | `neverthrow` | Result 类型 | `Result<T, E>`、`ResultAsync<T, E>`、`ok`、`err`、`ResultAsync` 构造器 |
 | `arktype` | 运行时 schema + 类型推导 | `type`（构造器，`type({...})` 返回 `Type`）、`Type`（schema 实例类型）、`Type['infer']`（推导出的输出 TS 类型）、`Type['inferIn']`（推导出的输入 TS 类型）、`ArkErrors`（校验错误类 named export，等价于 `type.errors` 属性；在 TS 类型位置使用 `ArkErrors`，在运行时 `instanceof ArkErrors` 检查）、`.pipe()`（morph 链接）、`.as<>()`（编译期类型转换）、`.in` / `.out`（输入/输出 Type 提取） |
-| `change-case` | 对象键命名转换 | `camelCase`、`snakeCase`（均来自 `change-case/keys`，深度递归转换对象所有键） |
+| `change-case` | 对象键命名转换 | `camelCase`、`snakeCase`（均来自 `change-case/keys`，递归转换对象键；**默认 `depth=1` 仅转换顶层键**，深度递归需显式传 `depth=Infinity`） |
 
 ## 类型词汇表
 
@@ -79,13 +79,13 @@ import { camelCase } from 'change-case/keys'
 const TaskSchema = type({
   task_id: 'string',
   file_names: 'string[]',
-}).pipe(camelCase).as<{
+}).pipe((x) => camelCase(x, Infinity)).as<{
   taskId: string
   fileNames: string[]
 }>()
 ```
 
-`camelCase` 来自 `change-case/keys`，返回值类型为 `unknown`（运行时正确转换，但编译期无法推导具体键名）。因此通过 `.as<>()` 声明输出类型。`.as<>()` 是纯编译期标记，不产生运行时开销。
+`camelCase` / `snakeCase` 来自 `change-case/keys`，返回值类型为 `unknown`（运行时正确转换，但编译期无法推导具体键名）。**默认 `depth=1` 仅转换顶层键**——对嵌套对象（如 `{ non_downloadable: [{ task_id, ... }] }`）的内层键不会被转换。本 spec 要求所有 morph 调用**显式传 `depth=Infinity`** 以递归转换所有层级。通过 `.as<>()` 声明输出类型。`.as<>()` 是纯编译期标记，不产生运行时开销。
 
 **请求 schema**（出站：camelCase → snake_case）：
 
@@ -96,15 +96,15 @@ import { snakeCase } from 'change-case/keys'
 // infer    = unknown (use as<>() for precise type)
 const ResultZipRequestSchema = type({
   taskIds: 'string[]',
-}).pipe(snakeCase).as<{
+}).pipe((x) => snakeCase(x, Infinity)).as<{
   task_ids: string[]
 }>()
 ```
 
 ### 命名转换不变量（可测试断言）
 
-1. 所有响应 schema（成功 + 错误）**必须**以 `.pipe(camelCase)` 结尾，实现运行时 snake_case → camelCase 键名转换。
-2. 所有请求 body schema **必须**以 `.pipe(snakeCase)` 结尾，实现运行时 camelCase → snake_case 键名转换。
+1. 所有响应 schema（成功 + 错误）**必须**以 `.pipe((x) => camelCase(x, Infinity))` 结尾，实现运行时 snake_case → camelCase 键名转换。**必须**显式传 `depth=Infinity`：`change-case/keys` 默认 `depth=1` 仅转顶层键，嵌套对象的内层键不会被转换。
+2. 所有请求 body schema **必须**以 `.pipe((x) => snakeCase(x, Infinity))` 结尾，实现运行时 camelCase → snake_case 键名转换（同上 `depth=Infinity` 要求）。
 3. `camelCase` / `snakeCase`（来自 `change-case/keys`）返回值类型为 `unknown`，因此 `Type['infer']` 在无 `.as<>()` 时是 `unknown`。每个 schema **必须**通过 `.as<{...}>()` 声明精确的输出类型。
 4. `validate(schema, data)` 调用 `schema(data)`，自动应用 morph。调用方传入 snake_case 数据，得到 camelCase 结果（响应）；或传入 camelCase 数据，得到 snake_case 结果（请求）。
 5. `parseJson` **不**做键名转换——它返回 `unknown`（原始 snake_case JSON.parsed 值）。转换由 schema morph 在 `validateSuccess` / `validateFailure` 内部完成。
