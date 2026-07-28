@@ -45,7 +45,7 @@ interface BodyReader {
 ```ts
 function request(
   url: string,
-  options?: ky.Options,
+  options?: Options,
 ): ResultAsync<RawResponse, ApiError<HttpError<number, unknown>>>
 ```
 

@@ -168,7 +168,7 @@ function fetchAndValidate<
 >(
   url: string,
   schemas: { success: S; failures?: F; fallbackFailure?: FB },
-  options?: ky.Options,
+  options?: Options,
 ): ResultAsync<S['infer'], ApiError<InferHttpErrors<F, FB>>>
 ```
 

@@ -26,7 +26,7 @@
 
 | 库 | 用途 | spec 中引用的导出 |
 |----|------|-------------------|
-| `ky` | HTTP 客户端 | `ky`（默认导出，调用形式 `ky(url, options)`）、`HTTPError`、`NetworkError`、`TimeoutError`、`isHTTPError`、`isNetworkError`、`isTimeoutError`、`Options`（`Parameters<typeof ky>[1]`）、`KyResponse` |
+| `ky` | HTTP 客户端 | `ky`（默认导出，调用形式 `ky(url, options)`）、`HTTPError`、`NetworkError`、`TimeoutError`、`isHTTPError`、`isNetworkError`、`isTimeoutError`、`Options`（具名 type export，`import type { Options } from 'ky'`）、`KyResponse` |
 | `neverthrow` | Result 类型 | `Result<T, E>`、`ResultAsync<T, E>`、`ok`、`err`、`ResultAsync` 构造器 |
 | `arktype` | 运行时 schema + 类型推导 | `type`（构造器，`type({...})` 返回 `Type`）、`Type`（schema 实例类型）、`Type['infer']`（推导出的输出 TS 类型）、`Type['inferIn']`（推导出的输入 TS 类型）、`ArkErrors`（校验错误类 named export，等价于 `type.errors` 属性；在 TS 类型位置使用 `ArkErrors`，在运行时 `instanceof ArkErrors` 检查）、`.pipe()`（morph 链接）、`.as<>()`（编译期类型转换）、`.in` / `.out`（输入/输出 Type 提取） |
 | `change-case` | 对象键命名转换 | `camelCase`、`snakeCase`（均来自 `change-case/keys`，递归转换对象键；**默认 `depth=1` 仅转换顶层键**，深度递归需显式传 `depth=Infinity`） |
@@ -52,7 +52,7 @@
 
 ### ky `Options`
 
-- `Parameters<typeof ky>[1]`：ky 调用的第二参数类型。包含 `method`、`headers`、`json`、`searchParams`、`prefix`、`baseUrl`、`signal`、`hooks`、`retry`、`timeout`、`throwHttpErrors` 等。
+- ky 具名导出 `Options` type（`import type { Options } from 'ky'`），是 ky 调用的第二参数类型。包含 `method`、`headers`、`json`、`searchParams`、`prefix`、`baseUrl`、`signal`、`hooks`、`retry`、`timeout`、`throwHttpErrors` 等。
 - 本 spec 中所有请求契约的 options 形参类型均为 `Options` 或其子集。
 
 ## 命名转换契约
