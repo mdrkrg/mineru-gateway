@@ -184,6 +184,15 @@ export const UserUpdateRequestSchema = defineRequestSchema(
   },
 );
 
+// ===== Logout =====
+
+export const LogoutResponseSchema = defineResponseSchema(
+  {
+    message: 'string',
+  },
+  {} as { message: string },
+);
+
 // ===== Type exports =====
 
 export type ApiKeyCreateRequest = typeof ApiKeyCreateRequestSchema.infer;
