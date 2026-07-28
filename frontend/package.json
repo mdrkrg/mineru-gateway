@@ -7,9 +7,13 @@
     "start": "vite",
     "dev": "vite",
     "build": "vite build",
-    "serve": "vite preview"
+    "serve": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/node": "^26.1.1",
     "@unocss/preset-mini": "^66.5.0",
     "@unocss/vite": "^66.5.0",
     "solid-devtools": "^0.34.3",
