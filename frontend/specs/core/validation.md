@@ -86,11 +86,11 @@ function validateFailure<
 断言（基于 `conventions.md` 前提 4 + 命名转换契约）：
 
 - `failures` **必须**逐状态码声明不同 schema。不存在"全局共享错误 schema"。
-- 每个 schema **必须**以 `.pipe((x) => camelCase(x, Infinity))` 结尾（`depth=Infinity` 强制深度递归；`change-case/keys` 默认 `depth=1` 仅转顶层键），并通过 `.as<{...}>()` 声明精确输出类型（`camelCase` 返回 `unknown`，见 [`conventions.md` 命名转换契约](./conventions.md#命名转换契约)）。
+- 每个 schema **必须**通过 `defineResponseSchema` 构造（见 [`conventions.md` Schema 构造便利契约](./conventions.md#schema-构造便利契约)），内部统一应用 `.pipe((x) => camelCase(x, Infinity))`（`depth=Infinity` 强制深度递归）与 `.as<>()`（声明精确输出类型）。
 - 举例（说明，非实现约束）：
-  - FastAPI 422：`failures: { 422: FastApiValidationErrorSchema }`，其中 `FastApiValidationErrorSchema = type({ detail: FastApiErrorEntrySchema.array() }).pipe((x) => camelCase(x, Infinity))`。`infer` = `{ detail: [...] }`（`detail` 本身无下划线，不变化）。
-  - `/tasks/result-zip` 409：`failures: { 409: ResultZipNonDownloadableSchema }`，其中 `ResultZipNonDownloadableSchema = type({ detail: 'string', non_downloadable: NonDownloadableItemSchema.array() }).pipe((x) => camelCase(x, Infinity))`。`inferIn` = `{ non_downloadable: [...] }`（wire format），`infer` = `{ nonDownloadable: [...] }`（domain type）。**必须**传 `depth=Infinity`，否则内层 `non_downloadable[].task_id` 不会被转换。
-  - 业务错误 `{ detail: 'string' }`：`failures: { 401: type({ detail: 'string' }).pipe((x) => camelCase(x, Infinity)) }`。
+  - FastAPI 422：`failures: { 422: FastApiValidationErrorSchema }`，其中 `FastApiValidationErrorSchema = defineResponseSchema({ detail: FastApiErrorEntrySchema.array() }, {} as { detail: [...] })`。`detail` 本身无下划线，不变化。
+  - `/tasks/result-zip` 409：`failures: { 409: ResultZipNonDownloadableSchema }`，其中 `ResultZipNonDownloadableSchema = defineResponseSchema({ detail: 'string', non_downloadable: NonDownloadableItemSchema.array() }, {} as { detail: string; nonDownloadable: [...] })`。`inferIn` = `{ non_downloadable: [...] }`（wire format），`infer` = `{ nonDownloadable: [...] }`（domain type）。helper 内部已传 `depth=Infinity`，内层 `non_downloadable[].task_id` 会被转换。
+  - 业务错误 `{ detail: 'string' }`：`failures: { 401: defineResponseSchema({ detail: 'string' }, {} as { detail: string }) }`。
 - 调用方未声明的状态码（且无 `fallback`）→ `UnhandledStatusError`，**不**静默吞掉。
 
 ## 组合契约
@@ -190,7 +190,7 @@ function validateRequest<S extends Type>(
 断言：
 
 - 输入待发送 body（camelCase domain type）。
-- 调用 `validate(schema, body)`：schema 的 morph（`.pipe((x) => snakeCase(x, Infinity))`）将 camelCase 键转为 snake_case（wire format）。
+- 调用 `validate(schema, body)`：schema 的 morph（`defineRequestSchema` 内部的 `.pipe((x) => snakeCase(x, Infinity))`）将 camelCase 键转为 snake_case（wire format）。
   - 成功 → `ok(validated)`，类型 `S['infer']`（snake_case wire format），调用方将其作为 `options.json` 发送。
    - 失败 → `err({ _type: 'ValidationError', status: null, summary: 'Request body schema mismatch: ...', issues: <ArkErrors> })`。`status: null` 因出站校验不携带 HTTP 状态码。
 - 失败时**不发请求**（在 `request` 之前短路）。

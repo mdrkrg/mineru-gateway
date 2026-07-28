@@ -72,40 +72,73 @@
 **响应 schema**（入站：snake_case → camelCase）：
 
 ```ts
-import { camelCase } from 'change-case/keys'
+import { defineResponseSchema } from '...'
 
 // inferIn = { task_id: string, file_names: string[] }   (wire format)
-// infer    = unknown (camelCase returns unknown; use as<>() for precise type)
-const TaskSchema = type({
-  task_id: 'string',
-  file_names: 'string[]',
-}).pipe((x) => camelCase(x, Infinity)).as<{
-  taskId: string
-  fileNames: string[]
-}>()
+// infer    = { taskId: string, fileNames: string[] }    (domain type)
+const TaskSchema = defineResponseSchema(
+  { task_id: 'string', file_names: 'string[]' },
+  {} as { taskId: string; fileNames: string[] },
+)
 ```
 
-`camelCase` / `snakeCase` 来自 `change-case/keys`，返回值类型为 `unknown`（运行时正确转换，但编译期无法推导具体键名）。**默认 `depth=1` 仅转换顶层键**——对嵌套对象（如 `{ non_downloadable: [{ task_id, ... }] }`）的内层键不会被转换。本 spec 要求所有 morph 调用**显式传 `depth=Infinity`** 以递归转换所有层级。通过 `.as<>()` 声明输出类型。`.as<>()` 是纯编译期标记，不产生运行时开销。
+`camelCase` / `snakeCase` 来自 `change-case/keys`，返回值类型为 `unknown`（运行时正确转换，但编译期无法推导具体键名）。**默认 `depth=1` 仅转换顶层键**——对嵌套对象（如 `{ non_downloadable: [{ task_id, ... }] }`）的内层键不会被转换。本 spec 要求所有 morph 调用**显式传 `depth=Infinity`** 以递归转换所有层级（helper 内部已统一应用）。通过 `.as<>()` 声明输出类型；`.as<>()` 是纯编译期标记，不产生运行时开销。
 
 **请求 schema**（出站：camelCase → snake_case）：
 
 ```ts
-import { snakeCase } from 'change-case/keys'
+import { defineRequestSchema } from '...'
 
 // inferIn = { taskIds: string[] }                        (domain type)
-// infer    = unknown (use as<>() for precise type)
-const ResultZipRequestSchema = type({
-  taskIds: 'string[]',
-}).pipe((x) => snakeCase(x, Infinity)).as<{
-  task_ids: string[]
-}>()
+// infer    = { task_ids: string[] }                      (wire format)
+const ResultZipRequestSchema = defineRequestSchema(
+  { taskIds: 'string[]' },
+  {} as { task_ids: string[] },
+)
+```
+
+### Schema 构造便利契约
+
+`.pipe((x) => camelCase(x, Infinity)).as<{...}>()` / `.pipe((x) => snakeCase(x, Infinity)).as<{...}>()` 是每个 schema 都要重复的 boilerplate。spec 声明**必须**存在两个 helper 收编该 boilerplate，签名等价于：
+
+```ts
+function defineResponseSchema<const D, const O>(
+  def: D,
+  output: O,
+): Type & { infer: O; inferIn: D }
+
+function defineRequestSchema<const D, const O>(
+  def: D,
+  output: O,
+): Type & { infer: O; inferIn: D }
+```
+
+行为断言：
+
+- `defineResponseSchema(def, output)`：内部等价于 `type(def).pipe((x) => camelCase(x, Infinity)).as<output>()`。运行时执行深度递归 snake_case → camelCase；编译期把 `Type['infer']` 锁定为 `O`，`Type['inferIn']` 为 `type(def)` 推导的输入类型。
+- `defineRequestSchema(def, output)`：同上，但用 `snakeCase`（camelCase → snake_case）。典型用法 `output` 即 wire format 类型。
+- 调用方**不得**绕过这两个 helper 直接写 `.pipe(camelCase)` 或 `.pipe(snakeCase)` 形式的 schema（保证 `depth=Infinity` 与 `.as<>()` 不被遗漏）。无 morph 的纯校验 schema 不在此约束内。
+- 函数名仅作说明，实现可任意命名；只要满足签名与行为。
+
+**用法**：
+
+```ts
+const TaskSchema = defineResponseSchema(
+  { task_id: 'string', file_names: 'string[]' },
+  {} as { taskId: string; fileNames: string[] },
+)
+
+const ResultZipRequestSchema = defineRequestSchema(
+  { taskIds: 'string[]' },
+  {} as { task_ids: string[] },
+)
 ```
 
 ### 命名转换不变量（可测试断言）
 
-1. 所有响应 schema（成功 + 错误）**必须**以 `.pipe((x) => camelCase(x, Infinity))` 结尾，实现运行时 snake_case → camelCase 键名转换。**必须**显式传 `depth=Infinity`：`change-case/keys` 默认 `depth=1` 仅转顶层键，嵌套对象的内层键不会被转换。
-2. 所有请求 body schema **必须**以 `.pipe((x) => snakeCase(x, Infinity))` 结尾，实现运行时 camelCase → snake_case 键名转换（同上 `depth=Infinity` 要求）。
-3. `camelCase` / `snakeCase`（来自 `change-case/keys`）返回值类型为 `unknown`，因此 `Type['infer']` 在无 `.as<>()` 时是 `unknown`。每个 schema **必须**通过 `.as<{...}>()` 声明精确的输出类型。
+1. 所有响应 schema（成功 + 错误）**必须**通过 `defineResponseSchema` 构造（内部 `.pipe((x) => camelCase(x, Infinity))` + `.as<>()`），实现运行时 snake_case → camelCase 键名转换。**必须**显式传 `depth=Infinity`：`change-case/keys` 默认 `depth=1` 仅转顶层键，嵌套对象的内层键不会被转换。
+2. 所有请求 body schema **必须**通过 `defineRequestSchema` 构造（内部 `.pipe((x) => snakeCase(x, Infinity))` + `.as<>()`），实现运行时 camelCase → snake_case 键名转换（同上 `depth=Infinity` 要求）。
+3. `camelCase` / `snakeCase`（来自 `change-case/keys`）返回值类型为 `unknown`，因此 `Type['infer']` 在无 `.as<>()` 时是 `unknown`。两个 helper 内部已统一应用 `.as<>()`，调用方通过 `output` 参数声明精确输出类型。
 4. `validate(schema, data)` 调用 `schema(data)`，自动应用 morph。调用方传入 snake_case 数据，得到 camelCase 结果（响应）；或传入 camelCase 数据，得到 snake_case 结果（请求）。
 5. `parseJson` **不**做键名转换——它返回 `unknown`（原始 snake_case JSON.parsed 值）。转换由 schema morph 在 `validateSuccess` / `validateFailure` 内部完成。
 6. `parseBlob` / `parseArrayBuffer` / `passthrough` **不**做键名转换（二进制响应无 JSON 键）。
