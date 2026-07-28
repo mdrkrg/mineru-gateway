@@ -45,6 +45,19 @@ uv run uvicorn mineru_gateway.main:create_app --factory --port 8000 --workers 1
 
 Install pre-commit hooks (`uv run pre-commit install`) to auto-run ruff-check, ruff-format, and uv-lock before commit.
 
+## Mock e2e runner
+
+```bash
+# Start mock upstream + gateway (backend only)
+uv run python tests/e2e/run_mock.py
+
+# Start mock upstream + gateway + frontend (when frontend/ is present)
+uv run python tests/e2e/run_mock.py --frontend
+```
+
+This starts three services on auto-assigned ports.
+See `docs/mock-upstream.md` for the mock control API reference.
+
 ## Critical constraints
 
 - **Single instance, single worker only.** `uvicorn --workers 1`. The rate limiter

@@ -210,6 +210,7 @@ def main() -> None:
     print()
     print("  Ctrl+C to stop all services")
     print("────────────────────────────────────────────")
+    print("  Full mock API reference: docs/mock-upstream.md")
 
     # 5. Wait for any child to exit
     while True:
