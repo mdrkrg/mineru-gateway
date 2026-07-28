@@ -31,6 +31,10 @@ packages = ["src/mineru_gateway"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "e2e: end-to-end tests against real HTTP (subprocess gateway + mock upstream)",
+    "real_upstream: tests that require a running mineru-api/mineru-router deployment",
+]
 
 [dependency-groups]
 dev = [
