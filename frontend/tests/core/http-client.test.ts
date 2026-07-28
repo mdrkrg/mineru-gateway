@@ -98,7 +98,6 @@ function makeHttpError(status: number, data: unknown): InstanceType<typeof HTTPE
 
 beforeEach(() => {
   m.mockReset();
-  m.extend.mockClear();
 });
 
 // ---------------------------------------------------------------------------

@@ -31,14 +31,19 @@ const VITE_API_PREFIX: string =
     ? ((import.meta as unknown as Record<string, { VITE_API_PREFIX?: string }>).env?.VITE_API_PREFIX ?? '')
     : '';
 
+let _api: typeof ky_default | null = null;
+
 function getApi(): typeof ky_default {
-  return ky_default.extend({
-    prefix: VITE_API_PREFIX,
-    hooks: {
-      beforeRequest: [],
-      afterResponse: [],
-    },
-  });
+  if (!_api) {
+    _api = ky_default.extend({
+      prefix: VITE_API_PREFIX,
+      hooks: {
+        beforeRequest: [],
+        afterResponse: [],
+      },
+    });
+  }
+  return _api;
 }
 
 export function request(
