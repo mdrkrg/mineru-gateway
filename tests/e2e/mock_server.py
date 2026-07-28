@@ -1,6 +1,6 @@
 """Standalone mock MinerU upstream server for e2e tests.
 
-Runs as a real uvicorn HTTP process.  Behaviour is controllable via
+Runs as a uvicorn HTTP process. Behaviour is controllable via
 `POST /_mock/configure` and `POST /_mock/reset` so that e2e tests
 can simulate upstream errors, unhealthy states, and status transitions
 over a real TCP connection.
@@ -23,7 +23,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 # ---------------------------------------------------------------------------
-# Controllable state (module-level -- the server is a single uvicorn worker)
+# Controllable state (module-level - the server is a single uvicorn worker)
 # ---------------------------------------------------------------------------
 
 
@@ -88,7 +88,7 @@ state = MockState()
 
 
 # ---------------------------------------------------------------------------
-# FastAPI application -- upstream endpoints
+# FastAPI application - upstream endpoints
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="mock-mineru-e2e")
@@ -104,8 +104,8 @@ def _unsupported_file(filename: str, content: bytes) -> str | None:
     """Return the extension if *content* does not match its MIME magic bytes.
 
     Mirrors real mineru-router rejection: when content_validation is True
-    and a file claims to be PDF but does not start with ``%PDF-``, the
-    upstream returns ``400 {"detail": "Unsupported file type: …"}``.
+    and a file claims to be PDF but does not start with `%PDF-`, the
+    upstream returns `400 {"detail": "Unsupported file type: ..."}`.
     """
     if not state.content_validation:
         return None
