@@ -1,6 +1,6 @@
 import type { ResultAsync } from 'neverthrow';
 import type { ApiError, HttpError } from '../../core/error-model';
-import { fetchAndValidate, validateRequest, validateSuccess } from '../../core/validation';
+import { fetchAndValidate, fetchBinaryAndValidate, validateRequest, validateSuccess } from '../../core/validation';
 import { request, parseJson, parseBlob, passthrough } from '../../core/http-client';
 import type { BlobResult, RawResponse } from '../../core/http-client';
 import { ErrorDetailSchema } from '../schemas/shared';
@@ -201,11 +201,13 @@ export function downloadResultZip(
   const validated = validateRequest(ResultZipRequestSchema)({ taskIds });
   if (validated.isErr()) return validated as never;
 
-  return request('tasks/result-zip', {
+  return fetchBinaryAndValidate('tasks/result-zip', {
+    failures: { 409: NonDownloadableErrorSchema },
+  }, {
     method: 'POST',
     json: validated.value,
     headers: { 'X-API-Key': apiKey },
-  }).andThen(parseBlob) as ResultAsync<
+  }) as ResultAsync<
     BlobResult,
     ApiError<HttpError<409, NonDownloadableError>>
   >;
