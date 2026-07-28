@@ -43,7 +43,7 @@ function createHttpError<S extends number, D>(status: S, data: D): HttpError<S, 
 ```ts
 type ApiErrorBase =
   | { readonly _type: 'NetworkError'; readonly error: Error }
-  | { readonly _type: 'ValidationError'; readonly summary: string; readonly issues: ArkErrors | null }
+  | { readonly _type: 'ValidationError'; readonly status: number | null; readonly summary: string; readonly issues: ArkErrors | null }
   | { readonly _type: 'UnhandledStatusError'; readonly status: number; readonly data: unknown }
   | { readonly _type: 'UnexpectedError'; readonly error: unknown }
 ```
@@ -53,7 +53,7 @@ type ApiErrorBase =
 | 变体 | 产生条件 |
 |------|----------|
 | `NetworkError` | 请求层捕获 `NetworkError`（ky 的 named export，网络错误，DNS 失败、连接拒绝等，`error.cause` 为原始 `Error`）、`TimeoutError`（ky 的 named export，超时）、`DOMException`（abort）。`error` 必须是 `Error` 实例。 |
-| `ValidationError` | arktype schema 校验失败，或 JSON 解析失败等无法产生 `ArkErrors` 的情况。`issues` 为 arktype 返回的 `ArkErrors` 实例（schema 校验失败时）；为 `null`（JSON 解析失败等无 arktype 错误的情况）。`summary` 是人类可读的非空字符串——schema 校验失败时取 `ArkErrors` 实例的 `.summary`，其他情况由实现合成描述。 |
+| `ValidationError` | arktype schema 校验失败，或 JSON 解析失败等无法产生 `ArkErrors` 的情况。`issues` 为 arktype 返回的 `ArkErrors` 实例（schema 校验失败时）；为 `null`（JSON 解析失败等无 arktype 错误的情况）。`summary` 是人类可读的非空字符串——schema 校验失败时取 `ArkErrors` 实例的 `.summary`，其他情况由实现合成描述。`status`：当 ValidationError 源自 `validateFailure` 对 HttpError body 的 schema 校验失败时，为该 HttpError 的 HTTP 状态码（`number`）；其他来源（`parseJson` 失败、`validateSuccess` 失败、`validateRequest` 失败）为 `null`。 |
 | `UnhandledStatusError` | 响应是 HttpError，但其状态码在调用方声明的 `failures` map 中无对应 schema，且未提供 `fallback`。`status` 为该状态码，`data` 为原始响应 body（空体时为 `undefined`）。 |
 | `UnexpectedError` | 请求层捕获到上述三类之外的任何抛出（如 ky 内部 bug、序列化异常）。`error` 为原始抛出值，类型 `unknown`。 |
 

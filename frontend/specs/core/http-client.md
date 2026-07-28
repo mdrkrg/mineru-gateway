@@ -81,7 +81,7 @@ function parseJson(response: RawResponse): ResultAsync<unknown, ApiError<never>>
 
 - 调用 `response.reader.json()`。
 - 成功：`ok(parsed)`，`parsed` 类型为 `unknown`（交由 `validateSuccess` 校验具体 schema）。
-- 抛错（body 不是合法 JSON）：`err({ _type: 'ValidationError', summary: 'Response body is not valid JSON', issues: null })`。`issues` 为 `null` 因为 JSON 解析失败不产生 arktype 错误实例（见 [`error-model.md` `ValidationError`](./error-model.md#基础错误联合-apierrorbase)）。
+- 抛错（body 不是合法 JSON）：`err({ _type: 'ValidationError', status: null, summary: 'Response body is not valid JSON', issues: null })`。`issues` 为 `null` 因为 JSON 解析失败不产生 arktype 错误实例；`status` 为 `null` 因为解析层无 HTTP 状态码可携带（响应已成功 2xx，只是 body 非 JSON）（见 [`error-model.md` `ValidationError`](./error-model.md#基础错误联合-apierrorbase)）。
 
 ### Blob 解析器
 
