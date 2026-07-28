@@ -763,39 +763,30 @@ describe('validation: fetchBinaryAndValidate (form 5)', () => {
   it('returns err(HttpError<409>) for 409 without triggering parseBlob (invariant 14)', async () => {
     // Spec: validation.md invariants 10 & 14 - on 409, parseBlob must NOT
     // be triggered. The error branch short-circuits before andThen(parseBlob).
-    // We verify by spying on the reader's blob() method.
-    const blobSpy = vi.fn(() => Promise.resolve(new Blob()));
-    const jsonSpy = vi.fn(() => Promise.resolve(null));
-    const textSpy = vi.fn(() => Promise.resolve(''));
-    const abSpy = vi.fn(() => Promise.resolve(new ArrayBuffer(0)));
-
-    const httpErr = new kyMock.HTTPError(
-      new Response(
-        JSON.stringify({
-          detail: 'not available',
-          non_downloadable: [
-            { task_id: 't1', status: 'failed', reason: 'not_completed' },
-          ],
-        }),
-        { status: 409, headers: { 'Content-Type': 'application/json' } },
-      ),
-      new Request('http://test'),
-      {},
+    // We verify by spying on the real Response's body methods — if the
+    // implementation incorrectly reads error.response.json/blob() instead of
+    // using error.data, the spies will record the call.
+    const response = new Response(
+      JSON.stringify({
+        detail: 'not available',
+        non_downloadable: [
+          { task_id: 't1', status: 'failed', reason: 'not_completed' },
+        ],
+      }),
+      { status: 409, headers: { 'Content-Type': 'application/json' } },
     );
+    const blobSpy = vi.spyOn(response, 'blob');
+    const jsonSpy = vi.spyOn(response, 'json');
+    const textSpy = vi.spyOn(response, 'text');
+    const arrayBufferSpy = vi.spyOn(response, 'arrayBuffer');
+
+    const httpErr = new kyMock.HTTPError(response, new Request('http://test'), {});
     httpErr.data = {
       detail: 'not available',
       non_downloadable: [
         { task_id: 't1', status: 'failed', reason: 'not_completed' },
       ],
     };
-    // Override the response to use our spies
-    Object.defineProperty(httpErr, 'response', {
-      value: {
-        status: 409,
-        headers: new Headers({ 'Content-Type': 'application/json' }),
-        body: { blob: blobSpy, json: jsonSpy, text: textSpy, arrayBuffer: abSpy },
-      },
-    });
     kyMock.fn.mockRejectedValueOnce(httpErr);
     const result = await fetchBinaryAndValidate('tasks/result-zip', {
       failures: { 409: SchemaNonDownloadable },
@@ -811,6 +802,10 @@ describe('validation: fetchBinaryAndValidate (form 5)', () => {
     }
     // Critical assertion: blob() must NOT have been called on the 409 path
     expect(blobSpy).not.toHaveBeenCalled();
+    blobSpy.mockRestore();
+    jsonSpy.mockRestore();
+    textSpy.mockRestore();
+    arrayBufferSpy.mockRestore();
   });
 
   it('returns err(HttpError) via fallbackFailure for unhandled status (invariant)', async () => {
