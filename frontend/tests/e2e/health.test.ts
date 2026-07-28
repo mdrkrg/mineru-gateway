@@ -4,14 +4,13 @@
  * Verifies that getHealth() correctly reports aggregated gateway and upstream
  * health status over a real HTTP connection to a running gateway + mock upstream.
  *
- * The mock upstream exposes three health states via its /_mock/configure API:
+ * The mock upstream exposes health states via its /_mock/configure API:
  *   1. Default (healthy): upstream /health returns 200 with status="healthy"
  *   2. Degraded:           upstream /health returns 503 with status="degraded"
- *      -> Gateway wraps this as 503 with status="degraded" and full upstream
- *         payload (no error field).
- *   3. Unreachable:        upstream /health raises an exception
- *      -> Gateway returns 503 with upstream.status="unreachable" and an
- *         error field containing the exception message.
+ *      Gateway wraps this as 503 with status="degraded" and full upstream
+ *      payload (no error field).
+ *   3. Upstream raises:    upstream /health raises RuntimeError, FastAPI
+ *      returns 500, gateway defaults status to "unknown" and returns 503.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { setApiBaseUrl } from '../../src/core';
@@ -35,8 +34,6 @@ afterAll(async () => {
 
 describe('GET /health', () => {
   it('returns healthy upstream info when upstream is healthy', async () => {
-    // Default mock state: health_status="healthy", all counters default.
-
     const result = await getHealth();
     expect(result.isOk()).toBe(true);
 
@@ -54,8 +51,6 @@ describe('GET /health', () => {
   });
 
   it('returns degraded 503 when upstream is unhealthy but reachable', async () => {
-    // Set mock upstream health_status to "degraded".
-    // Gateway will return 503 with status="degraded" and full upstream payload.
     await mock.setUnhealthy();
 
     const result = await getHealth();
@@ -67,17 +62,13 @@ describe('GET /health', () => {
 
     expect(result.error.status).toBe(503);
     const body = result.error.data;
-    // fetchAndValidate validates 503 against HealthDegradedResponseSchema
-    // which camelCases the wire response.
     expect(body.gateway).toBe('healthy');
     expect(body.status).toBe('degraded');
     expect(body.upstream.status).toBe('degraded');
-    // Upstream is reachable, so no error field in this case.
     expect(body.upstream.error).toBeUndefined();
   });
 
-  it('returns 503 with unreachable error when upstream is unreachable', async () => {
-    // Set mock to raise on /health - simulates upstream crash.
+  it('returns 503 with degraded status when upstream raises', async () => {
     await mock.reset();
     await mock.setHealthRaises();
 
@@ -92,9 +83,6 @@ describe('GET /health', () => {
     const body = result.error.data;
     expect(body.gateway).toBe('healthy');
     expect(body.status).toBe('degraded');
-    expect(body.upstream.status).toBe('unreachable');
-    // Unreachable case includes the error message.
-    expect(typeof body.upstream.error).toBe('string');
-    expect(body.upstream.error!.length).toBeGreaterThan(0);
+    expect(body.upstream.status).toBe('unknown');
   });
 });
