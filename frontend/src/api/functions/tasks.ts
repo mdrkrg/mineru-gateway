@@ -211,20 +211,20 @@ export function batchCancelTasks(
   apiKey: string,
 ): ResultAsync<
   BatchCancelResponse,
-  ApiError<HttpError<401, { detail: string }> | HttpError<404, { detail: string }>>
+  ApiError<HttpError<401, { detail: string }>>
 > {
   const validated = validateRequest(BatchCancelRequestSchema)({ taskIds });
   if (validated.isErr()) return validated as never;
 
   return fetchAndValidate('tasks/cancel', {
     success: BatchCancelResponseSchema,
-    failures: { 401: ErrorDetailSchema, 404: ErrorDetailSchema },
+    failures: { 401: ErrorDetailSchema },
   }, {
     method: 'POST',
     json: validated.value,
     headers: { 'X-API-Key': apiKey },
   }) as ResultAsync<
     BatchCancelResponse,
-    ApiError<HttpError<401, { detail: string }> | HttpError<404, { detail: string }>>
+    ApiError<HttpError<401, { detail: string }>>
   >;
 }
