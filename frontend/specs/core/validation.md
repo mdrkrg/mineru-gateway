@@ -99,6 +99,8 @@ function validateFailure<
 
 ### 形式 1：标准 JSON 端点
 
+错误：
+
 ```ts
 request(url, options)                                  // ResultAsync<RawResponse, ApiError<HttpError<number, unknown>>>
   .map(parseJson)                                     // 不对——parseJson 返回 ResultAsync
