@@ -422,12 +422,10 @@ describe('validation: validateRequest', () => {
   });
 
   // Spec: validation.md invariant 13 - "request not sent (ky not called)"
-  // validateRequest runs BEFORE request(); if it fails, no HTTP call is made.
-  it('does not send request when validation fails (invariant 13)', () => {
-    // The spec says: "失败时不发请求（在 request 之前短路）"
-    // validateRequest is a composable that runs before request(). If it
-    // returns err, the caller should short-circuit and never call request().
-    // We verify validateRequest itself does not call ky.
+  // validateRequest is a pure composable: it validates body but never
+  // calls ky itself.  The caller is responsible for short-circuiting
+  // before request() when validateRequest returns err.
+  it('does not call ky (validateRequest is a pure composable)', () => {
     const validator = validateRequest(RequestSchema);
     const result = validator({ taskIds: 123 });
     expect(result.isErr()).toBe(true);
