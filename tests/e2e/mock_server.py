@@ -53,6 +53,7 @@ class MockState:
     result_status_code: int = 200
     result_content_type: str | None = None
     result_content_disposition: str | None = None
+    content_validation: bool = True
 
     submitted: list[dict] = field(default_factory=list)
 
@@ -79,6 +80,7 @@ class MockState:
         self.result_status_code = 200
         self.result_content_type = None
         self.result_content_disposition = None
+        self.content_validation = True
         self.submitted.clear()
 
 
@@ -90,6 +92,28 @@ state = MockState()
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="mock-mineru-e2e")
+
+# ---------------------------------------------------------------------------
+# File content validation (matches real mineru-router >= 3.4 behaviour)
+# ---------------------------------------------------------------------------
+
+_PDF_MAGIC = b"%PDF-"
+
+
+def _unsupported_file(filename: str, content: bytes) -> str | None:
+    """Return the extension if *content* does not match its MIME magic bytes.
+
+    Mirrors real mineru-router rejection: when content_validation is True
+    and a file claims to be PDF but does not start with ``%PDF-``, the
+    upstream returns ``400 {"detail": "Unsupported file type: …"}``.
+    """
+    if not state.content_validation:
+        return None
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else filename.lower()
+    if ext == "pdf":
+        if not content.startswith(_PDF_MAGIC):
+            return ext
+    return None
 
 
 @app.get("/health")
@@ -126,6 +150,15 @@ async def submit_task(request: Request):
     for name, value in form.multi_items():
         if hasattr(value, "filename") and value.filename:
             file_names.append(value.filename)
+            content = (
+                value.file.read() if hasattr(value, "file") else await value.read()
+            )  # type: ignore[union-attr]
+            bad_ext = _unsupported_file(value.filename, content)  # type: ignore[arg-type]
+            if bad_ext:
+                return JSONResponse(
+                    status_code=400,
+                    content={"detail": f"Unsupported file type: {bad_ext}"},
+                )
         else:
             form_data[name] = str(value)
     state.submitted.append({"file_names": file_names, "form": form_data})
