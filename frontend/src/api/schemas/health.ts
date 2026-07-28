@@ -41,13 +41,13 @@ export const HealthDegradedResponseSchema = defineResponseSchema(
     status: 'string',
     upstream: {
       status: 'string',
-      error: 'string',
+      error: 'string?',
     },
   },
   {} as {
     gateway: string;
     status: string;
-    upstream: { status: string; error: string };
+    upstream: { status: string; error: string | undefined };
   },
 );
 
