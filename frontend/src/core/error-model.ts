@@ -41,35 +41,35 @@ export type InferHttpErrors<
   | (FB extends Type ? HttpError<number, FB['infer']> : never);
 
 export function createHttpError<S extends number, D>(status: S, data: D): HttpError<S, D> {
-  throw new Error('not implemented');
+  return { _type: 'HttpError', status, data };
 }
 
 export function isHttpError<E extends HttpError<number, unknown>>(
   error: ApiError<E>,
 ): error is Extract<ApiError<E>, { _type: 'HttpError' }> {
-  throw new Error('not implemented');
+  return error._type === 'HttpError';
 }
 
 export function isNetworkError<E extends HttpError<number, unknown>>(
   error: ApiError<E>,
 ): error is Extract<ApiError<E>, { _type: 'NetworkError' }> {
-  throw new Error('not implemented');
+  return error._type === 'NetworkError';
 }
 
 export function isValidationError<E extends HttpError<number, unknown>>(
   error: ApiError<E>,
 ): error is Extract<ApiError<E>, { _type: 'ValidationError' }> {
-  throw new Error('not implemented');
+  return error._type === 'ValidationError';
 }
 
 export function isUnhandledStatusError<E extends HttpError<number, unknown>>(
   error: ApiError<E>,
 ): error is Extract<ApiError<E>, { _type: 'UnhandledStatusError' }> {
-  throw new Error('not implemented');
+  return error._type === 'UnhandledStatusError';
 }
 
 export function isUnexpectedError<E extends HttpError<number, unknown>>(
   error: ApiError<E>,
 ): error is Extract<ApiError<E>, { _type: 'UnexpectedError' }> {
-  throw new Error('not implemented');
+  return error._type === 'UnexpectedError';
 }

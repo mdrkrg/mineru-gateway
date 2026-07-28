@@ -172,15 +172,11 @@ describe('conventions: naming conversion invariants (type-level)', () => {
 
   it('defineResponseSchema inferIn differs from infer (morph is applied)', () => {
     // Spec: conventions.md invariant 3 - for morphing schemas, infer != inferIn.
-    // The stub returns Type<O> where infer === inferIn, so this test will
-    // fail at runtime (stub throws) until the real morph is implemented.
-    // Once implemented, infer (camelCase) should != inferIn (snake_case).
     const schema = defineResponseSchema(
       { task_id: 'string' },
       {} as { taskId: string },
     );
-    // Runtime: calling the schema should apply morph and throw 'not implemented'
-    // in the stub phase. When implemented, the morph ensures infer != inferIn.
-    expect(() => schema({ task_id: 't1' })).toThrow();
+    const val = callSchema(schema, { task_id: 't1' });
+    expect(val.taskId).toBe('t1');
   });
 });
