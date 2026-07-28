@@ -175,7 +175,9 @@ hooks: {
 }
 ```
 
-- 该 hook 点**必须**在 ky 实例创建时可配置（通过 `ky.extend({ hooks: { afterResponse: [...] } })`），用于 401→refresh→retry。重试通过返回 `ky.retry({ request: newReq, code: 'TOKEN_REFRESHED' })` 触发。
+> **`RetryMarker` 不可名导入**：ky 的 public `index.d.ts` 未 re-export `RetryMarker`（仅在 `core/constants.d.ts` 内部）。以上签名是结构描述，调用方不能 `import type { RetryMarker } from 'ky'`，须靠结构类型/推导。重试触发方式见下。
+
+- 该 hook 点**必须**在 ky 实例创建时可配置（通过 `ky.extend({ hooks: { afterResponse: [...] } })`），用于 401→refresh→retry。重试通过返回 `ky.retry({ request: newReq, code: 'TOKEN_REFRESHED' })` 触发（`ky.retry` 是 ky 实例的属性，返回一个 `RetryMarker` 实例供 ky 内部识别）。
 - 本 spec **不**定义实现，但声明后续 auth-flow spec 必须满足的约束（基于 `conventions.md` 前提 3）：
 
   1. **不轮换**：刷新请求 `POST /auth/jwt/refresh` 返回 `{access_token, token_type}`，不含新 `refresh_token`。retry hook 只更新存储的 `access_token`，**不得**期望或写入新 `refresh_token`。
