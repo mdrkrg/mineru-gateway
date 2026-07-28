@@ -110,7 +110,7 @@ const ResultZipRequestSchema = type({
 5. `parseJson` **不**做键名转换——它返回 `unknown`（原始 snake_case JSON.parsed 值）。转换由 schema morph 在 `validateSuccess` / `validateFailure` 内部完成。
 6. `parseBlob` / `parseArrayBuffer` / `passthrough` **不**做键名转换（二进制响应无 JSON 键）。
 7. `InferHttpErrors<F, FB>` 中的 `F[K]['infer']` 取的是 morph 后的输出类型——若 schema 用了 `.as<>()`，为 `.as` 声明的类型；否则为 `unknown`。因此 `HttpError<Status, Data>` 的 `Data` 精度取决于 schema 是否用 `.as<>()`。
-8. `UnhandledStatusError.data` 是**原始未转换**的 `unknown`（因为无 schema 匹配，不经过 morph），可能是 snake_case。消费者须知晓此差异。
+8. `UnhandledStatusError.data` 是**未经 arktype morph 的 ky 预解析值**（因为无 schema 匹配，不经过 morph）——即 ky 的 `HTTPError.data`：JSON 响应为 `JSON.parse` 后的值，非 JSON 响应为 `string`，空 body 或解析失败为 `undefined`（见 [`error-model.md` 空体约定](./error-model.md#空体约定)）。**不**是 raw bytes。键名仍是 snake_case，消费者须知晓此差异。
 
 ## 后端不变量前提
 
