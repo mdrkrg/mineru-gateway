@@ -397,6 +397,40 @@ describe('validation: validateFailure', () => {
     const result = fn(createHttpError(422, { detail: 'x' }));
     expect(result.isErr()).toBe(true);
   });
+
+  // Spec: conventions.md invariant 8 - UnhandledStatusError.data is
+  // un-morphed ky pre-parsed value (snake_case keys preserved).
+  it('UnhandledStatusError.data preserves snake_case keys (no morph applied)', () => {
+    const fn = validateFailure({ 422: SchemaA });
+    // 500 is not in failures, no fallback -> UnhandledStatusError
+    // data should be the raw snake_case object, NOT camelCased
+    const result = fn(
+      createHttpError(500, { detail: 'err', non_downloadable: [{ task_id: 't1' }] }),
+    );
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) {
+      expect(result.error._type).toBe('UnhandledStatusError');
+      const data = (result.error as { data: unknown }).data as Record<string, unknown>;
+      // Keys must remain snake_case (no morph applied)
+      expect(data).toHaveProperty('non_downloadable');
+      expect(data).not.toHaveProperty('nonDownloadable');
+      const items = data.non_downloadable as { task_id: string }[];
+      expect(items[0]).toHaveProperty('task_id');
+      expect(items[0]).not.toHaveProperty('taskId');
+    }
+  });
+
+  // Spec: validation.md line 74 - summary format for body mismatch
+  it('ValidationError summary contains "Schema mismatch for HTTP" prefix', () => {
+    const fn = validateFailure({ 422: SchemaA });
+    const result = fn(createHttpError(422, { wrong_field: 123 }));
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) {
+      const summary = (result.error as { summary: string }).summary;
+      expect(summary).toContain('Schema mismatch for HTTP');
+      expect(summary).toContain('422');
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -434,6 +468,31 @@ describe('validation: validateRequest', () => {
       expect(result.error._type).toBe('ValidationError');
     }
   });
+
+  // Spec: validation.md line 228 - summary format for request body mismatch
+  it('ValidationError summary contains "Request body schema mismatch" prefix', () => {
+    const validator = validateRequest(RequestSchema);
+    const result = validator({ taskIds: 123 });
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) {
+      const summary = (result.error as { summary: string }).summary;
+      expect(summary).toContain('Request body schema mismatch');
+    }
+  });
+
+  // Spec: validation.md invariant 13 - "request not sent (ky not called)"
+  // validateRequest runs BEFORE request(); if it fails, no HTTP call is made.
+  it('does not send request when validation fails (invariant 13)', () => {
+    // The spec says: "失败时不发请求（在 request 之前短路）"
+    // validateRequest is a composable that runs before request(). If it
+    // returns err, the caller should short-circuit and never call request().
+    // We verify validateRequest itself does not call ky.
+    const validator = validateRequest(RequestSchema);
+    const result = validator({ taskIds: 123 });
+    expect(result.isErr()).toBe(true);
+    // ky mock should not have been called by validateRequest itself
+    expect(kyMock.fn).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -466,20 +525,26 @@ describe('validation: logNonHttpErrors', () => {
   });
 
   it('logs NetworkError via console.error', () => {
-    const err = { _type: 'NetworkError' as const, error: new Error('dns') };
+    const err = { _type: 'NetworkError' as const, error: new Error('dns failure') };
     logNonHttpErrors(err);
     expect(errorSpy).toHaveBeenCalled();
+    // Spec: logs the network problem - verify error message is included
+    const loggedArgs = errorSpy.mock.calls[0].join(' ');
+    expect(loggedArgs).toContain('dns failure');
   });
 
   it('logs ValidationError with summary via console.error', () => {
     const err = {
       _type: 'ValidationError' as const,
       status: null,
-      summary: 'schema mismatch',
+      summary: 'schema mismatch occurred',
       issues: null,
     };
     logNonHttpErrors(err);
     expect(errorSpy).toHaveBeenCalled();
+    // Spec: logs summary
+    const loggedArgs = errorSpy.mock.calls[0].join(' ');
+    expect(loggedArgs).toContain('schema mismatch occurred');
   });
 
   it('logs ValidationError with status when status !== null', () => {
@@ -491,22 +556,32 @@ describe('validation: logNonHttpErrors', () => {
     };
     logNonHttpErrors(err);
     expect(errorSpy).toHaveBeenCalled();
+    // Spec: logs status when !== null
+    const loggedArgs = errorSpy.mock.calls[0].join(' ');
+    expect(loggedArgs).toContain('422');
   });
 
   it('logs UnhandledStatusError with status and data', () => {
     const err = {
       _type: 'UnhandledStatusError' as const,
       status: 500,
-      data: 'oops',
+      data: 'server crashed',
     };
     logNonHttpErrors(err);
     expect(errorSpy).toHaveBeenCalled();
+    // Spec: logs status and data
+    const loggedArgs = errorSpy.mock.calls[0].join(' ');
+    expect(loggedArgs).toContain('500');
+    expect(loggedArgs).toContain('server crashed');
   });
 
   it('logs UnexpectedError with original error', () => {
-    const err = { _type: 'UnexpectedError' as const, error: 'boom' };
+    const err = { _type: 'UnexpectedError' as const, error: 'unexpected boom' };
     logNonHttpErrors(err);
     expect(errorSpy).toHaveBeenCalled();
+    // Spec: logs original error
+    const loggedArgs = errorSpy.mock.calls[0].join(' ');
+    expect(loggedArgs).toContain('unexpected boom');
   });
 
   it('returns void', () => {
@@ -609,6 +684,27 @@ describe('validation: fetchAndValidate (form 4)', () => {
       expect.objectContaining({ method: 'POST' }),
     );
   });
+
+  // Spec: validation.md line 177 - fetchAndValidate uses parseJson internally.
+  // If the 2xx response body is not valid JSON, parseJson fails with
+  // ValidationError (status=null, "Response body is not valid JSON").
+  it('returns err(ValidationError) when 2xx body is not valid JSON', async () => {
+    kyMock.fn.mockResolvedValueOnce(
+      new Response('not json at all', {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain' },
+      }),
+    );
+    const result = await fetchAndValidate('tasks', {
+      success: SuccessSchema,
+    });
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) {
+      expect(isValidationError(result.error)).toBe(true);
+      expect((result.error as { status: number | null }).status).toBeNull();
+      expect((result.error as { summary: string }).summary).toContain('JSON');
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -665,6 +761,14 @@ describe('validation: fetchBinaryAndValidate (form 5)', () => {
   });
 
   it('returns err(HttpError<409>) for 409 without triggering parseBlob (invariant 14)', async () => {
+    // Spec: validation.md invariants 10 & 14 - on 409, parseBlob must NOT
+    // be triggered. The error branch short-circuits before andThen(parseBlob).
+    // We verify by spying on the reader's blob() method.
+    const blobSpy = vi.fn(() => Promise.resolve(new Blob()));
+    const jsonSpy = vi.fn(() => Promise.resolve(null));
+    const textSpy = vi.fn(() => Promise.resolve(''));
+    const abSpy = vi.fn(() => Promise.resolve(new ArrayBuffer(0)));
+
     const httpErr = new kyMock.HTTPError(
       new Response(
         JSON.stringify({
@@ -684,6 +788,14 @@ describe('validation: fetchBinaryAndValidate (form 5)', () => {
         { task_id: 't1', status: 'failed', reason: 'not_completed' },
       ],
     };
+    // Override the response to use our spies
+    Object.defineProperty(httpErr, 'response', {
+      value: {
+        status: 409,
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        body: { blob: blobSpy, json: jsonSpy, text: textSpy, arrayBuffer: abSpy },
+      },
+    });
     kyMock.fn.mockRejectedValueOnce(httpErr);
     const result = await fetchBinaryAndValidate('tasks/result-zip', {
       failures: { 409: SchemaNonDownloadable },
@@ -696,6 +808,34 @@ describe('validation: fetchBinaryAndValidate (form 5)', () => {
         nonDownloadable: { taskId: string }[];
       };
       expect(data.nonDownloadable[0].taskId).toBe('t1');
+    }
+    // Critical assertion: blob() must NOT have been called on the 409 path
+    expect(blobSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns err(HttpError) via fallbackFailure for unhandled status (invariant)', async () => {
+    // Spec: validation.md form 5 - fallbackFailure covers unlisted status codes
+    const httpErr = new kyMock.HTTPError(
+      new Response(JSON.stringify({ detail: 'server error' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      new Request('http://test'),
+      {},
+    );
+    httpErr.data = { detail: 'server error' };
+    kyMock.fn.mockRejectedValueOnce(httpErr);
+    const result = await fetchBinaryAndValidate('tasks/result-zip', {
+      failures: { 409: SchemaNonDownloadable },
+      fallbackFailure: SchemaA,
+    });
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) {
+      expect(isHttpError(result.error)).toBe(true);
+      expect((result.error as { status: number }).status).toBe(500);
+      expect((result.error as { data: { detail: string } }).data.detail).toBe(
+        'server error',
+      );
     }
   });
 
