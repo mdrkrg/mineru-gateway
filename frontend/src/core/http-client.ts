@@ -7,6 +7,13 @@ import type { ApiError, HttpError } from './error-model';
 
 // Spec: frontend/specs/core/http-client.md
 
+/**
+ * Wraps a ky/KyResponse body to allow callers to choose how to read it
+ * (JSON, text, blob, or ArrayBuffer).
+ *
+ * Each method should be called at most once per response (the underlying
+ * stream can only be consumed once).
+ */
 export interface BodyReader {
   json(): Promise<unknown>;
   text(): Promise<string>;
@@ -14,12 +21,23 @@ export interface BodyReader {
   arrayBuffer(): Promise<ArrayBuffer>;
 }
 
+/**
+ * Raw successful HTTP response returned by `request()`.
+ *
+ * The body is NOT read by `request()`.  Callers use the `reader` to choose
+ * a parser (`parseJson`, `parseBlob`, `parseArrayBuffer`, or `passthrough`).
+ */
 export interface RawResponse {
   readonly status: number;
   readonly headers: Headers;
   readonly reader: BodyReader;
 }
 
+/**
+ * Binary response result produced by `parseBlob()`.  Includes the blob data,
+ * HTTP status code, and response headers (needed for `Content-Disposition`
+ * when downloading files).
+ */
 export interface BlobResult {
   readonly blob: Blob;
   readonly status: number;
@@ -33,6 +51,17 @@ const VITE_API_PREFIX: string =
 
 let _api: typeof ky_default | null = null;
 
+/**
+ * Returns the lazy-singleton ky instance created via `ky.extend()`.
+ *
+ * The instance is configured with:
+ * - `prefix`  -- from `import.meta.env.VITE_API_PREFIX` (defaults to `''`).
+ * - `hooks.beforeRequest` -- empty array, for future auth header injection.
+ * - `hooks.afterResponse` -- empty array, for future 401-refresh-retry.
+ *
+ * The instance is created once and reused across all `request()` calls,
+ * so hook-based state (auth tokens, retry counters) is shared.
+ */
 function getApi(): typeof ky_default {
   if (!_api) {
     _api = ky_default.extend({
@@ -46,6 +75,39 @@ function getApi(): typeof ky_default {
   return _api;
 }
 
+/**
+ * Sends an HTTP request and returns a `ResultAsync` wrapping a `RawResponse`.
+ *
+ * The body is not parsed -- use `andThen(parseJson)`, `andThen(parseBlob)`,
+ * etc. to read it.
+ *
+ * Error classification (all errors become `ApiError` variants):
+ *
+ * - `HTTPError` (ky)   -> `HttpError<status, data>`
+ * - `NetworkError` (ky) -> `NetworkError`  (uses `error.cause` or a fallback)
+ * - `TimeoutError` (ky) -> `NetworkError`
+ * - `DOMException` with `name === 'AbortError'` -> `NetworkError`
+ * - anything else       -> `UnexpectedError`
+ *
+ * @param url     - Relative URL path. Base is provided by the ky instance's
+ *                  `prefix` (see `getApi()`).
+ * @param options - ky request options.  `throwHttpErrors: true` is enforced
+ *                  internally -- the caller cannot disable it.
+ *
+ * @returns `ResultAsync<RawResponse, ApiError<HttpError<number, unknown>>>`
+ *
+ * @example
+ * import { request, parseJson } from './http-client';
+ *
+ * const result = await request('auth/jwt/login', {
+ *     method: 'POST',
+ *     json: { username, password },
+ * }).andThen(parseJson);
+ *
+ * if (result.isOk()) {
+ *     console.log(result.value); // raw JSON, unknown type
+ * }
+ */
 export function request(
   url: string,
   options?: Options,
@@ -96,6 +158,15 @@ export function request(
   });
 }
 
+/**
+ * Reads the response body as JSON.  Returns `Ok(parsed)` on success or
+ * `Err(ValidationError)` if the body is not valid JSON.
+ *
+ * **Does not convert snake_case keys.**  Key conversion is done by schema
+ * morphs in `validateSuccess` / `validateFailure`.
+ *
+ * @returns `ResultAsync<unknown, ApiError<never>>`
+ */
 export function parseJson(
   response: RawResponse,
 ): ResultAsync<unknown, ApiError<never>> {
@@ -112,6 +183,15 @@ export function parseJson(
   );
 }
 
+/**
+ * Reads the response body as a Blob.  Returns `Ok(BlobResult)` containing
+ * the blob, the HTTP status code, and the response headers.
+ *
+ * The `headers` field is the original `RawResponse.headers` -- callers use
+ * it to read `Content-Disposition` for file downloads.
+ *
+ * @returns `ResultAsync<BlobResult, ApiError<never>>`
+ */
 export function parseBlob(
   response: RawResponse,
 ): ResultAsync<BlobResult, ApiError<never>> {
@@ -130,6 +210,12 @@ export function parseBlob(
   );
 }
 
+/**
+ * Reads the response body as an `ArrayBuffer`.  Used for in-memory byte
+ * handling (e.g. ZIP parsing).
+ *
+ * @returns `ResultAsync<ArrayBuffer, ApiError<never>>`
+ */
 export function parseArrayBuffer(
   response: RawResponse,
 ): ResultAsync<ArrayBuffer, ApiError<never>> {
@@ -144,6 +230,13 @@ export function parseArrayBuffer(
   );
 }
 
+/**
+ * Passes the `RawResponse` through without reading the body.
+ * Used for endpoints where the response shape is defined by the upstream
+ * and the frontend does not validate it (e.g. `/file_parse`).
+ *
+ * @returns `Result<RawResponse, ApiError<never>>`
+ */
 export function passthrough(
   response: RawResponse,
 ): Result<RawResponse, ApiError<never>> {
