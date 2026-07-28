@@ -5,8 +5,9 @@ export default defineConfig({
   plugins: [solidPlugin()],
   test: {
     environment: 'node',
-    include: ['tests/**/*.test.ts'],
-    exclude: ['tests/e2e/**'],
+    include: ['tests/e2e/**/*.test.ts'],
+    globalSetup: ['./tests/e2e/globalSetup.ts'],
+    testTimeout: 15_000,
   },
   resolve: {
     conditions: ['browser', 'module', 'import', 'default'],
