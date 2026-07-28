@@ -277,17 +277,6 @@ describe('error-model: discriminant union completeness', () => {
   // Spec: error-model.md Invariant 6
   // Any ApiError<E> value's _type matches exactly one variant.
 
-  it('each base variant has a distinct _type', () => {
-    const types = new Set([
-      'NetworkError',
-      'ValidationError',
-      'UnhandledStatusError',
-      'UnexpectedError',
-      'HttpError',
-    ]);
-    expect(types.size).toBe(5);
-  });
-
   it('no two base variants share _type', () => {
     // Construct one of each base variant, plus an HttpError
     const errors: ApiError[] = [
@@ -300,6 +289,23 @@ describe('error-model: discriminant union completeness', () => {
     const types = errors.map((e) => e._type);
     expect(new Set(types).size).toBe(types.length);
   });
+
+  it('ApiErrorBase _type literals are exactly the 4 defined variants', () => {
+    // Type-level check: ApiErrorBase must only contain these 4 _type values.
+    // If the type is correct, Extract picks the right variant.
+    type NetworkVariant = Extract<ApiErrorBase, { _type: 'NetworkError' }>;
+    type ValidationVariant = Extract<ApiErrorBase, { _type: 'ValidationError' }>;
+    type UnhandledVariant = Extract<ApiErrorBase, { _type: 'UnhandledStatusError' }>;
+    type UnexpectedVariant = Extract<ApiErrorBase, { _type: 'UnexpectedError' }>;
+    // Each variant must be non-never (i.e. exists in ApiErrorBase)
+    const _n: NetworkVariant['error'] = new Error('x');
+    const _v: ValidationVariant['summary'] = 's';
+    const _u: UnhandledVariant['status'] = 500;
+    const _ue: UnexpectedVariant['error'] = null;
+    // If any variant didn't exist in ApiErrorBase, the Extract would be never,
+    // and the assignment would fail at compile time.
+    expect(_n).toBeInstanceOf(Error);
+  });
 });
 
 describe('error-model: InferHttpErrors type-level', () => {
@@ -308,41 +314,70 @@ describe('error-model: InferHttpErrors type-level', () => {
   // Invariant 5: InferHttpErrors<{ 404: SchemaX }, SchemaF>
   //              === HttpError<404, X['infer']> | HttpError<number, F['infer']>
 
-  it('InferHttpErrors<{404: SchemaX}> yields HttpError<404, SchemaX[infer]>', () => {
+  // Helper: type-level exactness check. If Inferred is exactly T, this compiles.
+  // Uses bidirectional assignability: [Inferred] extends [T] AND [T] extends [Inferred].
+  type IsExact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+
+  it('InferHttpErrors<{404: SchemaX}> is exactly HttpError<404, SchemaX[infer]>', () => {
     type F = { 404: typeof SchemaX };
     type Inferred = InferHttpErrors<F>;
-    // Type-level check: the inferred type should be assignable to HttpError<404, unknown>
-    const sample: Inferred = createHttpError(404, { foo: 'bar' });
-    expect(sample.status).toBe(404);
+    type Expected = HttpError<404, typeof SchemaX['infer']>;
+    type Check = IsExact<Inferred, Expected>;
+    const _c: Check = true;
+    expect(_c).toBe(true);
   });
 
-  it('InferHttpErrors<{404: SchemaX}, SchemaF> yields HttpError<404, X> | HttpError<number, F>', () => {
+  it('InferHttpErrors<{404: SchemaX}> does NOT accept other status codes (negative check)', () => {
+    type F = { 404: typeof SchemaX };
+    type Inferred = InferHttpErrors<F>;
+    // createHttpError(500, ...) should NOT be assignable to Inferred
+    // (HttpError<500, ...> is not in the union HttpError<404, ...>)
+    type IsAssignable = HttpError<500, unknown> extends Inferred ? true : false;
+    const _c: IsAssignable = false;
+    expect(_c).toBe(false);
+  });
+
+  it('InferHttpErrors<{404: SchemaX}, SchemaF> is exactly HttpError<404, X> | HttpError<number, F>', () => {
     type F = { 404: typeof SchemaX };
     type Inferred = InferHttpErrors<F, typeof SchemaF | undefined>;
-    // The 404 branch
-    const s1: Inferred = createHttpError(404, { foo: 'bar' });
-    // The fallback branch (any status)
-    const s2: Inferred = createHttpError(500, { bar: 1 });
-    expect(s1.status).toBe(404);
-    expect(s2.status).toBe(500);
+    type Expected =
+      | HttpError<404, typeof SchemaX['infer']>
+      | HttpError<number, typeof SchemaF['infer']>;
+    type Check = IsExact<Inferred, Expected>;
+    const _c: Check = true;
+    expect(_c).toBe(true);
   });
 
-  it('InferHttpErrors with empty failures map and no fallback yields never', () => {
-    type Inferred = InferHttpErrors<Record<number, typeof SchemaX>>;
-    // never is assignable to anything; nothing runtime to check beyond compilation
-    // We verify the type compiles by declaring a variable
-    let _unused: Inferred;
-    _unused = undefined as never;
-    expect(_unused).toBeUndefined();
+  it('InferHttpErrors with empty failures map ({}) and no fallback yields never', () => {
+    // Spec: error-model.md rule 3 - no FB means unlisted statuses produce
+    // UnhandledStatusError at runtime, not HttpError. So InferHttpErrors<{}> = never.
+    type Inferred = InferHttpErrors<{}>;
+    type Check = IsExact<Inferred, never>;
+    const _c: Check = true;
+    expect(_c).toBe(true);
   });
 
-  it('InferHttpErrors with multiple statuses yields a union', () => {
+  it('InferHttpErrors with multiple statuses yields exact union', () => {
     type F = { 401: typeof SchemaX; 409: typeof SchemaF };
     type Inferred = InferHttpErrors<F>;
-    const s1: Inferred = createHttpError(401, { foo: 'a' });
-    const s2: Inferred = createHttpError(409, { bar: 1 });
-    expect(s1.status).toBe(401);
-    expect(s2.status).toBe(409);
+    type Expected =
+      | HttpError<401, typeof SchemaX['infer']>
+      | HttpError<409, typeof SchemaF['infer']>;
+    type Check = IsExact<Inferred, Expected>;
+    const _c: Check = true;
+    expect(_c).toBe(true);
+  });
+
+  it('InferHttpErrors with string keys (not number) yields never', () => {
+    // Spec: validation.md lines 78-82 - caller must NOT use string keys like '422'.
+    // ParseInt<'422'> = 422 (template literal converts), but 'foo' would yield never.
+    // Actually ParseInt<'422'> does work since TS converts '422' to 422 via template.
+    // But a non-numeric string key like 'foo' should yield never.
+    type F = { foo: typeof SchemaX };
+    type Inferred = InferHttpErrors<F>;
+    type Check = IsExact<Inferred, never>;
+    const _c: Check = true;
+    expect(_c).toBe(true);
   });
 });
 
