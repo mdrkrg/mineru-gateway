@@ -337,7 +337,7 @@ def sample_pdf_path(tmp_path_factory):
     """
     import shutil
 
-    src = Path(__file__).resolve().parents[2] / "test_data" / "minimal.pdf"
+    src = Path(__file__).resolve().parents[1] / "test_data" / "minimal.pdf"
     p = tmp_path_factory.mktemp("test_data") / "minimal.pdf"
     shutil.copy2(str(src), str(p))
     return str(p)
