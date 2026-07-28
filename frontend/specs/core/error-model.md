@@ -60,11 +60,11 @@ type ApiErrorBase =
 ## `ApiError<E>`
 
 ```ts
-type ApiError<E> = ApiErrorBase | E
+type ApiError<E = HttpError<number, unknown>> = ApiErrorBase | E
 ```
 
-- `E`：端点 spec 注入的 `HttpError` 联合，形如 `HttpError<401, A> | HttpError<409, B>`。
-- 当 `E` 使用默认值时（即 `ApiError` 不带泛型参数），`ApiError` = `ApiError<HttpError<number, unknown>>` = `ApiErrorBase | HttpError<number, unknown>`。
+- `E`：端点 spec 注入的 `HttpError` 联合，形如 `HttpError<401, A> | HttpError<409, B>`。默认为 `HttpError<number, unknown>`（请求层未校验错误 body 时的形态）。
+- 当 `ApiError` 不带泛型参数时，`ApiError` = `ApiError<HttpError<number, unknown>>` = `ApiErrorBase | HttpError<number, unknown>`。
 - 经 `validateFailure` 后，`E` 被窄化为具体状态码 + schema 推导类型（见 [`InferHttpErrors`](#inferhttperrorsf-fb)）。
 
 **可扩展性契约**（核心约束）：
@@ -137,7 +137,7 @@ ky 的 `HTTPError.data` 预解析行为：JSON 响应自动解析，非 JSON 响
 ## 不变量清单（可测试断言）
 
 1. `ApiErrorBase` 恰好有 4 个变体，`_type` 分别为 `'NetworkError'` / `'ValidationError'` / `'UnhandledStatusError'` / `'UnexpectedError'`。
-2. `ApiError<E>` 是 `ApiErrorBase | E`；`E` 默认为 `HttpError<number, unknown>`。
+2. `ApiError<E>` 是 `ApiErrorBase | E`；`E` 默认为 `HttpError<number, unknown>`（即 `type ApiError<E = HttpError<number, unknown>>`）。
 3. `createHttpError(401, { detail: 'x' })` 返回的对象满足 `isHttpError(...) === true` 且 `status === 401` 且 `data.detail === 'x'`。
 4. `InferHttpErrors<{ 404: SchemaX }>` 恰为 `HttpError<404, SchemaX['infer']>`。
 5. `InferHttpErrors<{ 404: SchemaX }, SchemaF>` 为 `HttpError<404, X['infer']> | HttpError<number, F['infer']>`。
