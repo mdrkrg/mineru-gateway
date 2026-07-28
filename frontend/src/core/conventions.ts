@@ -5,13 +5,13 @@ import type { Type } from 'arktype';
 export function defineResponseSchema<const D, const O>(
   def: D,
   output: O,
-): Type & { infer: O; inferIn: D } {
+): Type<O> {
   throw new Error('not implemented');
 }
 
 export function defineRequestSchema<const D, const O>(
   def: D,
   output: O,
-): Type & { infer: O; inferIn: D } {
+): Type<O> {
   throw new Error('not implemented');
 }
