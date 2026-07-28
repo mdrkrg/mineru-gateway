@@ -51,28 +51,39 @@ const VITE_API_PREFIX: string =
 
 let _api: typeof ky_default | null = null;
 
-/**
- * Returns the lazy-singleton ky instance created via `ky.extend()`.
- *
- * The instance is configured with:
- * - `prefix`  -- from `import.meta.env.VITE_API_PREFIX` (defaults to `''`).
- * - `hooks.beforeRequest` -- empty array, for future auth header injection.
- * - `hooks.afterResponse` -- empty array, for future 401-refresh-retry.
- *
- * The instance is created once and reused across all `request()` calls,
- * so hook-based state (auth tokens, retry counters) is shared.
- */
+function _createApi(base: string): typeof ky_default {
+  return ky_default.extend({
+    prefix: base,
+    hooks: {
+      beforeRequest: [],
+      afterResponse: [],
+    },
+  });
+}
+
 function getApi(): typeof ky_default {
   if (!_api) {
-    _api = ky_default.extend({
-      prefix: VITE_API_PREFIX,
-      hooks: {
-        beforeRequest: [],
-        afterResponse: [],
-      },
-    });
+    _api = _createApi(VITE_API_PREFIX);
   }
   return _api;
+}
+
+/**
+ * Resets the lazy-singleton ky instance to point at an absolute base URL.
+ * Used by e2e tests to redirect all requests to a running gateway instance.
+ * Must be called before any request is made (the singleton caches the
+ * first instance).
+ *
+ * @param baseUrl - Absolute URL prefix for all requests, e.g.
+ *                  `http://127.0.0.1:8000`.
+ *
+ * @example
+ * // In an e2e test globalSetup or beforeAll:
+ * import { setApiBaseUrl } from './http-client';
+ * setApiBaseUrl('http://127.0.0.1:8765');
+ */
+export function setApiBaseUrl(baseUrl: string): void {
+  _api = _createApi(baseUrl);
 }
 
 /**
