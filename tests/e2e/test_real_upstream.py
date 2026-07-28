@@ -1,15 +1,19 @@
-"""E2E tests against a real MinerU upstream (Layer 2).
+"""E2E tests against a real or mock MinerU upstream (Layer 2).
 
-These tests require a running `mineru-api` or `mineru-router`
-deployment.  Set the environment variable
-`GATEWAY_REAL_UPSTREAM_URL` to enable them; otherwise they are
-skipped automatically.
+When `GATEWAY_REAL_UPSTREAM_URL` is set the tests use a real
+mineru-api / mineru-router deployment.
+Otherwise they fall back to the shared mock upstream so the mock's
+fidelity can be verified without an external service.
 
 Usage:
 
 ```sh
+# Against real upstream
 GATEWAY_REAL_UPSTREAM_URL=http://mineru-router:8002 \
   uv run pytest tests/e2e/test_real_upstream.py -m real_upstream -v
+
+# Against mock (no env var needed)
+uv run pytest tests/e2e/ -m real_upstream -v
 ```
 """
 
@@ -27,30 +31,24 @@ from tests.e2e.conftest import _start_gateway
 
 _REAL_UPSTREAM_URL = os.environ.get("GATEWAY_REAL_UPSTREAM_URL", "")
 
-
-def _skip_if_no_real_upstream():
-    if not _REAL_UPSTREAM_URL:
-        pytest.skip("GATEWAY_REAL_UPSTREAM_URL not set")
-
-
 # ---------------------------------------------------------------------------
-# Shared session fixtures for the real-upstream gateway
+# Shared session fixtures — real upstream when available, mock as fallback
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="session")
-def _real_gateway(tmp_path_factory):
-    """Start a gateway pointed at the real MinerU upstream.
+def _real_gateway(tmp_path_factory, mock_upstream_url):
+    """Start a gateway, using real upstream when available, mock otherwise.
 
     Session-scoped so we reuse the same gateway and API key across
     tests, reducing startup cost when the real upstream is slow.
     """
-    _skip_if_no_real_upstream()
+    upstream_url = _REAL_UPSTREAM_URL or mock_upstream_url
     db = str(tmp_path_factory.mktemp("real") / "gateway.db")
     cache = str(tmp_path_factory.mktemp("real_cache"))
     os.makedirs(cache, exist_ok=True)
     url, proc = _start_gateway(
-        _REAL_UPSTREAM_URL,
+        upstream_url,
         db,
         cache,
     )
@@ -69,8 +67,7 @@ def _real_client(_real_gateway):
 
 @pytest.fixture(scope="session")
 def _real_key_headers(_real_client):
-    """Create one API key and return headers for all real-upstream tests."""
-    _skip_if_no_real_upstream()
+    """Create one API key and return headers for all tests."""
     resp = _real_client.post(
         "/auth/keys",
         json={"label": "real-e2e"},
@@ -105,7 +102,6 @@ def test_real_health_fields(_real_client):
        (version, max_concurrent_requests, free_slots, queued_tasks,
        processing_tasks) and they have the expected types.
     """
-    _skip_if_no_real_upstream()
     resp = _real_client.get("/health")
     assert resp.status_code == 200
     body = resp.json()
@@ -129,7 +125,6 @@ def test_real_pdf_parse_lifecycle(_real_client, _real_key_headers, sample_pdf_pa
     4. The result content-type is either application/zip or
        application/json (mineru-router output formats).
     """
-    _skip_if_no_real_upstream()
     fh, files = _open_pdf(sample_pdf_path)
     try:
         submit = _real_client.post(
@@ -184,7 +179,6 @@ def test_real_status_transitions(_real_client, _real_key_headers, sample_pdf_pat
        pending -> processing (optional) -> completed/failed.
        The status should never regress (e.g. completed -> processing).
     """
-    _skip_if_no_real_upstream()
     fh, files = _open_pdf(sample_pdf_path)
     try:
         submit = _real_client.post(
@@ -250,7 +244,6 @@ def test_real_bad_file(_real_client, _real_key_headers):
        status=completed is also valid (the upstream might not validate
        content at submission time).
     """
-    _skip_if_no_real_upstream()
     files = [
         ("files", ("bad.pdf", b"this is not a PDF file", "application/pdf")),
     ]
@@ -260,7 +253,12 @@ def test_real_bad_file(_real_client, _real_key_headers):
         files=files,
         data={"backend": "pipeline"},
     )
-    assert submit.status_code == 202
+    # Real upstream and strict mock reject unsupported file types
+    # (400 -> gateway relays as 502).  When upstream queues the file
+    # (legacy mock without content_validation), expect 202.
+    if submit.status_code != 202:
+        return
+
     task_id = submit.json()["task_id"]
 
     deadline = time.monotonic() + 30

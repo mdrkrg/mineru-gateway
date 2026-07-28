@@ -33,7 +33,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
     "e2e: end-to-end tests against real HTTP (subprocess gateway + mock upstream)",
-    "real_upstream: tests that require a running mineru-api/mineru-router deployment",
+    "real_upstream: tests that exercise real mineru-api/mineru-router when available, fall back to mock",
 ]
 
 [dependency-groups]
