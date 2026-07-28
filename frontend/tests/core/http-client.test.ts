@@ -18,82 +18,22 @@ import { type } from 'arktype';
 //   - HTTPError / NetworkError / TimeoutError are real classes the impl can
 //     import and use with instanceof / is* checks
 //
-// vi.hoisted ensures the mock objects exist before vi.mock factory runs.
+// The mock factory is shared with validation.test.ts via ky-mock.ts.
 
-const kyMock = vi.hoisted(() => {
-  const fn = vi.fn() as unknown as ReturnType<typeof vi.fn> & {
-    extend: ReturnType<typeof vi.fn>;
-    create: ReturnType<typeof vi.fn>;
-    stop: ReturnType<typeof vi.fn>;
-    retry: ReturnType<typeof vi.fn>;
-    get: ReturnType<typeof vi.fn>;
-    post: ReturnType<typeof vi.fn>;
-    put: ReturnType<typeof vi.fn>;
-    patch: ReturnType<typeof vi.fn>;
-    delete: ReturnType<typeof vi.fn>;
-    head: ReturnType<typeof vi.fn>;
-  };
-  // ky instance methods - extend/create return the instance itself
-  Object.assign(fn, {
-    extend: vi.fn(() => fn),
-    create: vi.fn(() => fn),
-    stop: vi.fn(),
-    retry: vi.fn(),
-    get: vi.fn(() => fn),
-    post: vi.fn(() => fn),
-    put: vi.fn(() => fn),
-    patch: vi.fn(() => fn),
-    delete: vi.fn(() => fn),
-    head: vi.fn(() => fn),
-  });
-
-  class HTTPError extends Error {
-    response: Response;
-    request: Request;
-    data: unknown;
-    constructor(response: Response, request: Request, options: unknown) {
-      super(`HTTPError: ${response.status}`);
-      this.name = 'HTTPError';
-      this.response = response;
-      this.request = request;
-      this.data = undefined;
-    }
-  }
-
-  class NetworkError extends Error {
-    cause?: Error;
-    constructor(message: string, options?: { cause?: Error }) {
-      super(message);
-      this.name = 'NetworkError';
-      if (options?.cause) this.cause = options.cause;
-    }
-  }
-
-  class TimeoutError extends Error {
-    request: Request;
-    constructor(request: Request) {
-      super('Request timed out');
-      this.name = 'TimeoutError';
-      this.request = request;
-    }
-  }
-
-  return { fn, HTTPError, NetworkError, TimeoutError };
+vi.mock('ky', async () => {
+  const { createKyMock } = await import('./ky-mock');
+  return createKyMock();
 });
-
-vi.mock('ky', () => ({
-  default: kyMock.fn,
-  HTTPError: kyMock.HTTPError,
-  NetworkError: kyMock.NetworkError,
-  TimeoutError: kyMock.TimeoutError,
-  isHTTPError: (e: unknown) => e instanceof kyMock.HTTPError,
-  isNetworkError: (e: unknown) => e instanceof kyMock.NetworkError,
-  isTimeoutError: (e: unknown) => e instanceof kyMock.TimeoutError,
-}));
 
 // ---------------------------------------------------------------------------
 // Imports (after mock setup)
 // ---------------------------------------------------------------------------
+
+import ky from 'ky';
+import { HTTPError, NetworkError, TimeoutError } from './ky-mock';
+import type { MockKy } from './ky-mock';
+
+const m = ky as unknown as MockKy;
 
 import {
   request,
@@ -146,19 +86,19 @@ function mockResponse(body: string, opts: { status?: number; headers?: Record<st
 }
 
 /** Build a ky HTTPError with pre-parsed data. */
-function makeHttpError(status: number, data: unknown): InstanceType<typeof kyMock.HTTPError> {
+function makeHttpError(status: number, data: unknown): InstanceType<typeof HTTPError> {
   const resp = new Response(JSON.stringify(data), {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
-  const err = new kyMock.HTTPError(resp, new Request('http://test'), {});
+  const err = new HTTPError(resp, new Request('http://test'), {});
   err.data = data;
   return err;
 }
 
 beforeEach(() => {
-  kyMock.fn.mockReset();
-  kyMock.fn.extend.mockClear();
+  m.mockReset();
+  m.extend.mockClear();
 });
 
 // ---------------------------------------------------------------------------
@@ -341,7 +281,7 @@ describe('http-client: request() success path', () => {
   // - RawResponse.reader has json/text/blob/arrayBuffer
 
   it('returns ok(RawResponse) with 2xx status', async () => {
-    kyMock.fn.mockResolvedValueOnce(
+    m.mockResolvedValueOnce(
       mockResponse(JSON.stringify({ task_id: 't1' }), {
         status: 202,
         headers: { 'Content-Type': 'application/json' },
@@ -360,18 +300,18 @@ describe('http-client: request() success path', () => {
   });
 
   it('passes url and options to ky', async () => {
-    kyMock.fn.mockResolvedValueOnce(mockResponse('{}'));
+    m.mockResolvedValueOnce(mockResponse('{}'));
     await request('auth/jwt/login', { method: 'POST', json: { user: 'x' } });
-    expect(kyMock.fn).toHaveBeenCalledWith(
+    expect(m).toHaveBeenCalledWith(
       'auth/jwt/login',
       expect.objectContaining({ method: 'POST' }),
     );
   });
 
   it('url is relative path (invariant 8)', async () => {
-    kyMock.fn.mockResolvedValueOnce(mockResponse('{}'));
+    m.mockResolvedValueOnce(mockResponse('{}'));
     await request('tasks');
-    const calledUrl = kyMock.fn.mock.calls[0][0];
+    const calledUrl = m.mock.calls[0][0];
     expect(calledUrl).not.toMatch(/^https?:\/\//);
     expect(calledUrl).toBe('tasks');
   });
@@ -384,7 +324,7 @@ describe('http-client: request() HTTP error path', () => {
 
   it('returns err(HttpError) with status and parsed JSON data', async () => {
     const httpErr = makeHttpError(404, { detail: 'Not found' });
-    kyMock.fn.mockRejectedValueOnce(httpErr);
+    m.mockRejectedValueOnce(httpErr);
     const result = await request('tasks/t1');
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
@@ -396,9 +336,9 @@ describe('http-client: request() HTTP error path', () => {
 
   it('returns err(HttpError) with undefined data for empty body', async () => {
     const resp = new Response(null, { status: 204 });
-    const httpErr = new kyMock.HTTPError(resp, new Request('http://test'), {});
+    const httpErr = new HTTPError(resp, new Request('http://test'), {});
     httpErr.data = undefined;
-    kyMock.fn.mockRejectedValueOnce(httpErr);
+    m.mockRejectedValueOnce(httpErr);
     const result = await request('tasks/t1');
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
@@ -411,9 +351,9 @@ describe('http-client: request() HTTP error path', () => {
       status: 500,
       headers: { 'Content-Type': 'text/plain' },
     });
-    const httpErr = new kyMock.HTTPError(resp, new Request('http://test'), {});
+    const httpErr = new HTTPError(resp, new Request('http://test'), {});
     httpErr.data = 'plain text';
-    kyMock.fn.mockRejectedValueOnce(httpErr);
+    m.mockRejectedValueOnce(httpErr);
     const result = await request('tasks/t1');
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
@@ -431,8 +371,8 @@ describe('http-client: request() network/timeout/abort errors', () => {
 
   it('returns err(NetworkError) for ky NetworkError', async () => {
     const cause = new Error('DNS failure');
-    const netErr = new kyMock.NetworkError('fetch failed', { cause });
-    kyMock.fn.mockRejectedValueOnce(netErr);
+    const netErr = new NetworkError('fetch failed', { cause });
+    m.mockRejectedValueOnce(netErr);
     const result = await request('tasks');
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
@@ -442,8 +382,8 @@ describe('http-client: request() network/timeout/abort errors', () => {
   });
 
   it('returns err(NetworkError) with fallback Error when cause is missing', async () => {
-    const netErr = new kyMock.NetworkError('fetch failed');
-    kyMock.fn.mockRejectedValueOnce(netErr);
+    const netErr = new NetworkError('fetch failed');
+    m.mockRejectedValueOnce(netErr);
     const result = await request('tasks');
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
@@ -454,8 +394,8 @@ describe('http-client: request() network/timeout/abort errors', () => {
   });
 
   it('returns err(NetworkError) for ky TimeoutError', async () => {
-    const timeoutErr = new kyMock.TimeoutError(new Request('http://test'));
-    kyMock.fn.mockRejectedValueOnce(timeoutErr);
+    const timeoutErr = new TimeoutError(new Request('http://test'));
+    m.mockRejectedValueOnce(timeoutErr);
     const result = await request('tasks');
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
@@ -466,7 +406,7 @@ describe('http-client: request() network/timeout/abort errors', () => {
 
   it('returns err(NetworkError) for DOMException AbortError', async () => {
     const abortErr = new DOMException('The operation was aborted', 'AbortError');
-    kyMock.fn.mockRejectedValueOnce(abortErr);
+    m.mockRejectedValueOnce(abortErr);
     const result = await request('tasks');
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
@@ -481,7 +421,7 @@ describe('http-client: request() network/timeout/abort errors', () => {
     const controller = new AbortController();
     controller.abort();
     const abortErr = new DOMException('The operation was aborted', 'AbortError');
-    kyMock.fn.mockRejectedValueOnce(abortErr);
+    m.mockRejectedValueOnce(abortErr);
     const result = await request('tasks', { signal: controller.signal });
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
@@ -497,7 +437,7 @@ describe('http-client: request() unexpected errors', () => {
 
   it('returns err(UnexpectedError) for non-ky Error', async () => {
     const thrown = new Error('something weird');
-    kyMock.fn.mockRejectedValueOnce(thrown);
+    m.mockRejectedValueOnce(thrown);
     const result = await request('tasks');
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
@@ -507,7 +447,7 @@ describe('http-client: request() unexpected errors', () => {
   });
 
   it('returns err(UnexpectedError) for non-Error thrown value', async () => {
-    kyMock.fn.mockRejectedValueOnce('string error');
+    m.mockRejectedValueOnce('string error');
     const result = await request('tasks');
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
@@ -517,7 +457,7 @@ describe('http-client: request() unexpected errors', () => {
   });
 
   it('returns err(UnexpectedError) for null thrown', async () => {
-    kyMock.fn.mockRejectedValueOnce(null);
+    m.mockRejectedValueOnce(null);
     const result = await request('tasks');
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
@@ -531,7 +471,7 @@ describe('http-client: request() header accessibility', () => {
   // - RawResponse.headers must expose X-MinerU-Task-* and Content-Disposition
 
   it('exposes X-MinerU-Task-* headers on POST /tasks success (invariant 5)', async () => {
-    kyMock.fn.mockResolvedValueOnce(
+    m.mockResolvedValueOnce(
       mockResponse(JSON.stringify({ task_id: 't1' }), {
         status: 202,
         headers: {
@@ -556,7 +496,7 @@ describe('http-client: request() header accessibility', () => {
   });
 
   it('exposes Content-Disposition on POST /tasks/result-zip success (invariant 6)', async () => {
-    kyMock.fn.mockResolvedValueOnce(
+    m.mockResolvedValueOnce(
       new Response(new Blob(['zip']), {
         status: 200,
         headers: {
@@ -574,7 +514,7 @@ describe('http-client: request() header accessibility', () => {
   });
 
   it('exposes X-Idempotency-Key-Replayed header on replay', async () => {
-    kyMock.fn.mockResolvedValueOnce(
+    m.mockResolvedValueOnce(
       mockResponse(JSON.stringify({ task_id: 't1' }), {
         status: 202,
         headers: {
@@ -601,19 +541,19 @@ describe('http-client: request() throwHttpErrors requirement', () => {
   // - the implementation must enforce this (override caller's false)
 
   it('enforces throwHttpErrors: true even when caller passes false', async () => {
-    kyMock.fn.mockResolvedValueOnce(mockResponse('{}'));
+    m.mockResolvedValueOnce(mockResponse('{}'));
     // Caller tries to disable throwHttpErrors — impl must override to true
     await request('tasks', { method: 'POST', throwHttpErrors: false });
-    const callOpts = kyMock.fn.mock.calls[0][1];
+    const callOpts = m.mock.calls[0][1];
     // The implementation must force throwHttpErrors to true (or remove the
     // caller's false), never pass false to ky.
     expect(callOpts?.throwHttpErrors).not.toBe(false);
   });
 
   it('does not pass throwHttpErrors: false when caller omits it', async () => {
-    kyMock.fn.mockResolvedValueOnce(mockResponse('{}'));
+    m.mockResolvedValueOnce(mockResponse('{}'));
     await request('tasks', { method: 'POST' });
-    const callOpts = kyMock.fn.mock.calls[0][1];
+    const callOpts = m.mock.calls[0][1];
     expect(callOpts?.throwHttpErrors).not.toBe(false);
   });
 });
@@ -629,14 +569,14 @@ describe('http-client: ky instance configuration', () => {
     // module load. The mock records all calls to ky.extend.
     // After importing the http-client module, extend should have been
     // called at least once.
-    expect(kyMock.fn.extend).toHaveBeenCalled();
+    expect(m.extend).toHaveBeenCalled();
   });
 
   it('prefix is configured from VITE_API_PREFIX env var', () => {
     // Spec: http-client.md "prefix" section
     // - prefix read from import.meta.env.VITE_API_PREFIX, default ''
     // The extend call should include a prefix option.
-    const extendCalls = kyMock.fn.extend.mock.calls;
+    const extendCalls = m.extend.mock.calls;
     // At least one extend call should have a prefix in its options
     const hasPrefix = extendCalls.some((call) => {
       const opts = call[0];
@@ -651,7 +591,7 @@ describe('http-client: ky instance configuration', () => {
     // We verify by checking that the extend call included a beforeRequest
     // hook array, and that ky's mock was invoked (which in a real impl
     // would trigger the hook).
-    const extendCalls = kyMock.fn.extend.mock.calls;
+    const extendCalls = m.extend.mock.calls;
     const hasBeforeRequest = extendCalls.some((call) => {
       const opts = call[0];
       return (
@@ -666,7 +606,7 @@ describe('http-client: ky instance configuration', () => {
 
   it('afterResponse hook is configurable and reachable during request', async () => {
     // Spec: http-client.md "hooks.afterResponse" & invariant 7
-    const extendCalls = kyMock.fn.extend.mock.calls;
+    const extendCalls = m.extend.mock.calls;
     const hasAfterResponse = extendCalls.some((call) => {
       const opts = call[0];
       return (

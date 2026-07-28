@@ -8,82 +8,23 @@ import { type, ArkErrors } from 'arktype';
 // fetchAndValidate, fetchBinaryAndValidate.
 
 // ---------------------------------------------------------------------------
-// ky mock (same structure as http-client.test.ts)
+// ky mock (shared with http-client.test.ts via ky-mock.ts)
 // ---------------------------------------------------------------------------
 
-const kyMock = vi.hoisted(() => {
-  const fn = vi.fn() as unknown as ReturnType<typeof vi.fn> & {
-    extend: ReturnType<typeof vi.fn>;
-    create: ReturnType<typeof vi.fn>;
-    stop: ReturnType<typeof vi.fn>;
-    retry: ReturnType<typeof vi.fn>;
-    get: ReturnType<typeof vi.fn>;
-    post: ReturnType<typeof vi.fn>;
-    put: ReturnType<typeof vi.fn>;
-    patch: ReturnType<typeof vi.fn>;
-    delete: ReturnType<typeof vi.fn>;
-    head: ReturnType<typeof vi.fn>;
-  };
-  Object.assign(fn, {
-    extend: vi.fn(() => fn),
-    create: vi.fn(() => fn),
-    stop: vi.fn(),
-    retry: vi.fn(),
-    get: vi.fn(() => fn),
-    post: vi.fn(() => fn),
-    put: vi.fn(() => fn),
-    patch: vi.fn(() => fn),
-    delete: vi.fn(() => fn),
-    head: vi.fn(() => fn),
-  });
-
-  class HTTPError extends Error {
-    response: Response;
-    request: Request;
-    data: unknown;
-    constructor(response: Response, request: Request, options: unknown) {
-      super(`HTTPError: ${response.status}`);
-      this.name = 'HTTPError';
-      this.response = response;
-      this.request = request;
-      this.data = undefined;
-    }
-  }
-
-  class NetworkError extends Error {
-    cause?: Error;
-    constructor(message: string, options?: { cause?: Error }) {
-      super(message);
-      this.name = 'NetworkError';
-      if (options?.cause) this.cause = options.cause;
-    }
-  }
-
-  class TimeoutError extends Error {
-    request: Request;
-    constructor(request: Request) {
-      super('Request timed out');
-      this.name = 'TimeoutError';
-      this.request = request;
-    }
-  }
-
-  return { fn, HTTPError, NetworkError, TimeoutError };
+vi.mock('ky', async () => {
+  const { createKyMock } = await import('./ky-mock');
+  return createKyMock();
 });
-
-vi.mock('ky', () => ({
-  default: kyMock.fn,
-  HTTPError: kyMock.HTTPError,
-  NetworkError: kyMock.NetworkError,
-  TimeoutError: kyMock.TimeoutError,
-  isHTTPError: (e: unknown) => e instanceof kyMock.HTTPError,
-  isNetworkError: (e: unknown) => e instanceof kyMock.NetworkError,
-  isTimeoutError: (e: unknown) => e instanceof kyMock.TimeoutError,
-}));
 
 // ---------------------------------------------------------------------------
 // Imports (after mock setup)
 // ---------------------------------------------------------------------------
+
+import ky from 'ky';
+import { HTTPError, NetworkError, TimeoutError } from './ky-mock';
+import type { MockKy } from './ky-mock';
+
+const m = ky as unknown as MockKy;
 
 import {
   validate,
@@ -144,7 +85,7 @@ const RequestSchema = defineRequestSchema(
 const PlainSchema = type({ foo: 'string', count: 'number' });
 
 beforeEach(() => {
-  kyMock.fn.mockReset();
+  m.mockReset();
 });
 
 // ---------------------------------------------------------------------------
@@ -491,7 +432,7 @@ describe('validation: validateRequest', () => {
     const result = validator({ taskIds: 123 });
     expect(result.isErr()).toBe(true);
     // ky mock should not have been called by validateRequest itself
-    expect(kyMock.fn).not.toHaveBeenCalled();
+    expect(m).not.toHaveBeenCalled();
   });
 });
 
@@ -599,7 +540,7 @@ describe('validation: fetchAndValidate (form 4)', () => {
   // Spec: validation.md "form 4: full composition convenience" & invariants 12
 
   it('returns ok(Success) for 2xx with valid body', async () => {
-    kyMock.fn.mockResolvedValueOnce(
+    m.mockResolvedValueOnce(
       new Response(JSON.stringify({ task_id: 't1', status: 'pending' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -616,7 +557,7 @@ describe('validation: fetchAndValidate (form 4)', () => {
   });
 
   it('returns err(UnhandledStatusError) for non-2xx with no failures (invariant 12)', async () => {
-    const httpErr = new kyMock.HTTPError(
+    const httpErr = new HTTPError(
       new Response(JSON.stringify({ detail: 'error' }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
@@ -625,7 +566,7 @@ describe('validation: fetchAndValidate (form 4)', () => {
       {},
     );
     httpErr.data = { detail: 'error' };
-    kyMock.fn.mockRejectedValueOnce(httpErr);
+    m.mockRejectedValueOnce(httpErr);
     const result = await fetchAndValidate('tasks', {
       success: SuccessSchema,
     });
@@ -636,7 +577,7 @@ describe('validation: fetchAndValidate (form 4)', () => {
   });
 
   it('returns err(HttpError) for non-2xx with matching failure schema', async () => {
-    const httpErr = new kyMock.HTTPError(
+    const httpErr = new HTTPError(
       new Response(JSON.stringify({ detail: 'bad request' }), {
         status: 422,
         headers: { 'Content-Type': 'application/json' },
@@ -645,7 +586,7 @@ describe('validation: fetchAndValidate (form 4)', () => {
       {},
     );
     httpErr.data = { detail: 'bad request' };
-    kyMock.fn.mockRejectedValueOnce(httpErr);
+    m.mockRejectedValueOnce(httpErr);
     const result = await fetchAndValidate('tasks', {
       success: SuccessSchema,
       failures: { 422: SchemaA },
@@ -658,10 +599,10 @@ describe('validation: fetchAndValidate (form 4)', () => {
   });
 
   it('returns err(NetworkError) for network failure', async () => {
-    const netErr = new kyMock.NetworkError('fetch failed', {
+    const netErr = new NetworkError('fetch failed', {
       cause: new Error('dns'),
     });
-    kyMock.fn.mockRejectedValueOnce(netErr);
+    m.mockRejectedValueOnce(netErr);
     const result = await fetchAndValidate('tasks', {
       success: SuccessSchema,
     });
@@ -672,14 +613,14 @@ describe('validation: fetchAndValidate (form 4)', () => {
   });
 
   it('passes url and options to ky', async () => {
-    kyMock.fn.mockResolvedValueOnce(
+    m.mockResolvedValueOnce(
       new Response(JSON.stringify({ task_id: 't1', status: 'pending' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }),
     );
     await fetchAndValidate('tasks', { success: SuccessSchema }, { method: 'POST' });
-    expect(kyMock.fn).toHaveBeenCalledWith(
+    expect(m).toHaveBeenCalledWith(
       'tasks',
       expect.objectContaining({ method: 'POST' }),
     );
@@ -689,7 +630,7 @@ describe('validation: fetchAndValidate (form 4)', () => {
   // If the 2xx response body is not valid JSON, parseJson fails with
   // ValidationError (status=null, "Response body is not valid JSON").
   it('returns err(ValidationError) when 2xx body is not valid JSON', async () => {
-    kyMock.fn.mockResolvedValueOnce(
+    m.mockResolvedValueOnce(
       new Response('not json at all', {
         status: 200,
         headers: { 'Content-Type': 'text/plain' },
@@ -716,7 +657,7 @@ describe('validation: fetchBinaryAndValidate (form 5)', () => {
 
   it('returns ok(BlobResult) for 2xx with blob (invariant 14)', async () => {
     const blob = new Blob(['zip content'], { type: 'application/zip' });
-    kyMock.fn.mockResolvedValueOnce(
+    m.mockResolvedValueOnce(
       new Response(blob, {
         status: 200,
         headers: {
@@ -742,7 +683,7 @@ describe('validation: fetchBinaryAndValidate (form 5)', () => {
 
   it('returns ok(ArrayBuffer) for 2xx with binary=arrayBuffer (invariant 15)', async () => {
     const buf = new Uint8Array([1, 2, 3, 4]).buffer;
-    kyMock.fn.mockResolvedValueOnce(
+    m.mockResolvedValueOnce(
       new Response(buf, {
         status: 200,
         headers: { 'Content-Type': 'application/zip' },
@@ -780,14 +721,14 @@ describe('validation: fetchBinaryAndValidate (form 5)', () => {
     const textSpy = vi.spyOn(response, 'text');
     const arrayBufferSpy = vi.spyOn(response, 'arrayBuffer');
 
-    const httpErr = new kyMock.HTTPError(response, new Request('http://test'), {});
+    const httpErr = new HTTPError(response, new Request('http://test'), {});
     httpErr.data = {
       detail: 'not available',
       non_downloadable: [
         { task_id: 't1', status: 'failed', reason: 'not_completed' },
       ],
     };
-    kyMock.fn.mockRejectedValueOnce(httpErr);
+    m.mockRejectedValueOnce(httpErr);
     const result = await fetchBinaryAndValidate('tasks/result-zip', {
       failures: { 409: SchemaNonDownloadable },
     });
@@ -810,7 +751,7 @@ describe('validation: fetchBinaryAndValidate (form 5)', () => {
 
   it('returns err(HttpError) via fallbackFailure for unhandled status (invariant)', async () => {
     // Spec: validation.md form 5 - fallbackFailure covers unlisted status codes
-    const httpErr = new kyMock.HTTPError(
+    const httpErr = new HTTPError(
       new Response(JSON.stringify({ detail: 'server error' }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
@@ -819,7 +760,7 @@ describe('validation: fetchBinaryAndValidate (form 5)', () => {
       {},
     );
     httpErr.data = { detail: 'server error' };
-    kyMock.fn.mockRejectedValueOnce(httpErr);
+    m.mockRejectedValueOnce(httpErr);
     const result = await fetchBinaryAndValidate('tasks/result-zip', {
       failures: { 409: SchemaNonDownloadable },
       fallbackFailure: SchemaA,
@@ -835,7 +776,7 @@ describe('validation: fetchBinaryAndValidate (form 5)', () => {
   });
 
   it('returns err(UnhandledStatusError) for unhandled status code', async () => {
-    const httpErr = new kyMock.HTTPError(
+    const httpErr = new HTTPError(
       new Response(JSON.stringify({ detail: 'server error' }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
@@ -844,7 +785,7 @@ describe('validation: fetchBinaryAndValidate (form 5)', () => {
       {},
     );
     httpErr.data = { detail: 'server error' };
-    kyMock.fn.mockRejectedValueOnce(httpErr);
+    m.mockRejectedValueOnce(httpErr);
     const result = await fetchBinaryAndValidate('tasks/result-zip', {
       failures: { 409: SchemaNonDownloadable },
     });
@@ -855,10 +796,10 @@ describe('validation: fetchBinaryAndValidate (form 5)', () => {
   });
 
   it('returns err(NetworkError) for network failure', async () => {
-    const netErr = new kyMock.NetworkError('fetch failed', {
+    const netErr = new NetworkError('fetch failed', {
       cause: new Error('dns'),
     });
-    kyMock.fn.mockRejectedValueOnce(netErr);
+    m.mockRejectedValueOnce(netErr);
     const result = await fetchBinaryAndValidate('tasks/result-zip', {});
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
@@ -867,7 +808,7 @@ describe('validation: fetchBinaryAndValidate (form 5)', () => {
   });
 
   it('default binary is blob (not arrayBuffer)', async () => {
-    kyMock.fn.mockResolvedValueOnce(
+    m.mockResolvedValueOnce(
       new Response(new Blob(['data']), {
         status: 200,
         headers: { 'Content-Type': 'application/octet-stream' },
