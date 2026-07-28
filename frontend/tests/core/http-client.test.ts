@@ -623,4 +623,20 @@ describe('http-client: ky instance configuration', () => {
     });
     expect(hasAfterResponse).toBe(true);
   });
+
+  // Spec: http-client.md "ky instance configuration contract"
+  // The ky instance is a singleton created once and reused across requests.
+  // Hook-based state (future auth header injection, 401 retry) must be
+  // shared across all requests, which requires a single instance.
+  it('reuses the same ky instance across multiple requests', async () => {
+    m.mockResolvedValueOnce(mockResponse('{}'));
+    await request('a');
+
+    const extendCallsAfterFirst = m.extend.mock.calls.length;
+
+    m.mockResolvedValueOnce(mockResponse('{}'));
+    await request('b');
+
+    expect(m.extend.mock.calls.length).toBe(extendCallsAfterFirst);
+  });
 });
