@@ -175,9 +175,42 @@ function fetchAndValidate<
 断言：
 
 - 内部串联 `request → andThen(parseJson) → orElse(validateFailure) → andThen(validateSuccess) → orTee(logNonHttpErrors)`。
-- 默认使用 `parseJson`（形式 1）。二进制端点**不**用此便利形式，而用形式 2 的显式组合。
+- 默认使用 `parseJson`（形式 1）。二进制端点**不**用此便利形式，而用 `fetchBinaryAndValidate`（形式 5）。
 - `failures` 缺省为 `{}`，`fallbackFailure` 缺省为 `undefined`——此时所有非 2xx 都成 `UnhandledStatusError`。
 - 函数名 `fetchAndValidate` 仅作说明，实现可任意命名；只要满足上述签名与行为。
+
+### 形式 5：二进制端点便利契约
+
+spec 声明：**必须**存在一个把形式 2（成功取 blob/arrayBuffer，错误校验 JSON）的四步组合收编的便利形式。其签名等价于：
+
+```ts
+function fetchBinaryAndValidate<
+  F extends Record<number, Type> = {},
+  FB extends Type | undefined = undefined,
+  B extends 'blob' | 'arrayBuffer' = 'blob',
+>(
+  url: string,
+  schemas: {
+    binary?: B
+    failures?: F
+    fallbackFailure?: FB
+  },
+  options?: Options,
+): ResultAsync<
+  B extends 'arrayBuffer' ? ArrayBuffer : BlobResult,
+  ApiError<InferHttpErrors<F, FB>>
+>
+```
+
+断言：
+
+- 内部串联 `request → andThen(binary === 'arrayBuffer' ? parseArrayBuffer : parseBlob) → orElse(validateFailure) → orTee(logNonHttpErrors)`。
+- `binary` 缺省为 `'blob'`；选 `'arrayBuffer'` 时成功值类型为 `ArrayBuffer`，否则为 `BlobResult`（含 `blob` + `status` + `headers`，用于读取 `Content-Disposition` 文件名）。
+- **不**接 `success` schema 参数（二进制 body 不校验）；`failures` / `fallbackFailure` 同形式 2 用于校验错误分支的 JSON body。
+- 成功（2xx）：`parseBlob`/`parseArrayBuffer` 产出值；`orElse` 不触发；最终 `ok(...)`。
+- 失败（非 2xx）：请求层返回 `err(HttpError<status, unknown>)`；`andThen(parseBlob/parseArrayBuffer)` 短路；`orElse(validateFailure)` 把 body 校验为对应 schema，返回 `err(HttpError<status, S['infer']>)` 或 `UnhandledStatusError`。
+- 函数名 `fetchBinaryAndValidate` 仅作说明，实现可任意命名；只要满足签名与行为。
+- 用法：`/tasks/result-zip` → `fetchBinaryAndValidate(url, { failures: { 409: ResultZipNonDownloadableSchema } }, { method: 'POST', json: { taskIds } })`。
 
 ## 请求体校验（可选 composable）
 
@@ -228,3 +261,5 @@ function logNonHttpErrors<E extends HttpError<number, unknown>>(
 11. 形式 2 中，`/tasks/result-zip` 返回 200 时，最终结果是 `ok(BlobResult)`，`validateFailure` 不触发。
 12. `fetchAndValidate(url, { success: S })` 在非 2xx 且无 `failures`/`fallbackFailure` 时返回 `UnhandledStatusError`。
 13. `validateRequest(SchemaA)(invalidBody)` 返回 `err`，`_type === 'ValidationError'`、`status === null`；且请求未发送（可通过 mock 验证 ky 未被调用）。
+14. `fetchBinaryAndValidate(url, { failures: { 409: SchemaA } })` 在 2xx 响应上返回 `ok(BlobResult)`，`BlobResult.headers` 即 `RawResponse.headers`；在 409 响应上返回 `err(HttpError<409, A>)`，**不**触发 `parseBlob`。
+15. `fetchBinaryAndValidate(url, { binary: 'arrayBuffer' })` 在 2xx 响应上返回 `ok(ArrayBuffer)`（非 `BlobResult`）。
