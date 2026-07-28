@@ -187,20 +187,20 @@ export function downloadResultZip(
   apiKey: string,
 ): ResultAsync<
   BlobResult,
-  ApiError<HttpError<409, NonDownloadableError>>
+  ApiError<HttpError<409, NonDownloadableError> | HttpError<404, { detail: string }>>
 > {
   const validated = validateRequest(ResultZipRequestSchema)({ taskIds });
   if (validated.isErr()) return validated as never;
 
   return fetchBinaryAndValidate('tasks/result-zip', {
-    failures: { 409: NonDownloadableErrorSchema },
+    failures: { 409: NonDownloadableErrorSchema, 404: ErrorDetailSchema },
   }, {
     method: 'POST',
     json: validated.value,
     headers: { 'X-API-Key': apiKey },
   }) as ResultAsync<
     BlobResult,
-    ApiError<HttpError<409, NonDownloadableError>>
+    ApiError<HttpError<409, NonDownloadableError> | HttpError<404, { detail: string }>>
   >;
 }
 
