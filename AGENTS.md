@@ -36,6 +36,8 @@ uv run ruff format .                                 # format
 uv run ruff check --fix .                            # lint + autofix
 uv run alembic upgrade head                          # apply migrations
 uv run alembic revision --autogenerate -m "msg"      # create a migration
+uv run pytest tests/e2e/ -m e2e                       # mock HTTP e2e (subprocess gateway)
+uv run pytest tests/e2e/ -m real_upstream             # real upstream e2e (fallback to mock)
 uv run uvicorn mineru_gateway.main:create_app --factory --port 8000 --workers 1
 ```
 

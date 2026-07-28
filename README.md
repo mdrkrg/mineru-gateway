@@ -113,5 +113,16 @@ uv run pytest            # run the test suite
 uv run alembic upgrade head
 ```
 
-Tests use an in-process mock upstream (ASGI transport) — no network or real
-mineru instance is required.
+Tests are organised in three layers:
+
+| Layer | Command | Transport | Count |
+|-------|---------|-----------|-------|
+| Unit / integration | `uv run pytest tests/core/ tests/user/` | ASGI (in-process mock) | 289 |
+| Mock E2E | `uv run pytest tests/e2e/ -m e2e` | Real HTTP (subprocess gateway + mock upstream) | 9 |
+| Real E2E | `GATEWAY_REAL_UPSTREAM_URL=... uv run pytest tests/e2e/ -m real_upstream` | Real HTTP against real mineru (falls back to mock) | 4 |
+
+```bash
+uv run pytest                            # all 302 tests
+uv run pytest tests/e2e/ -m e2e          # mock HTTP e2e only
+uv run pytest tests/e2e/ -m real_upstream  # real upstream e2e
+```

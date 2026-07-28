@@ -1,5 +1,7 @@
 # mineru-gateway MVP 实现规约
 
+> **MVP 阶段已完成。** 本规约作为实现参考冻结，除非有逻辑错误，不再修改。未包含在 MVP 中但已后续实现的能力（幂等提交、`/tasks/stats`、用户体系/OAuth、流式上传等）见对应 `specs/` 文档。
+
 > 本文件是 **MVP 阶段**的实现规约（数据模型、接口、模块设计、配置），是 `architecture-design.md` 的精简收敛版。
 > - 分阶段实现计划见 `plans/mvp-implementation-plan.md`
 > - 被有意推迟的能力（Redis/MQ、幂等键、磁盘配额、统计端点、重试状态机、用户体系等）见 `plans/future-enhancements.md`
