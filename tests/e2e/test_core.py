@@ -81,7 +81,7 @@ async def test_full_lifecycle_real_http(mock_control, mock_upstream_url, tmp_pat
             assert detail.json()["status"] == "pending"
 
             # 5. Trigger status sync
-            await mock_control.set_task_status("completed")
+            mock_control.set_task_status("completed")
             for _ in range(30):
                 detail = await c.get(f"/tasks/{task_id}", headers=headers)
                 if detail.json()["status"] == "completed":

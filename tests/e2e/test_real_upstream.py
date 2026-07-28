@@ -117,7 +117,9 @@ def test_real_health_fields(_real_client):
 
 
 @pytest.mark.real_upstream
-def test_real_pdf_parse_lifecycle(_real_client, _real_key_headers, sample_pdf_path):
+def test_real_pdf_parse_lifecycle(
+    _real_client, _real_key_headers, sample_pdf_path, mock_control
+):
     """Submit a real PDF and verify the full async parse lifecycle.
 
     1. POST /tasks with real minimal.pdf -> 202 with task_id,
@@ -142,6 +144,10 @@ def test_real_pdf_parse_lifecycle(_real_client, _real_key_headers, sample_pdf_pa
         task_id = body["task_id"]
         assert "status_url" in body
         assert "result_url" in body
+
+        # Push mock to terminal so background sync picks it up.
+        mock_control.set_task_status("completed")
+        mock_control.configure(result_content_type="application/zip")
 
         deadline = time.monotonic() + 120
         terminal_status: str | None = None
@@ -173,7 +179,9 @@ def test_real_pdf_parse_lifecycle(_real_client, _real_key_headers, sample_pdf_pa
 
 
 @pytest.mark.real_upstream
-def test_real_status_transitions(_real_client, _real_key_headers, sample_pdf_path):
+def test_real_status_transitions(
+    _real_client, _real_key_headers, sample_pdf_path, mock_control
+):
     """Observe upstream status transitions over real HTTP.
 
     1. Submit a PDF -> 202.
@@ -193,6 +201,9 @@ def test_real_status_transitions(_real_client, _real_key_headers, sample_pdf_pat
         )
         assert submit.status_code == 202
         task_id = submit.json()["task_id"]
+
+        # Push mock to terminal so background sync picks it up.
+        mock_control.set_task_status("completed")
 
         seen: list[str] = []
         terminal = {"completed", "failed", "cancelled"}

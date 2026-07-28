@@ -111,47 +111,47 @@ class MockControl:
     def __init__(self, base_url: str):
         self._url = base_url
 
-    async def reset(self) -> None:
-        async with httpx.AsyncClient() as c:
-            await c.post(f"{self._url}/_mock/reset")
+    def reset(self) -> None:
+        with httpx.Client() as c:
+            c.post(f"{self._url}/_mock/reset", timeout=5)
 
-    async def configure(self, **kwargs: Any) -> None:
-        async with httpx.AsyncClient() as c:
-            await c.post(f"{self._url}/_mock/configure", json=kwargs)
+    def configure(self, **kwargs: Any) -> None:
+        with httpx.Client() as c:
+            c.post(f"{self._url}/_mock/configure", json=kwargs, timeout=5)
 
-    async def set_health_raises(self) -> None:
-        await self.configure(health_raises=True)
+    def set_health_raises(self) -> None:
+        self.configure(health_raises=True)
 
-    async def set_submit_raises(self) -> None:
-        await self.configure(submit_raises=True)
+    def set_submit_raises(self) -> None:
+        self.configure(submit_raises=True)
 
-    async def set_status_raises(self) -> None:
-        await self.configure(status_raises=True)
+    def set_status_raises(self) -> None:
+        self.configure(status_raises=True)
 
-    async def set_cancel_raises(self) -> None:
-        await self.configure(cancel_raises=True)
+    def set_cancel_raises(self) -> None:
+        self.configure(cancel_raises=True)
 
-    async def set_task_status(self, status: str) -> None:
-        await self.configure(task_status=status)
+    def set_task_status(self, status: str) -> None:
+        self.configure(task_status=status)
 
-    async def set_submit_status(self, code: int) -> None:
-        await self.configure(submit_status=code)
+    def set_submit_status(self, code: int) -> None:
+        self.configure(submit_status=code)
 
-    async def set_unhealthy(self) -> None:
-        await self.configure(health_status="degraded")
+    def set_unhealthy(self) -> None:
+        self.configure(health_status="degraded")
 
 
 @pytest.fixture
-async def mock_control(mock_upstream_url):
+def mock_control(mock_upstream_url):
     """Return a `MockControl` bound to the shared mock upstream.
 
     Resets the mock state before and after the test so every test
     starts from a clean slate.
     """
     ctrl = MockControl(mock_upstream_url)
-    await ctrl.reset()
+    ctrl.reset()
     yield ctrl
-    await ctrl.reset()
+    ctrl.reset()
 
 
 # ---------------------------------------------------------------------------

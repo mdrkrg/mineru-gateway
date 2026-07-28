@@ -80,7 +80,7 @@ async def test_health_returns_503_when_upstream_unreachable(
             assert health.status_code == 200
 
             # Break upstream
-            await mock_control.set_health_raises()
+            mock_control.set_health_raises()
 
             degraded = await c.get("/health")
             assert degraded.status_code == 503
@@ -95,7 +95,7 @@ async def test_health_returns_503_when_upstream_unreachable(
             assert submit.status_code == 202
 
             # Restore upstream
-            await mock_control.reset()
+            mock_control.reset()
 
             health2 = await c.get("/health")
             assert health2.status_code == 200
