@@ -14,7 +14,6 @@ import {
   NonDownloadableErrorSchema,
   BatchCancelRequestSchema,
   BatchCancelResponseSchema,
-  type TaskSubmitResponse,
   type TaskListResponse,
   type TaskDetail,
   type TaskCancelResponse,
@@ -32,12 +31,7 @@ export interface TaskSubmissionOptions {
   signal?: AbortSignal;
 }
 
-export function submitTask(
-  options: TaskSubmissionOptions,
-): ResultAsync<
-  TaskSubmitResponse,
-  ApiError<HttpError<401, { detail: string }> | HttpError<422, { detail: string }> | HttpError<429, { detail: string }>>
-> {
+export function submitTask(options: TaskSubmissionOptions) {
   const headers: Record<string, string> = {};
   if (options.apiKey) headers['X-API-Key'] = options.apiKey;
   if (options.idempotencyKey) headers['X-Idempotency-Key'] = options.idempotencyKey;
@@ -49,10 +43,7 @@ export function submitTask(
     signal: options.signal,
   })
     .andThen(parseJson)
-    .andThen(validateSuccess(TaskSubmitResponseSchema)) as ResultAsync<
-      TaskSubmitResponse,
-      ApiError<HttpError<401, { detail: string }> | HttpError<422, { detail: string }> | HttpError<429, { detail: string }>>
-    >;
+    .andThen(validateSuccess(TaskSubmitResponseSchema));
 }
 
 // ===== Proxy: File Parse =====

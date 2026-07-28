@@ -22,6 +22,9 @@ export const TaskSubmitResponseSchema = defineResponseSchema(
     created_at: 'string',
     status_url: 'string',
     result_url: 'string',
+    started_at: 'string | null',
+    completed_at: 'string | null',
+    error: 'string | null',
     message: 'string',
   },
   {} as {
@@ -32,6 +35,9 @@ export const TaskSubmitResponseSchema = defineResponseSchema(
     createdAt: string;
     statusUrl: string;
     resultUrl: string;
+    startedAt: string | null;
+    completedAt: string | null;
+    error: string | null;
     message: string;
   },
 );
