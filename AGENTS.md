@@ -7,6 +7,9 @@
 background loops, rate limiting, and structured logging. See `README.md` for
 the user-facing overview and `specs/` for design docs.
 
+The frontend SPA is a separate project at `frontend/`. See `frontend/AGENTS.md`
+for its stack, conventions, and commands.
+
 ## Stack & version requirements
 
 See `pyproject.toml`.
