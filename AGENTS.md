@@ -137,9 +137,10 @@ optional concise body
 - **Scope** (optional): the affected domain - `auth`, `proxy`, `tasks`,
   `streaming`, `cache`, `background`, `health`, `limiter`, `upstream`, `db`,
   `config`, `tests`, etc.
-- **Title**: imperative mood, lowercase, no trailing period, ≤72 chars.
-- **Body** (optional): one blank line after the title, wrap at ~72 cols, explain
-  the *why* (the diff already shows the *what*).
+- **Title**: informative summary of the changes, lowercase,
+  no trailing period, <= 72 chars.
+- **Body** (optional): one blank line after the title, wrap at ~72 cols,
+  concisely explain the *why* (the diff already shows the *what*).
 
 Examples:
 
