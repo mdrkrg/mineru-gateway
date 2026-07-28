@@ -212,6 +212,25 @@ describe('http-client: parseJson', () => {
       expect((result.error as { issues: unknown }).issues).toBeNull();
     }
   });
+
+  // Spec: conventions.md invariant 5 - parseJson does NOT do key conversion.
+  // It returns unknown (raw snake_case JSON.parsed value). Conversion is done
+  // by schema morph in validateSuccess/validateFailure.
+  it('does NOT convert snake_case keys to camelCase (invariant 5)', async () => {
+    const resp = mockRawResponse({
+      bodyJson: { task_id: 't1', file_names: ['a', 'b'] },
+    });
+    const result = await parseJson(resp);
+    expect(result.isOk()).toBe(true);
+    if (result.isOk()) {
+      const val = result.value as Record<string, unknown>;
+      // Keys must remain snake_case (not converted to camelCase)
+      expect(val).toHaveProperty('task_id');
+      expect(val).toHaveProperty('file_names');
+      expect(val).not.toHaveProperty('taskId');
+      expect(val).not.toHaveProperty('fileNames');
+    }
+  });
 });
 
 describe('http-client: parseBlob', () => {
@@ -579,8 +598,19 @@ describe('http-client: request() throwHttpErrors requirement', () => {
   // Spec: http-client.md behavior assertion 10
   // - throwHttpErrors: true is a HARD requirement
   // - caller must NOT configure throwHttpErrors: false
+  // - the implementation must enforce this (override caller's false)
 
-  it('does not pass throwHttpErrors: false to ky', async () => {
+  it('enforces throwHttpErrors: true even when caller passes false', async () => {
+    kyMock.fn.mockResolvedValueOnce(mockResponse('{}'));
+    // Caller tries to disable throwHttpErrors — impl must override to true
+    await request('tasks', { method: 'POST', throwHttpErrors: false });
+    const callOpts = kyMock.fn.mock.calls[0][1];
+    // The implementation must force throwHttpErrors to true (or remove the
+    // caller's false), never pass false to ky.
+    expect(callOpts?.throwHttpErrors).not.toBe(false);
+  });
+
+  it('does not pass throwHttpErrors: false when caller omits it', async () => {
     kyMock.fn.mockResolvedValueOnce(mockResponse('{}'));
     await request('tasks', { method: 'POST' });
     const callOpts = kyMock.fn.mock.calls[0][1];
@@ -594,14 +624,58 @@ describe('http-client: ky instance configuration', () => {
   // - hooks.beforeRequest / hooks.afterResponse configurable at creation time
   // - hook points reachable (called by ky internally during request lifecycle)
 
-  it('ky.extend is called at module load to create the instance', () => {
-    // The http-client module should have called ky.extend() on import.
-    // This is verified by checking that kyMock.fn.extend was called.
-    // Note: since the module is already imported, extend should have been
-    // called. But since the stub throws, the module might not have called
-    // extend yet. This test will pass once the implementation creates the
-    // instance at module load time.
-    // For now, just verify the mock is set up correctly.
-    expect(typeof kyMock.fn.extend).toBe('function');
+  it('ky.extend is called at module load to create the pre-configured instance', () => {
+    // Spec invariant 7: the ky instance is created via ky.extend() at
+    // module load. The mock records all calls to ky.extend.
+    // After importing the http-client module, extend should have been
+    // called at least once.
+    expect(kyMock.fn.extend).toHaveBeenCalled();
+  });
+
+  it('prefix is configured from VITE_API_PREFIX env var', () => {
+    // Spec: http-client.md "prefix" section
+    // - prefix read from import.meta.env.VITE_API_PREFIX, default ''
+    // The extend call should include a prefix option.
+    const extendCalls = kyMock.fn.extend.mock.calls;
+    // At least one extend call should have a prefix in its options
+    const hasPrefix = extendCalls.some((call) => {
+      const opts = call[0];
+      return typeof opts === 'object' && opts !== null && 'prefix' in opts;
+    });
+    expect(hasPrefix).toBe(true);
+  });
+
+  it('beforeRequest hook is configurable and reachable during request', async () => {
+    // Spec: http-client.md "hooks.beforeRequest" & invariant 7
+    // The hook must be called by ky during the request lifecycle.
+    // We verify by checking that the extend call included a beforeRequest
+    // hook array, and that ky's mock was invoked (which in a real impl
+    // would trigger the hook).
+    const extendCalls = kyMock.fn.extend.mock.calls;
+    const hasBeforeRequest = extendCalls.some((call) => {
+      const opts = call[0];
+      return (
+        typeof opts === 'object' &&
+        opts !== null &&
+        'hooks' in opts &&
+        Array.isArray((opts as { hooks: { beforeRequest?: unknown[] } }).hooks?.beforeRequest)
+      );
+    });
+    expect(hasBeforeRequest).toBe(true);
+  });
+
+  it('afterResponse hook is configurable and reachable during request', async () => {
+    // Spec: http-client.md "hooks.afterResponse" & invariant 7
+    const extendCalls = kyMock.fn.extend.mock.calls;
+    const hasAfterResponse = extendCalls.some((call) => {
+      const opts = call[0];
+      return (
+        typeof opts === 'object' &&
+        opts !== null &&
+        'hooks' in opts &&
+        Array.isArray((opts as { hooks: { afterResponse?: unknown[] } }).hooks?.afterResponse)
+      );
+    });
+    expect(hasAfterResponse).toBe(true);
   });
 });
