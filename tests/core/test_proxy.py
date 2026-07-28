@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, patch
 
 from mineru_gateway.config import Settings
 from mineru_gateway.main import create_app
+from mineru_gateway.tasks import service as task_service
 from asgi_lifespan import LifespanManager
 import httpx
 
@@ -895,11 +896,6 @@ async def test_file_parse_ignores_idempotency_key(client, api_key, sample_files)
 
 async def test_unhandled_exception_returns_500_json(app, api_key, sample_files):
     """Unhandled exceptions produce JSON {"detail": "Internal server error"}."""
-    import httpx
-    from unittest.mock import patch
-
-    from mineru_gateway.tasks import service as task_service
-
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(
         transport=transport, base_url="http://testserver"
