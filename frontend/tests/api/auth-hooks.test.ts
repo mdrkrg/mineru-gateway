@@ -373,7 +373,7 @@ describe('createAuthAfterResponse', () => {
         retryFn,
       );
 
-      await hook(
+      const result = await hook(
         afterState({
           status: 401,
           headers: { 'X-Api-Key': 'some-key' },
@@ -382,6 +382,7 @@ describe('createAuthAfterResponse', () => {
 
       expect(refresh).not.toHaveBeenCalled();
       expect(retryFn).not.toHaveBeenCalled();
+      expect(result).toBeUndefined();
     });
   });
 
