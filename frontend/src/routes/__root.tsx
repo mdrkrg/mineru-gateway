@@ -1,10 +1,17 @@
-import { onMount } from 'solid-js';
 import { Link, Outlet, createRootRoute } from '@tanstack/solid-router';
 import { TanStackRouterDevtools } from '@tanstack/solid-router-devtools';
-import type { AuthStore } from '@/stores/auth';
+import type { AuthStore } from '../stores/auth';
 
 export const Route = createRootRoute({
+  beforeLoad: ({ context }) => {
+    return (context as { auth: AuthStore }).auth.init();
+  },
   component: RootComponent,
+  pendingComponent: () => (
+    <div class="min-h-screen flex items-center justify-center bg-gray-50">
+      <p class="text-gray-500">加载中…</p>
+    </div>
+  ),
   notFoundComponent: () => {
     return (
       <div class="p-8 text-center">
@@ -16,13 +23,6 @@ export const Route = createRootRoute({
 });
 
 function RootComponent() {
-  const ctx = Route.useRouteContext();
-  const auth = ctx().auth as AuthStore;
-
-  onMount(() => {
-    auth.init();
-  });
-
   return (
     <>
       <Outlet />
