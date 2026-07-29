@@ -18,6 +18,6 @@ export default defineConfig({
     alias: {
       '@': resolve(__dirname, 'src'),
     },
-    conditions: ['browser', 'module', 'import', 'default'],
+    conditions: ['node'],
   },
 });
