@@ -305,6 +305,86 @@ describe('createAuthAfterResponse', () => {
     });
   });
 
+  describe('API key rejection', () => {
+    it('passes through 401 and calls onApiKeyRejected when X-Api-Key is present', async () => {
+      const refresh = vi.fn();
+      const onApiKeyRejected = vi.fn();
+      const hook = createAuthAfterResponse(
+        refresh,
+        retryFn,
+        onApiKeyRejected,
+      );
+
+      const result = await hook(
+        afterState({
+          status: 401,
+          headers: { 'X-Api-Key': 'some-key' },
+        }),
+      );
+
+      expect(onApiKeyRejected).toHaveBeenCalledOnce();
+      expect(refresh).not.toHaveBeenCalled();
+      expect(retryFn).not.toHaveBeenCalled();
+      expect(result).toBeUndefined();
+    });
+
+    it('still calls onApiKeyRejected on /auth/jwt/refresh path', async () => {
+      const refresh = vi.fn();
+      const onApiKeyRejected = vi.fn();
+      const hook = createAuthAfterResponse(
+        refresh,
+        retryFn,
+        onApiKeyRejected,
+      );
+
+      const result = await hook(
+        afterState({
+          status: 401,
+          url: 'https://example.com/auth/jwt/refresh',
+          headers: { 'X-Api-Key': 'some-key' },
+        }),
+      );
+
+      expect(onApiKeyRejected).toHaveBeenCalledOnce();
+      expect(refresh).not.toHaveBeenCalled();
+      expect(result).toBeUndefined();
+    });
+
+    it('does not call onApiKeyRejected when X-Api-Key is absent', async () => {
+      const refresh = vi.fn(async () => 'new-token');
+      const onApiKeyRejected = vi.fn();
+      const hook = createAuthAfterResponse(
+        refresh,
+        retryFn,
+        onApiKeyRejected,
+      );
+
+      const result = await hook(afterState({ status: 401 }));
+
+      expect(onApiKeyRejected).not.toHaveBeenCalled();
+      expect(refresh).toHaveBeenCalledOnce();
+      expect(retryFn).toHaveBeenCalledOnce();
+    });
+
+    it('is a no-op when onApiKeyRejected is undefined', async () => {
+      const refresh = vi.fn(async () => 'new-token');
+      const hook = createAuthAfterResponse(
+        refresh,
+        retryFn,
+      );
+
+      await hook(
+        afterState({
+          status: 401,
+          headers: { 'X-Api-Key': 'some-key' },
+        }),
+      );
+
+      expect(refresh).not.toHaveBeenCalled();
+      expect(retryFn).not.toHaveBeenCalled();
+    });
+  });
+
   describe('concurrent dedup', () => {
     it('shares a single refresh() call across multiple concurrent 401s', async () => {
       let resolveRefresh: (value: string) => void;
