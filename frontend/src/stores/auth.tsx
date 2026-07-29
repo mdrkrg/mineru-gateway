@@ -100,21 +100,18 @@ export function createAuthStore(): AuthStore {
     setIsLoading(true);
     setError(null);
 
+    const userResult = await getCurrentUser(at);
+    if (userResult.isErr()) {
+      setUser(null);
+      setError(errorMessage(userResult.error));
+      setIsLoading(false);
+      return;
+    }
+
     persistTokens(at, rt);
     setAccessToken(at);
     setRefreshToken(rt);
-
-    const userResult = await getCurrentUser();
-    if (userResult.isErr()) {
-      setUser(null);
-      setAccessToken(null);
-      setRefreshToken(null);
-      clearTokens();
-      setError(errorMessage(userResult.error));
-    } else {
-      setUser(userResult.value);
-    }
-
+    setUser(userResult.value);
     setIsLoading(false);
   }
 

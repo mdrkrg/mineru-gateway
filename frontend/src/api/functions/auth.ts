@@ -120,11 +120,13 @@ export function adminCreateUser(body: UserCreateRequest, adminToken: string) {
 
 // ===== User Profile =====
 
-export function getCurrentUser() {
+export function getCurrentUser(accessToken?: string) {
+  const headers: Record<string, string> = {};
+  if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
   return fetchAndValidate('users/me', {
     success: UserReadSchema,
     failures: { 401: ErrorDetailSchema },
-  });
+  }, { headers });
 }
 
 export function updateCurrentUser(body: UserUpdateRequest) {
