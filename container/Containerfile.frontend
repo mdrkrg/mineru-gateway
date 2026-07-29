@@ -1,0 +1,19 @@
+FROM docker.io/library/node:24-alpine AS build
+
+ENV CI=true COREPACK_ENABLE_STRICT=0
+
+RUN corepack enable && corepack prepare pnpm@11 --activate
+
+WORKDIR /app
+
+COPY frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml frontend/package.json ./
+RUN pnpm install --frozen-lockfile
+
+COPY frontend/ ./
+RUN pnpm build
+
+FROM docker.io/library/caddy:2-alpine
+
+COPY --from=build /app/dist /usr/share/caddy
+
+EXPOSE 80

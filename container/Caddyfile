@@ -1,0 +1,41 @@
+:80 {
+	encode zstd gzip
+
+	handle /auth/* {
+		reverse_proxy gateway:8000
+	}
+
+	handle /users/* {
+		reverse_proxy gateway:8000
+	}
+
+	handle /me/* {
+		reverse_proxy gateway:8000
+	}
+
+	handle /tasks/* {
+		reverse_proxy gateway:8000
+	}
+
+	handle /health {
+		reverse_proxy gateway:8000
+	}
+
+	handle /file_parse {
+		reverse_proxy gateway:8000
+	}
+
+	handle /docs* {
+		reverse_proxy gateway:8000
+	}
+
+	handle /openapi.json {
+		reverse_proxy gateway:8000
+	}
+
+	handle {
+		root * /usr/share/caddy
+		try_files {path} /index.html
+		file_server
+	}
+}

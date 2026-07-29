@@ -21,9 +21,7 @@ services:
     build:
       context: ..
       dockerfile: container/Containerfile
-    restart: always
-    ports:
-      - "${GATEWAY_LISTEN:-127.0.0.1:8000}:8000"
+    restart: unless-stopped
     environment:
       GATEWAY_UPSTREAM_URL: ${GATEWAY_UPSTREAM_URL:?set upstream router/api URL}
       GATEWAY_DATABASE_URL: postgresql+asyncpg://gateway:${POSTGRES_PASSWORD:?set in .env}@db:5432/gateway
@@ -41,6 +39,16 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: container/Containerfile.frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_LISTEN:-127.0.0.1:3000}:80"
+    depends_on:
+      - gateway
 
 volumes:
   db_data:
