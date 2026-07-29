@@ -102,7 +102,7 @@ function ResultDownloadPage() {
           | { detail?: string; nonDownloadable?: { taskId: string; reason: string }[] }
           | undefined;
         const failed = data?.nonDownloadable
-          ?.map((item) => `${item.taskId.slice(0, 8)}…(${item.reason})`)
+          ?.map((item) => `…${item.taskId.slice(-8)}(${item.reason})`)
           .join(',');
         setError(
           `部分任务不可下载:${failed ?? data?.detail ?? '未知原因'}。请取消勾选后重试。`,
@@ -193,7 +193,7 @@ function ResultDownloadPage() {
                             to={ROUTES.taskDetail(task.taskId)}
                             class="text-blue-600 hover:underline"
                           >
-                            <code class="text-xs">{task.taskId.slice(0, 8)}…</code>
+                            <code class="text-xs">…{task.taskId.slice(-8)}</code>
                           </Link>
                         </td>
                         <td class="py-2 pr-4 max-w-64 truncate" title={task.fileNames.join(', ')}>

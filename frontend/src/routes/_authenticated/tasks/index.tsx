@@ -89,7 +89,7 @@ function TaskListPage() {
   async function handleCancel(task: TaskListItem) {
     const key = apiKeyStore.activeKey();
     if (!key) return;
-    if (!window.confirm(`确定取消任务 ${task.taskId.slice(0, 8)}… 吗?`)) return;
+    if (!window.confirm(`确定取消任务 …${task.taskId.slice(-8)} 吗?`)) return;
 
     setIsActing(true);
     setError(null);
@@ -234,7 +234,7 @@ function TaskListPage() {
                             to={ROUTES.taskDetail(task.taskId)}
                             class="text-blue-600 hover:underline"
                           >
-                            <code class="text-xs">{task.taskId.slice(0, 8)}…</code>
+                            <code class="text-xs">…{task.taskId.slice(-8)}</code>
                           </Link>
                         </td>
                         <td class="py-2 pr-4">
