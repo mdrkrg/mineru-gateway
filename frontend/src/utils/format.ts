@@ -39,6 +39,18 @@ export function formatFileSize(bytes: number): string {
   return `${rounded} ${units[unit]}`;
 }
 
+function composeDuration(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours}小时`);
+  if (minutes > 0) parts.push(`${minutes}分`);
+  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}秒`);
+  return parts.join(' ');
+}
+
 /**
  * Formats the elapsed time between two ISO timestamps.
  * When `endIso` is null/undefined, measures up to `now` (defaults to
@@ -55,15 +67,15 @@ export function formatDuration(
   if (Number.isNaN(start) || Number.isNaN(end)) return EMPTY_PLACEHOLDER;
   const ms = end - start;
   if (ms < 0) return EMPTY_PLACEHOLDER;
+  return composeDuration(Math.floor(ms / 1000));
+}
 
-  const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  const parts: string[] = [];
-  if (hours > 0) parts.push(`${hours}小时`);
-  if (minutes > 0) parts.push(`${minutes}分`);
-  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}秒`);
-  return parts.join(' ');
+/**
+ * Formats a millisecond count as a duration string (same style as
+ * {@link formatDuration}). Returns the placeholder for negative or
+ * non-finite input.
+ */
+export function formatMilliseconds(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return EMPTY_PLACEHOLDER;
+  return composeDuration(Math.floor(ms / 1000));
 }

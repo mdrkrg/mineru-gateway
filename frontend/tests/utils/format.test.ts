@@ -4,6 +4,7 @@ import {
   formatDateTime,
   formatDuration,
   formatFileSize,
+  formatMilliseconds,
 } from '../../src/utils/format';
 
 describe('formatDateTime', () => {
@@ -78,5 +79,21 @@ describe('formatDuration', () => {
     expect(formatDuration('2026-01-01T00:01:00Z', '2026-01-01T00:00:00Z')).toBe(
       EMPTY_PLACEHOLDER,
     );
+  });
+});
+
+describe('formatMilliseconds', () => {
+  it('formats sub-minute durations in seconds', () => {
+    expect(formatMilliseconds(45_000)).toBe('45秒');
+    expect(formatMilliseconds(999)).toBe('0秒');
+  });
+
+  it('formats compound durations', () => {
+    expect(formatMilliseconds(3_723_000)).toBe('1小时 2分 3秒');
+  });
+
+  it('returns placeholder for negative or non-finite input', () => {
+    expect(formatMilliseconds(-1)).toBe(EMPTY_PLACEHOLDER);
+    expect(formatMilliseconds(Number.NaN)).toBe(EMPTY_PLACEHOLDER);
   });
 });
