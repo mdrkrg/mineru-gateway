@@ -163,20 +163,28 @@ describe('conventions: naming conversion invariants (type-level)', () => {
   });
 
   // Spec: conventions.md "Schema construction helper contract" lines 105-114
-  // The helper must also preserve inferIn as the input definition type D.
-  // These type-level tests require the real implementation (the stub returns
-  // Type<O> where inferIn === O, so these would fail at compile time).
-  // They are written as runtime checks that will fail until the implementation
-  // provides the correct inferIn type. The type-level exactness is verified
-  // by tsc when the implementation lands.
+  // defineResponseSchema(def, output): infer = O (camelCase), inferIn = type(def) (snake_case wire)
+  // defineRequestSchema(def, output):  infer = O (snake_case wire), inferIn = type(def) (camelCase)
 
-  it('defineResponseSchema inferIn differs from infer (morph is applied)', () => {
-    // Spec: conventions.md invariant 3 - for morphing schemas, infer != inferIn.
+  it('defineResponseSchema inferIn is the snake_case wire input type', () => {
     const schema = defineResponseSchema(
       { task_id: 'string' },
       {} as { taskId: string },
     );
-    const val = callSchema(schema, { task_id: 't1' });
-    expect(val.taskId).toBe('t1');
+    type InferredIn = (typeof schema)['inferIn'];
+    type Check = IsExact<InferredIn, { task_id: string }>;
+    const _c: Check = true;
+    expect(_c).toBe(true);
+  });
+
+  it('defineRequestSchema inferIn is the camelCase input type', () => {
+    const schema = defineRequestSchema(
+      { taskIds: 'string[]' },
+      {} as { task_ids: string[] },
+    );
+    type InferredIn = (typeof schema)['inferIn'];
+    type Check = IsExact<InferredIn, { taskIds: string[] }>;
+    const _c: Check = true;
+    expect(_c).toBe(true);
   });
 });
