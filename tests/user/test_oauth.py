@@ -16,7 +16,7 @@ import pytest
 from asgi_lifespan import LifespanManager
 from sqlalchemy import func, select
 
-from mineru_gateway.config import OIDCProviderConfig
+from mineru_gateway.config import OIDCProviderConfig, Settings
 from mineru_gateway.models import OAuthAccount, User
 from mineru_gateway.main import create_app
 
@@ -578,3 +578,85 @@ async def test_callback_frontend_redirect_returns_302_with_fragment(
     assert "access_token=" in location
     assert "refresh_token=" in location
     assert "token_type=bearer" in location
+
+
+# ===== Section 4.5 / 9.7: Providers listing endpoint =====
+
+
+async def test_providers_lists_configured_providers(oauth_client):
+    """Section 9.7: GET /auth/oauth/providers -> 200 + provider names."""
+    resp = await oauth_client.get("/auth/oauth/providers")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body == {"providers": [{"name": "keycloak"}]}
+
+
+async def test_providers_multiple_providers(upstream_client):
+    """Section 9.7: multiple configured providers -> all returned, each
+    entry only contains name."""
+
+    settings_multi = Settings(
+        database_url="sqlite+aiosqlite:///:memory:",
+        user_auth_enabled=True,
+        jwt_secret="a" * 32,
+        open_registration=True,
+        create_tables=True,
+        oauth_redirect_base_url="http://testserver",
+        oidc_providers=[
+            OIDCProviderConfig(
+                name="keycloak",
+                openid_configuration_endpoint="https://k.example.com/.well-known/openid-configuration",
+                client_id="k-id",
+                client_secret="k-secret",
+            ),
+            OIDCProviderConfig(
+                name="github",
+                openid_configuration_endpoint="https://g.example.com/.well-known/openid-configuration",
+                client_id="g-id",
+                client_secret="g-secret",
+            ),
+        ],
+    )
+    app = create_app(settings=settings_multi, upstream_client=upstream_client)
+    async with LifespanManager(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as c:
+            resp = await c.get("/auth/oauth/providers")
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body == {"providers": [{"name": "keycloak"}, {"name": "github"}]}
+
+
+async def test_providers_does_not_expose_secrets(oauth_client):
+    """Section 9.7: response must not contain client_id, client_secret, or
+    openid_configuration_endpoint."""
+    resp = await oauth_client.get("/auth/oauth/providers")
+    assert resp.status_code == 200
+    body_str = resp.text.lower()
+    assert "client_id" not in body_str
+    assert "client_secret" not in body_str
+    assert "openid_configuration" not in body_str
+
+
+async def test_providers_empty_when_no_providers_configured(upstream_client):
+    """Section 9.7: no providers configured -> 200 + empty list."""
+
+    settings_empty = Settings(
+        database_url="sqlite+aiosqlite:///:memory:",
+        user_auth_enabled=True,
+        jwt_secret="a" * 32,
+        open_registration=True,
+        oidc_providers=[],
+        create_tables=True,
+    )
+    app = create_app(settings=settings_empty, upstream_client=upstream_client)
+    async with LifespanManager(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as c:
+            resp = await c.get("/auth/oauth/providers")
+            assert resp.status_code == 200
+            assert resp.json() == {"providers": []}
