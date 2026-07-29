@@ -19,7 +19,7 @@
  * - When `getToken()` returns `null`, the hook returns `undefined` -
  *   the original request is sent unchanged.
  *
- * ### `createAuthAfterResponse(getToken, refresh, retryFn)`
+ * ### `createAuthAfterResponse(refresh, retryFn)`
  *
  * Creates a ky `afterResponse` hook.  Expected behaviour:
  *
@@ -170,7 +170,6 @@ describe('createAuthAfterResponse', () => {
     it('passes through 200 responses', async () => {
       const refresh = vi.fn();
       const hook = createAuthAfterResponse(
-        () => 'tok',
         refresh,
         retryFn,
       );
@@ -185,7 +184,6 @@ describe('createAuthAfterResponse', () => {
     it('passes through 403 responses', async () => {
       const refresh = vi.fn();
       const hook = createAuthAfterResponse(
-        () => 'tok',
         refresh,
         retryFn,
       );
@@ -199,7 +197,6 @@ describe('createAuthAfterResponse', () => {
     it('passes through 500 responses', async () => {
       const refresh = vi.fn();
       const hook = createAuthAfterResponse(
-        () => 'tok',
         refresh,
         retryFn,
       );
@@ -215,7 +212,6 @@ describe('createAuthAfterResponse', () => {
     it('passes through 401 on /auth/jwt/refresh without retrying', async () => {
       const refresh = vi.fn();
       const hook = createAuthAfterResponse(
-        () => 'tok',
         refresh,
         retryFn,
       );
@@ -237,7 +233,6 @@ describe('createAuthAfterResponse', () => {
     it('passes through 401 when retryCount > 0 (already retried)', async () => {
       const refresh = vi.fn();
       const hook = createAuthAfterResponse(
-        () => 'tok',
         refresh,
         retryFn,
       );
@@ -254,7 +249,6 @@ describe('createAuthAfterResponse', () => {
     it('calls refresh() and retries with new Authorization header', async () => {
       const refresh = vi.fn(async () => 'new-access-token');
       const hook = createAuthAfterResponse(
-        () => 'old-token',
         refresh,
         retryFn,
       );
@@ -279,7 +273,6 @@ describe('createAuthAfterResponse', () => {
     it('preserves non-Authorization headers on the retried request', async () => {
       const refresh = vi.fn(async () => 'new-tok');
       const hook = createAuthAfterResponse(
-        () => 'old-tok',
         refresh,
         retryFn,
       );
@@ -300,7 +293,6 @@ describe('createAuthAfterResponse', () => {
     it('passes through original 401 when refresh() returns null', async () => {
       const refresh = vi.fn(async () => null);
       const hook = createAuthAfterResponse(
-        () => 'old-tok',
         refresh,
         retryFn,
       );
@@ -323,7 +315,6 @@ describe('createAuthAfterResponse', () => {
           }),
       );
       const hook = createAuthAfterResponse(
-        () => 'tok',
         refresh,
         retryFn,
       );
@@ -344,7 +335,6 @@ describe('createAuthAfterResponse', () => {
     it('both callers retry with the same new token', async () => {
       const refresh = vi.fn(async () => 'shared-new-token');
       const hook = createAuthAfterResponse(
-        () => 'tok',
         refresh,
         retryFn,
       );
@@ -370,7 +360,6 @@ describe('createAuthAfterResponse', () => {
           }).catch(() => null),
       );
       const hook = createAuthAfterResponse(
-        () => 'tok',
         refresh,
         retryFn,
       );
@@ -394,7 +383,6 @@ describe('createAuthAfterResponse', () => {
         .mockResolvedValueOnce('token-1')
         .mockResolvedValueOnce('token-2');
       const hook = createAuthAfterResponse(
-        () => 'tok',
         refresh,
         retryFn,
       );

@@ -267,7 +267,6 @@ export function createAuthBeforeRequest(
 }
 
 export function createAuthAfterResponse(
-  _getToken: () => string | null,
   refresh: () => Promise<string | null>,
   retryFn: (request: Request) => unknown,
 ): (
@@ -287,8 +286,14 @@ export function createAuthAfterResponse(
     if (!refreshPromise) {
       refreshPromise = refresh();
     }
-    const newToken = await refreshPromise;
-    refreshPromise = null;
+    let newToken: string | null = null;
+    try {
+      newToken = await refreshPromise;
+    } catch {
+      // refresh rejected - pass through 401
+    } finally {
+      refreshPromise = null;
+    }
 
     if (!newToken) return;
 
