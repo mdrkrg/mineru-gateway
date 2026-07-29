@@ -43,7 +43,7 @@ Authorization: Bearer <JWT> ──►  (新增: 用户管理, OAuth, /me/api-key
 | `X-Admin-Token` | `POST /auth/keys`, `GET /auth/keys`, `DELETE /auth/keys/{id}`, `POST /auth/users` | 管理员管理 Key 与用户（现有 + 新增） |
 | `Authorization: Bearer <JWT>` | `GET /users/me`, `PATCH /users/me`, `POST /auth/jwt/logout`, `GET /me/api-keys`, `POST /me/api-keys`, `DELETE /me/api-keys/{id}` | 用户自助（新增） |
 
-无鉴权的公共端点：`POST /auth/jwt/login`、`POST /auth/jwt/refresh`、`POST /auth/register`（受开关控制）、`GET /auth/oauth/{provider}/authorize`、`GET /auth/oauth/{provider}/callback`。
+无鉴权的公共端点：`POST /auth/jwt/login`、`POST /auth/jwt/refresh`、`POST /auth/register`（受开关控制）、`GET /auth/oauth/providers`、`GET /auth/oauth/{provider}/authorize`、`GET /auth/oauth/{provider}/callback`。
 
 ### 1.2 OAuth 流程
 
@@ -470,6 +470,31 @@ GET /auth/oauth/{provider}/authorize
 - 生成 state 参数（防 CSRF），存入签名 cookie。
 - 重定向到 OIDC 提供商授权页面。
 
+#### 列出 OAuth 提供商
+
+```
+GET /auth/oauth/providers
+```
+
+**认证**：无
+
+**成功响应**（200）：
+
+```json
+{
+  "providers": [
+    { "name": "keycloak" }
+  ]
+}
+```
+
+**行为**：
+
+- 返回 `GATEWAY_OIDC_PROVIDERS` 中所有已配置提供商的 `name` 列表。
+- 不返回 `client_id`、`client_secret`、`openid_configuration_endpoint` 等敏感配置。
+- 未配置任何 OIDC 提供商时返回 `{"providers": []}`。
+- 前端通过此端点发现可用提供商，为每个提供商渲染登录按钮。
+
 #### OAuth 回调
 
 ```
@@ -814,6 +839,9 @@ curl -X POST http://localhost:8000/auth/keys \
 - OAuth 回调端点：userinfo 不返回 `name` 时，按优先级回退到 `preferred_username` → `given_name` → email 本地部分。
 - OAuth 回调端点：`email_verified=true` 时新创建 User 的 `is_verified=true`；关联已有 User 时 `is_verified` 不升级。
 - OAuth 回调返回的 `access_token` 可调用 `/users/me`。
+- 提供商列表端点：`GET /auth/oauth/providers` → 200 + `{"providers": [{"name": "..."}]}`，每个条目仅包含 `name` 字段。
+- 提供商列表端点：响应不包含 `client_id`、`client_secret`、`openid_configuration_endpoint`。
+- 提供商列表端点：无 OIDC 提供商配置时 → 200 + `{"providers": []}`。
 
 ### 9.8 总开关
 
