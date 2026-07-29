@@ -76,38 +76,11 @@ Object.defineProperty(globalThis, 'localStorage', {
   writable: true,
 });
 
-// Placeholder for the store (to be implemented in src/stores/auth.tsx)
-// The test file is the contract; the implementation must satisfy these tests.
-// import { createAuthStore } from '../../src/stores/auth';
+import { createAuthStore } from '../../src/stores/auth';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-interface AuthStore {
-  user: () => unknown;
-  accessToken: () => string | null;
-  refreshToken: () => string | null;
-  isLoading: () => boolean;
-  isAuthenticated: () => boolean;
-  error: () => string | null;
-  init: () => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-  refresh: () => Promise<void>;
-}
-
-/**
- * Factory placeholder - the real implementation will be imported from
- * `src/stores/auth.tsx`.
- * Until then, the test suite documents the contract.
- */
-function createTestStore(): AuthStore {
-  throw new Error(
-    'AuthStore not yet implemented. This test file is the contract; ' +
-    'implement src/stores/auth.tsx to satisfy these tests.',
-  );
-}
 
 beforeEach(() => {
   m.mockReset();
@@ -132,7 +105,7 @@ describe('AuthStore: init', () => {
    * unauthenticated with null user/tokens and calls no API.
    */
   it('starts unauthenticated when localStorage is empty', async () => {
-    const store = createTestStore();
+    const store = createAuthStore();
 
     await store.init();
 
@@ -169,7 +142,7 @@ describe('AuthStore: init', () => {
       ),
     );
 
-    const store = createTestStore();
+    const store = createAuthStore();
     await store.init();
 
     expect(store.isAuthenticated()).toBe(true);
@@ -200,7 +173,7 @@ describe('AuthStore: init', () => {
     httpErr.data = { detail: 'token expired' };
     m.mockRejectedValueOnce(httpErr);
 
-    const store = createTestStore();
+    const store = createAuthStore();
     await store.init();
 
     expect(store.isAuthenticated()).toBe(false);
@@ -222,7 +195,7 @@ describe('AuthStore: init', () => {
 
     m.mockRejectedValueOnce(new NetworkError('offline', { cause: new Error('dns') }));
 
-    const store = createTestStore();
+    const store = createAuthStore();
     await store.init();
 
     expect(store.isAuthenticated()).toBe(true);
@@ -270,7 +243,7 @@ describe('AuthStore: login', () => {
       ),
     );
 
-    const store = createTestStore();
+    const store = createAuthStore();
     await store.login('b@c.com', 'secret');
 
     expect(store.isAuthenticated()).toBe(true);
@@ -300,7 +273,7 @@ describe('AuthStore: login', () => {
     httpErr.data = { detail: 'bad credentials' };
     m.mockRejectedValueOnce(httpErr);
 
-    const store = createTestStore();
+    const store = createAuthStore();
     await store.login('bad@c.com', 'wrong');
 
     expect(store.isAuthenticated()).toBe(false);
@@ -318,7 +291,7 @@ describe('AuthStore: login', () => {
   it('sets error on network failure during login', async () => {
     m.mockRejectedValueOnce(new NetworkError('offline', { cause: new Error('dns') }));
 
-    const store = createTestStore();
+    const store = createAuthStore();
     await store.login('b@c.com', 'secret');
 
     expect(store.isAuthenticated()).toBe(false);
@@ -366,7 +339,7 @@ describe('AuthStore: login', () => {
       ),
     );
 
-    const store = createTestStore();
+    const store = createAuthStore();
     await store.login('bad@c.com', 'wrong');
     expect(store.error()).toBeTruthy();
 
@@ -411,7 +384,7 @@ describe('AuthStore: logout', () => {
       }),
     );
 
-    const store = createTestStore();
+    const store = createAuthStore();
     await store.init();
     expect(store.isAuthenticated()).toBe(true);
 
@@ -452,7 +425,7 @@ describe('AuthStore: logout', () => {
     );
     m.mockRejectedValueOnce(new NetworkError('offline', { cause: new Error('dns') }));
 
-    const store = createTestStore();
+    const store = createAuthStore();
     await store.init();
     expect(store.isAuthenticated()).toBe(true);
 
@@ -468,7 +441,7 @@ describe('AuthStore: logout', () => {
    * no state change).
    */
   it('is a no-op when already unauthenticated', async () => {
-    const store = createTestStore();
+    const store = createAuthStore();
     await store.init();
 
     await store.logout();
@@ -516,7 +489,7 @@ describe('AuthStore: refresh', () => {
       ),
     );
 
-    const store = createTestStore();
+    const store = createAuthStore();
     await store.init();
     await store.refresh();
 
@@ -562,7 +535,7 @@ describe('AuthStore: refresh', () => {
     httpErr.data = { detail: 'refresh token expired' };
     m.mockRejectedValueOnce(httpErr);
 
-    const store = createTestStore();
+    const store = createAuthStore();
     await store.init();
     await store.refresh();
 
@@ -578,7 +551,7 @@ describe('AuthStore: refresh', () => {
    * Refresh is a no-op when there is no refreshToken.
    */
   it('is a no-op when no refresh token is available', async () => {
-    const store = createTestStore();
+    const store = createAuthStore();
     await store.init();
 
     await store.refresh();
@@ -597,7 +570,7 @@ describe('AuthStore: isAuthenticated', () => {
    * isAuthenticated is false initially (before init).
    */
   it('is false initially', () => {
-    const store = createTestStore();
+    const store = createAuthStore();
     expect(store.isAuthenticated()).toBe(false);
   });
 
@@ -631,7 +604,7 @@ describe('AuthStore: isAuthenticated', () => {
       ),
     );
 
-    const store = createTestStore();
+    const store = createAuthStore();
     expect(store.isAuthenticated()).toBe(false);
     await store.login('f@g.com', 'pw');
     expect(store.isAuthenticated()).toBe(true);
@@ -666,7 +639,7 @@ describe('AuthStore: isAuthenticated', () => {
       }),
     );
 
-    const store = createTestStore();
+    const store = createAuthStore();
     await store.init();
     expect(store.isAuthenticated()).toBe(true);
     await store.logout();
@@ -683,7 +656,7 @@ describe('AuthStore: isLoading', () => {
    * isLoading is false after init completes (success or failure).
    */
   it('is false after init completes', async () => {
-    const store = createTestStore();
+    const store = createAuthStore();
     await store.init();
     expect(store.isLoading()).toBe(false);
   });
@@ -694,7 +667,7 @@ describe('AuthStore: isLoading', () => {
   it('is false after login completes', async () => {
     m.mockRejectedValueOnce(new NetworkError('offline', { cause: new Error('dns') }));
 
-    const store = createTestStore();
+    const store = createAuthStore();
     await store.login('x@y.com', 'pw');
     expect(store.isLoading()).toBe(false);
   });
@@ -708,7 +681,7 @@ describe('AuthStore: isLoading', () => {
 
     m.mockRejectedValueOnce(new NetworkError('offline', { cause: new Error('dns') }));
 
-    const store = createTestStore();
+    const store = createAuthStore();
     await store.logout();
     expect(store.isLoading()).toBe(false);
   });
@@ -750,7 +723,7 @@ describe('AuthStore: localStorage keys', () => {
       ),
     );
 
-    const store = createTestStore();
+    const store = createAuthStore();
     await store.login('h@i.com', 'pw');
 
     expect(localStorageMock.setItem).toHaveBeenCalledWith('auth_access_token', 'at-key');
@@ -765,13 +738,29 @@ describe('AuthStore: localStorage keys', () => {
     storage.set('auth_refresh_token', 'rt-rm');
 
     m.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'u-rm',
+          email: 'rm@example.com',
+          is_active: true,
+          is_superuser: false,
+          is_verified: true,
+          display_name: null,
+          created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-01-01T00:00:00Z',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    m.mockResolvedValueOnce(
       new Response(JSON.stringify({ message: 'logged out' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }),
     );
 
-    const store = createTestStore();
+    const store = createAuthStore();
+    await store.init();
     await store.logout();
 
     expect(localStorageMock.removeItem).toHaveBeenCalledWith('auth_access_token');
