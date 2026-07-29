@@ -1,5 +1,7 @@
+import { onMount } from 'solid-js';
 import { Link, Outlet, createRootRoute } from '@tanstack/solid-router';
 import { TanStackRouterDevtools } from '@tanstack/solid-router-devtools';
+import type { AuthStore } from '../stores/auth';
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -14,9 +16,16 @@ export const Route = createRootRoute({
 });
 
 function RootComponent() {
+  const ctx = Route.useRouteContext();
+  const auth = ctx().auth as AuthStore;
+
+  onMount(() => {
+    auth.init();
+  });
+
   return (
     <>
-      <nav class="flex gap-4 p-4 border-b">
+      <nav class="flex gap-4 p-4 border-b items-center">
         <Link to="/" activeProps={{ class: 'font-bold' }} activeOptions={{ exact: true }}>
           Home
         </Link>
