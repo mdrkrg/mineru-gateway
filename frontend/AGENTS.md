@@ -48,6 +48,7 @@ src/
   routeTree.gen.ts  # auto-generated route tree (do not edit)
 specs/core/         # infra-layer behavioral contracts (source of truth)
 tests/core/         # tests for the infrastructure layer
+tests/api/          # tests for the API/auth layer (hooks, etc.)
 tests/e2e/          # e2e tests against running gateway + mock upstream
 ```
 
@@ -57,7 +58,7 @@ tests/e2e/          # e2e tests against running gateway + mock upstream
 |------|---------|
 | `conventions.ts` | `defineResponseSchema` / `defineRequestSchema` (snake↔camel morph via arktype `.pipe()`) |
 | `error-model.ts` | `HttpError`, `ApiError<>`, type guards, `createHttpError` |
-| `http-client.ts` | `request()`, `parseJson`, `parseBlob`, `parseArrayBuffer`, `passthrough`; lazy-singleton ky instance with `beforeRequest`/`afterResponse` hooks (reserved for auth injection + 401->refresh->retry) |
+| `http-client.ts` | `request()`, `parseJson`, `parseBlob`, `parseArrayBuffer`, `passthrough`, `createAuthBeforeRequest`, `createAuthAfterResponse`; lazy-singleton ky instance with `beforeRequest`/`afterResponse` hooks |
 | `validation.ts` | arktype ↔ neverthrow bridge: `validateSuccess`, `validateFailure`, `fetchAndValidate`, `fetchBinaryAndValidate` |
 
 ### `api/` - HTTP layer
@@ -106,6 +107,7 @@ tests/e2e/          # e2e tests against running gateway + mock upstream
 ## Tests
 
 - Layout: `tests/core/` mirrors `src/core/` - one test file per module.
+- `tests/api/` covers auth hooks, form builders, and other API-layer primitives.
 - `tests/core/ky-mock.ts` provides a shared ky mock factory. Always use it;
   don't inline `vi.mock('ky', ...)`.
 - Tests verify spec invariants (`specs/core/*.md` each have an "不变量清单" section).
