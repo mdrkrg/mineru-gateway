@@ -3,6 +3,7 @@ import type { ApiError, HttpError } from '../../core/error-model';
 import { fetchAndValidate, fetchBinaryAndValidate, validateRequest, validateSuccess } from '../../core/validation';
 import { request, parseJson, parseBlob, passthrough } from '../../core/http-client';
 import type { BlobResult, RawResponse } from '../../core/http-client';
+import type { MineruBackend } from '../schemas/mineru-options';
 import { ErrorDetailSchema } from '../schemas/shared';
 import {
   TaskSubmitResponseSchema,
@@ -73,7 +74,7 @@ export function parseFile(
 export interface TaskListParams {
   apiKey: string;
   status?: string;
-  backend?: string;
+  backend?: MineruBackend;
   fileName?: string;
   dateFrom?: string;
   dateTo?: string;

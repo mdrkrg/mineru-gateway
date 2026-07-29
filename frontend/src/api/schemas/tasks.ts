@@ -1,5 +1,8 @@
 import { type } from 'arktype';
 import { defineResponseSchema, defineRequestSchema } from '../../core/conventions';
+import type { MineruBackend } from './mineru-options';
+
+const BACKEND_DEF = "'pipeline' | 'vlm-engine' | 'hybrid-engine' | 'vlm-http-client' | 'hybrid-http-client'" as const;
 
 // ===== Task status type =====
 
@@ -17,7 +20,7 @@ export const TaskSubmitResponseSchema = defineResponseSchema(
   {
     task_id: 'string',
     status: 'string',
-    backend: 'string',
+    backend: BACKEND_DEF,
     file_names: 'string[]',
     created_at: 'string',
     status_url: 'string',
@@ -30,7 +33,7 @@ export const TaskSubmitResponseSchema = defineResponseSchema(
   {} as {
     taskId: string;
     status: string;
-    backend: string;
+    backend: MineruBackend;
     fileNames: string[];
     createdAt: string;
     statusUrl: string;
@@ -48,7 +51,7 @@ export const TaskListItemSchema = defineResponseSchema(
   {
     task_id: 'string',
     status: 'string',
-    backend: 'string',
+    backend: BACKEND_DEF,
     file_names: 'string[]',
     created_at: 'string',
     started_at: 'string | null',
@@ -60,7 +63,7 @@ export const TaskListItemSchema = defineResponseSchema(
   {} as {
     taskId: string;
     status: string;
-    backend: string;
+    backend: MineruBackend;
     fileNames: string[];
     createdAt: string;
     startedAt: string | null;
@@ -76,7 +79,7 @@ export const TaskListResponseSchema = defineResponseSchema(
     items: type({
       task_id: 'string',
       status: 'string',
-      backend: 'string',
+      backend: BACKEND_DEF,
       file_names: 'string[]',
       created_at: 'string',
       started_at: 'string | null',
@@ -93,7 +96,7 @@ export const TaskListResponseSchema = defineResponseSchema(
     items: {
       taskId: string;
       status: string;
-      backend: string;
+      backend: MineruBackend;
       fileNames: string[];
       createdAt: string;
       startedAt: string | null;
@@ -114,7 +117,7 @@ export const TaskDetailSchema = defineResponseSchema(
   {
     task_id: 'string',
     status: 'string',
-    backend: 'string',
+    backend: BACKEND_DEF,
     file_names: 'string[]',
     file_count: 'number',
     created_at: 'string',
@@ -127,7 +130,7 @@ export const TaskDetailSchema = defineResponseSchema(
   {} as {
     taskId: string;
     status: string;
-    backend: string;
+    backend: MineruBackend;
     fileNames: string[];
     fileCount: number;
     createdAt: string;
