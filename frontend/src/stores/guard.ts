@@ -22,3 +22,18 @@ export function requireAuth(auth: AuthStore) {
     throw redirect({ to: '/login' });
   }
 }
+
+/**
+ * Like {@link requireAuth}, but additionally requires the current user to
+ * be a superuser. Non-admin users are redirected to the dashboard.
+ *
+ * @param auth - The auth store, typically accessed via router context.
+ * @throws A {@link redirect} to `/login` when unauthenticated, or to `/`
+ *         when the user is not a superuser.
+ */
+export function requireSuperuser(auth: AuthStore) {
+  requireAuth(auth);
+  if (auth.user()?.isSuperuser !== true) {
+    throw redirect({ to: '/' });
+  }
+}

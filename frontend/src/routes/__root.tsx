@@ -25,14 +25,7 @@ function RootComponent() {
 
   return (
     <>
-      <nav class="flex gap-4 p-4 border-b items-center">
-        <Link to="/" activeProps={{ class: 'font-bold' }} activeOptions={{ exact: true }}>
-          Home
-        </Link>
-      </nav>
-      <main class="p-4">
-        <Outlet />
-      </main>
+      <Outlet />
       <TanStackRouterDevtools position="bottom-right" />
     </>
   );
