@@ -1,6 +1,6 @@
 import { For, Show, createSignal } from 'solid-js';
 import { Link, createFileRoute } from '@tanstack/solid-router';
-import { FileUp, X } from 'lucide-solid';
+import { FileUp, CircleQuestionMark, X } from 'lucide-solid';
 import { submitTask } from '@/api/functions/tasks';
 import type { TaskSubmitResponse } from '@/api/schemas/tasks';
 import {
@@ -16,7 +16,7 @@ import {
 import NoActiveKey from '@/components/NoActiveKey';
 import { useApiKey } from '@/stores/api-key-context';
 import { errorMessage } from '@/utils/api-error';
-import { ROUTES } from '@/utils/constants';
+import { MINERU_LANGUAGE_COVERAGE, MINERU_LANGUAGE_LABELS, ROUTES } from '@/utils/constants';
 import { formatFileSize } from '@/utils/format';
 
 export const Route = createFileRoute('/_authenticated/upload')({
@@ -27,6 +27,29 @@ const inputCls =
   'border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500';
 
 const needsServerUrl = (backend: MineruBackend) => backend.endsWith('-http-client');
+
+function LanguageCodeTable() {
+  return (
+    <div class="bg-gray-900 text-white text-xs rounded-lg shadow-lg p-3 w-80">
+      <table class="w-full">
+        <thead>
+          <tr class="text-gray-400">
+            <th class="text-left pr-2 py-0.5">选项</th>
+            <th class="text-left py-0.5">覆盖语言</th>
+          </tr>
+        </thead>
+        <tbody>
+          {MINERU_LANGUAGES.map((lang) => (
+            <tr>
+              <td class="pr-2 py-0.5 whitespace-nowrap align-top">{MINERU_LANGUAGE_LABELS[lang]}</td>
+              <td class="py-0.5">{MINERU_LANGUAGE_COVERAGE[lang]}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
 
 function UploadPage() {
   const apiKeyStore = useApiKey();
@@ -229,7 +252,15 @@ function UploadPage() {
             </Show>
 
             <div>
-              <p class="text-sm font-medium text-gray-700 mb-2">语言(可多选)</p>
+              <div class="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+                语言(可多选)
+                <div class="relative inline-flex group cursor-help">
+                  <CircleQuestionMark class="w-4 h-4 text-gray-400" />
+                  <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-10">
+                    <LanguageCodeTable />
+                  </div>
+                </div>
+              </div>
               <div class="flex flex-wrap gap-x-4 gap-y-1.5">
                 <For each={MINERU_LANGUAGES}>
                   {(lang) => (
@@ -239,7 +270,7 @@ function UploadPage() {
                         checked={langList().has(lang)}
                         onChange={(e) => toggleLang(lang, e.currentTarget.checked)}
                       />
-                      {lang}
+                      {MINERU_LANGUAGE_LABELS[lang]}
                     </label>
                   )}
                 </For>
