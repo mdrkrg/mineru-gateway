@@ -3,6 +3,32 @@ import { camelCase, snakeCase } from 'change-case/keys';
 
 // Spec: frontend/specs/core/conventions.md (Schema construction helper contract)
 
+// FIXME: The `as unknown as Type<O>` cast below destroys arktype's morph
+// input-type info, making `inferIn === infer` (both = O) for ALL schemas
+// produced by these helpers.
+//
+// Root cause: `camelCase` / `snakeCase` return `unknown`, so arktype's
+// morph output type is `unknown` without `.as<O>()`.  The cast fixes
+// `infer` (= O) but loses the input type (D).  `D` itself is captured as
+// arktype def strings (`'string'`, `'string[]'`, `'boolean | null'`)
+// which have no type-level mapping to JS types (`string`, `string[]`,
+// `boolean | null`), so `Type<D>['infer']` cannot recover the JS input
+// type either.
+//
+// Impact:
+//   - `defineRequestSchema.col.inferIn` = O (snake_case wire), not D (camelCase).
+//     Callers must NOT use `.inferIn` for request input types.
+//     Workaround: explicit camelCase interfaces in `api/schemas/*.ts`
+//       (LoginRequest, UserCreateRequest, UserUpdateRequest,
+//        RefreshTokenRequest, ApiKeyCreateRequest, MyApiKeyCreateRequest,
+//        ResultZipRequest, BatchCancelRequest).
+//   - `defineResponseSchema.col.inferIn` = O (camelCase domain), not D (snake_case wire).
+//     No impact — no code consumes `.inferIn` from response schemas.
+//
+// When this is fixed: delete explicit request interfaces, derive param
+// types from `Schema.inferIn`, and update `validateRequest` to use
+// `S['inferIn']` instead of `unknown`.
+
 /**
  * Creates an arktype schema that validates incoming JSON and converts all
  * keys from `snake_case` (wire format) to `camelCase` (domain type).
