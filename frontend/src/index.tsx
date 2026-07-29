@@ -21,6 +21,7 @@ registerAuthHooks(
     await authStore.refresh();
     return authStore.accessToken();
   },
+  () => apiKeyStore.clearActiveKey(),
 );
 
 const router = createRouter({
