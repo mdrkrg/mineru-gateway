@@ -16,7 +16,6 @@ export {
   listMyApiKeys,
   createMyApiKey,
   revokeMyApiKey,
-  getOAuthAuthorizeUrl,
   getOAuthProviders,
 } from './auth';
 

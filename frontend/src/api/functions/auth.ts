@@ -181,7 +181,3 @@ export function getOAuthProviders() {
     success: OAuthProvidersResponseSchema,
   });
 }
-
-export function getOAuthAuthorizeUrl(provider: string): string {
-  return `auth/oauth/${provider}/authorize`;
-}

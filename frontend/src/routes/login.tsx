@@ -1,13 +1,19 @@
 import { Show, createSignal, onMount, For } from 'solid-js';
 import { Link, createFileRoute, useNavigate } from '@tanstack/solid-router';
 import { useAuth } from '../stores/auth-context';
-import { getOAuthProviders, getOAuthAuthorizeUrl } from '../api/functions/auth';
+import { getOAuthProviders } from '../api/functions/auth';
 import { ROUTES } from '../utils/constants';
 import { env } from '../env';
 
 export const Route = createFileRoute('/login')({
   component: LoginPage,
 });
+
+function buildOAuthRedirectUrl(provider: string): string {
+  const path = `/auth/oauth/${provider}/authorize`;
+  const base = env.apiPrefix.replace(/\/+$/, '');
+  return base ? `${base}${path}` : path;
+}
 
 function LoginPage() {
   const auth = useAuth();
@@ -24,7 +30,7 @@ function LoginPage() {
   });
 
   function handleOAuthLogin(provider: string) {
-    window.location.assign(`${env.apiPrefix}${getOAuthAuthorizeUrl(provider)}`);
+    window.location.assign(buildOAuthRedirectUrl(provider));
   }
 
   async function handleSubmit(e: SubmitEvent) {
