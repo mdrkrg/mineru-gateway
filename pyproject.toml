@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "API-Key gateway in front of mineru-api / mineru-router"
 readme = "README.md"
 requires-python = ">=3.14"
+license = "AGPL-3.0-or-later"
 dependencies = [
     "aiofiles>=24.1.0",
     "aiosqlite>=0.22.1",
