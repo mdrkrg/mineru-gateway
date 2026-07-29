@@ -1,15 +1,32 @@
 # Upstream mineru-router / mineru-api are external services (not managed here);
 # set GATEWAY_UPSTREAM_URL to their address.
 services:
-  mineru-gateway:
+  db:
+    image: docker.io/library/postgres:18-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: gateway
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: gateway
+    volumes:
+      - db_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gateway"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  gateway:
+    image: mineru-gateway
     build:
-      context: .
+      context: ..
+      dockerfile: container/Containerfile
     restart: always
     ports:
-      - "8000:8000"
+      - "${GATEWAY_LISTEN:-127.0.0.1:8000}:8000"
     environment:
       GATEWAY_UPSTREAM_URL: ${GATEWAY_UPSTREAM_URL:?set upstream router/api URL}
-      GATEWAY_DATABASE_URL: sqlite+aiosqlite:////data/gateway.db
+      GATEWAY_DATABASE_URL: postgresql+asyncpg://gateway:${POSTGRES_PASSWORD:?set in .env}@db:5432/gateway
       GATEWAY_ADMIN_TOKEN: ${GATEWAY_ADMIN_TOKEN:?set in .env}
       GATEWAY_ALLOW_ANONYMOUS: "false"
       GATEWAY_GATEWAY_URL: ${GATEWAY_GATEWAY_URL:-http://localhost:8000}
@@ -20,9 +37,11 @@ services:
       GATEWAY_TASK_RETENTION_DAYS: "90"
       GATEWAY_JSON_LOGS: "true"
     volumes:
-      - gateway_data:/data
       - gateway_cache:/cache
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
-  gateway_data:
+  db_data:
   gateway_cache:

@@ -59,16 +59,16 @@ curl -X POST http://localhost:8000/tasks \
 
 Interactive API docs are served at `/docs` (OpenAPI at `/openapi.json`).
 
-## Docker
+## Container (Docker / Podman)
 
 Upstream mineru-router / mineru-api are treated as **external** services; pass
 their address via `GATEWAY_UPSTREAM_URL`.
 
 ```bash
-export GATEWAY_UPSTREAM_URL="http://host.docker.internal:8002"
+export GATEWAY_UPSTREAM_URL="http://host.containers.internal:8002"
 export GATEWAY_ADMIN_TOKEN="$(openssl rand -hex 16)"
 
-docker compose up --build
+podman compose -f container/compose.yaml up --build
 ```
 
 The container runs `alembic upgrade head` on start, then a single uvicorn

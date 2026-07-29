@@ -5,4 +5,4 @@ set -e
 alembic upgrade head
 
 exec uvicorn mineru_gateway.main:create_app --factory \
-    --host 0.0.0.0 --port 8000 --workers "${GATEWAY_WORKERS:-1}"
+  --host 0.0.0.0 --port 8000 --workers "${GATEWAY_WORKERS:-1}"
