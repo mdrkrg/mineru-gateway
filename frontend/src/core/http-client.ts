@@ -253,3 +253,23 @@ export function passthrough(
 ): Result<RawResponse, ApiError<never>> {
   return ok(response) as Result<RawResponse, ApiError<never>>;
 }
+
+export function createAuthBeforeRequest(
+  _getToken: () => string | null,
+): (state: { request: Request }) => Request | void {
+  return (_state) => {};
+}
+
+export function createAuthAfterResponse(
+  _getToken: () => string | null,
+  _refresh: () => Promise<string | null>,
+  _retryFn: (request: Request) => unknown,
+): (
+  state: {
+    request: Request;
+    response: { status: number };
+    retryCount: number;
+  },
+) => Promise<unknown> {
+  return async (_state) => {};
+}
