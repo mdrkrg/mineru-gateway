@@ -1,5 +1,5 @@
 import ky_default, { HTTPError, NetworkError, TimeoutError, isHTTPError, isNetworkError, isTimeoutError } from 'ky';
-import type { Options } from 'ky';
+import type { Options, BeforeRequestHook, AfterResponseHook } from 'ky';
 import { ResultAsync, ok } from 'neverthrow';
 import type { Result } from 'neverthrow';
 import { createHttpError } from './error-model';
@@ -47,14 +47,39 @@ export interface BlobResult {
 
 let _api: typeof ky_default | null = null;
 
+/** Registered by {@link registerAuthHooks}, read by {@link _createApi}. */
+let _beforeRequestHook: ((state: { request: Request }) => Request | void) | null =
+  null;
+let _afterResponseHook: ReturnType<typeof createAuthAfterResponse> | null = null;
+/** Self-reference: set by {@link _createApi}, used by the 401 retry function. */
+let _kyRetry: ((req: Request) => unknown) | null = null;
+
 function _createApi(base: string): typeof ky_default {
-  return ky_default.extend({
+  const beforeRequest: BeforeRequestHook[] = [];
+  const afterResponse: AfterResponseHook[] = [];
+
+  if (_beforeRequestHook) {
+    beforeRequest.push(_beforeRequestHook as BeforeRequestHook);
+  }
+  if (_afterResponseHook) {
+    afterResponse.push(async (state) => {
+      const result = await _afterResponseHook!({
+        request: state.request,
+        response: { status: state.response.status },
+        retryCount: state.retryCount,
+      });
+      return (result as Response | undefined);
+    });
+  }
+
+  const api = ky_default.extend({
     prefix: base,
-    hooks: {
-      beforeRequest: [],
-      afterResponse: [],
-    },
+    hooks: { beforeRequest, afterResponse },
   });
+
+  _kyRetry = (req: Request) => api(req);
+
+  return api;
 }
 
 function getApi(): typeof ky_default {
@@ -62,6 +87,32 @@ function getApi(): typeof ky_default {
     _api = _createApi(env.apiPrefix);
   }
   return _api;
+}
+
+/**
+ * Registers per-request auth hooks on the ky singleton:
+ *
+ * - **beforeRequest** - injects `Authorization: Bearer <token>` via
+ *   {@link createAuthBeforeRequest}.
+ * - **afterResponse** - on 401, calls `refresh()` then retries the original
+ *   request with the new token (via {@link createAuthAfterResponse}).
+ *
+ * Must be called once during app bootstrap, **before any request is sent**.
+ *
+ * @param getToken - Synchronous accessor for the current access token.
+ * @param refresh  - Async function that refreshes the token and returns the
+ *                   new access token (or `null` on failure).
+ */
+export function registerAuthHooks(
+  getToken: () => string | null,
+  refresh: () => Promise<string | null>,
+): void {
+  _beforeRequestHook = createAuthBeforeRequest(getToken);
+  _afterResponseHook = createAuthAfterResponse(refresh, (req: Request) => {
+    if (!_kyRetry) throw new Error('ky instance not initialized');
+    return _kyRetry(req);
+  });
+  _api = _createApi(env.apiPrefix);
 }
 
 /**

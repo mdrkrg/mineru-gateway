@@ -5,8 +5,17 @@ import { RouterProvider, createRouter } from '@tanstack/solid-router';
 import { routeTree } from './routeTree.gen';
 import { createAuthStore } from './stores/auth';
 import { AuthProvider } from './stores/auth-context';
+import { registerAuthHooks } from './core/http-client';
 
 const authStore = createAuthStore();
+
+registerAuthHooks(
+  () => authStore.accessToken(),
+  async () => {
+    await authStore.refresh();
+    return authStore.accessToken();
+  },
+);
 
 const router = createRouter({
   routeTree,
