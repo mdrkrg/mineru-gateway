@@ -24,8 +24,6 @@ function ProfilePage() {
 
   async function handleSave(e: SubmitEvent) {
     e.preventDefault();
-    const token = auth.accessToken();
-    if (!token) return;
 
     setError(null);
     setSaved(false);
@@ -48,7 +46,6 @@ function ProfilePage() {
         password: password() || null,
         displayName: name !== currentName ? name || null : null,
       },
-      token,
     );
     setIsSaving(false);
 

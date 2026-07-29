@@ -35,11 +35,9 @@ function ApiKeysPage() {
   const [pastedKey, setPastedKey] = createSignal('');
 
   async function loadKeys() {
-    const token = auth.accessToken();
-    if (!token) return;
     setIsLoading(true);
     setError(null);
-    const result = await listMyApiKeys(token);
+    const result = await listMyApiKeys();
     if (result.isErr()) {
       setError(errorMessage(result.error));
     } else {
@@ -52,8 +50,6 @@ function ApiKeysPage() {
 
   async function handleCreate(e: SubmitEvent) {
     e.preventDefault();
-    const token = auth.accessToken();
-    if (!token) return;
 
     setIsCreating(true);
     setError(null);
@@ -64,7 +60,6 @@ function ApiKeysPage() {
         label: label().trim() || null,
         expiresAt: expiresAt() ? new Date(expiresAt()).toISOString() : null,
       },
-      token,
     );
     setIsCreating(false);
 
@@ -80,14 +75,12 @@ function ApiKeysPage() {
   }
 
   async function handleRevoke(key: ApiKeyInfo) {
-    const token = auth.accessToken();
-    if (!token) return;
     if (!window.confirm(`确定吊销 Key「${key.label || key.apiKeyPrefix}」吗?此操作不可撤销。`)) {
       return;
     }
 
     setError(null);
-    const result = await revokeMyApiKey(key.id, token);
+    const result = await revokeMyApiKey(key.id);
     if (result.isErr()) {
       setError(errorMessage(result.error));
       return;
