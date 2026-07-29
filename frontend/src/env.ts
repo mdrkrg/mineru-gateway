@@ -18,14 +18,10 @@ interface AppEnv {
 }
 
 function readEnv(): AppEnv {
-  const meta = import.meta as unknown as {
-    env?: Record<string, string | boolean | undefined>;
-  };
-  const e = meta.env ?? {};
   return {
-    apiPrefix: (e.VITE_API_PREFIX as string | undefined) ?? '',
-    dev: e.DEV === true,
-    prod: e.PROD === true,
+    apiPrefix: import.meta.env.VITE_API_PREFIX ?? '',
+    dev: import.meta.env.DEV === true,
+    prod: import.meta.env.PROD === true,
   };
 }
 
