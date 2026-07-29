@@ -13,7 +13,9 @@ See `specs/` for design docs and `../plans/frontend-plan.md` for the roadmap.
 - **ky 2.x** - HTTP client
 - **neverthrow 8.x** - `Result` / `ResultAsync`
 - **arktype 2.x** - runtime schema validation + type derivation
-- **UnoCSS** - atomic CSS (mini preset)
+- **UnoCSS** - atomic CSS (Wind4 preset)
+- **Kobalte** - UI components
+- **Lucide** - icons
 - **Vitest 4.x** - test runner
 - **pnpm** - package manager
 
