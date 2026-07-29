@@ -174,19 +174,25 @@ User ──1:N──► ApiKey（通过 owner_id，nullable）
 | `client_id` | string | **是** | 全部 | OAuth 2.0 客户端 ID |
 | `client_secret` | string | **是** | 全部 | OAuth 2.0 客户端密钥 |
 | `openid_configuration_endpoint` | string | 否 | 模式 A | OIDC Discovery URL（指向 `.well-known/openid-configuration`）。设置此字段时进入模式 A |
-| `authorization_endpoint` | string | 否 | 模式 B | OAuth 2.0 授权端点 URL |
-| `token_endpoint` | string | 否 | 模式 B | OAuth 2.0 令牌端点 URL（同时用于 code 交换和令牌刷新） |
-| `userinfo_endpoint` | string | 否 | 模式 B | OIDC UserInfo 端点 URL（用于获取用户信息） |
+| `authorization_endpoint` | string | **是\*** | 模式 B | OAuth 2.0 授权端点 URL |
+| `token_endpoint` | string | **是\*** | 模式 B | OAuth 2.0 令牌端点 URL（同时用于 code 交换和令牌刷新） |
+| `userinfo_endpoint` | string | 否 | 模式 B | OIDC UserInfo 端点 URL。未设置时跳过 userinfo 调用，仅从 `id_token` 提取声明 |
 | `scopes` | array[string] | 否 | 全部 | 授权请求的作用域列表。默认 `["openid", "email"]` |
+| `user_info_mapping` | object | 否 | 全部 | 声明名到内部字段的映射，key 可选 `display_name`、`email`。默认 `{"display_name": "name", "email": "email"}` |
+| `email_fallback_domain` | string | 否 | 全部 | 当 OIDC 未返回 email 时，用 `<sub>@<domain>` 合成占位邮箱。未设置时不启用此回退，缺失 email 时报错 |
+
+> \* 模式 B 中 `authorization_endpoint`、`token_endpoint` 为必需；`userinfo_endpoint` 为可选。
 
 #### 模式选择规则
 
 每个 OIDC 提供商配置必须选择且只能选择一种模式：
 
 - **模式 A（Discovery）**：设置 `openid_configuration_endpoint`，其余端点字段（`authorization_endpoint`、`token_endpoint`、`userinfo_endpoint`）**忽略**。端点地址由 Discovery 文档自动获取。
-- **模式 B（手动）**：不设置 `openid_configuration_endpoint`，**必须**同时设置 `authorization_endpoint`、`token_endpoint`、`userinfo_endpoint` 三个字段。`refresh_token_endpoint` 默认等于 `token_endpoint`。
+- **模式 B（手动）**：不设置 `openid_configuration_endpoint`，**必须**设置 `authorization_endpoint`、`token_endpoint` 两个字段。令牌刷新复用 `token_endpoint`。`userinfo_endpoint` 可选，未设置时仅从 `id_token` 提取用户声明。
 - **`scopes`** 两种模式均可选配，未设置时默认 `["openid", "email"]`。
-- **无效配置**：`openid_configuration_endpoint` 未设置，且三个手动端点未完整提供 → Gateway 拒绝启动并提示错误。
+- **`user_info_mapping`** 两种模式均可选配，未设置时默认 `{"display_name": "name", "email": "email"}`。
+- **`email_fallback_domain`** 两种模式均可选配，未设置时不启用邮箱回退。
+- **无效配置**：`openid_configuration_endpoint` 未设置，且 `authorization_endpoint` 或 `token_endpoint` 未提供 → Gateway 拒绝启动并提示错误。
 
 #### JSON 示例
 
@@ -202,16 +208,20 @@ User ──1:N──► ApiKey（通过 owner_id，nullable）
 }
 ```
 
-模式 B（手动指定端点）：
+模式 B（手动指定端点，带邮箱回退）：
 
 ```json
 {
   "name": "my-idp",
   "authorization_endpoint": "https://idp.example.com/authorize",
   "token_endpoint": "https://idp.example.com/token",
-  "userinfo_endpoint": "https://idp.example.com/userinfo",
   "client_id": "my-client-id",
-  "client_secret": "my-client-secret"
+  "client_secret": "my-client-secret",
+  "email_fallback_domain": "idp.example.com",
+  "user_info_mapping": {
+    "display_name": "nickname",
+    "email": "mail"
+  }
 }
 ```
 
@@ -559,16 +569,31 @@ Location: {frontend_redirect_url}#access_token=eyJ...&refresh_token=eyJ...&token
 - 400 — code 交换失败（OIDC 提供商拒绝）。
 - 400 — email 已存在且 OIDC 提供商未返回 `email_verified` 声明（无法确认邮箱所有权，返回 400 防止账户接管）。
 - 409 — email 已存在且 OIDC 提供商返回 `email_verified=false`（明确声明的未验证邮箱，拒绝关联）。
+- 400 — OIDC profile 缺少 email 且未配置 `email_fallback_domain`（无法获取用户邮箱）。
 
 **行为**（按顺序）：
 
 1. 验证 CSRF state cookie 与请求参数中的 `state` 匹配。
 2. 使用 OIDC 客户端交换 code 获取 access_token（`get_access_token`）。
-3. 调用 OIDC 提供商的 `userinfo_endpoint` 获取用户信息（`get_profile`），提取：
-   - `sub` → `OAuthAccount.account_id`
-   - `email` → `OAuthAccount.account_email` 和 `User.email`
-   - `display_name` → 按优先级取第一个非空值：`name` > `preferred_username` > `given_name` > email 本地部分（`@` 之前的部分）
-   - `email_verified` → 提取布尔值，供步骤 4 决定 `User.is_verified` 是否设置
+3. 获取并合并用户 claims（claim 回退链）：
+   a. 如果 token 响应中包含 `id_token`，本地 base64 解码 JWT payload，提取 `id_token_claims`。
+   b. 如果配置了 `userinfo_endpoint` 且有 `access_token`，调用 `get_profile` 获取 `userinfo_claims`。
+   c. 合并 claims，以 userinfo 覆盖 id_token：`claims = {**id_token_claims, **userinfo_claims}`。
+   d. 按提供商的 `user_info_mapping` 从 claims 中提取字段：
+      - `display_name_claim = mapping.get("display_name", "name")`
+      - `email_claim = mapping.get("email", "email")`
+      - `raw_display_name = claims.get(display_name_claim, "")`
+      - `raw_email = claims.get(email_claim, "")`
+   e. `display_name` 回退链（取第一个非空值）：
+      - `raw_display_name`
+      - `claims.get("preferred_username", "")`
+      - `claims.get("name", "")`
+      - `raw_email` 中 `@` 之前的部分
+   f. `email` 回退链：
+      - `raw_email` 非空 → 使用
+      - 配置了 `email_fallback_domain` → 合成 `<sub>@<domain>`（`sub` 取值优先级：`id_token_claims["sub"]` > `userinfo_claims["sub"]` > 空），同时 `display_name` 仍为空时改用 `sub`
+      - 以上均未取得 email → 400 "OIDC profile missing email"
+   g. 提取 `email_verified`（`claims.get("email_verified")`，固定映射，不支持通过 `user_info_mapping` 配置），经 `_coerce_email_verified` 转为 `bool | None`，供步骤 4 使用。
 4. 按 `(oauth_name, account_id)` 查找已有 `OAuthAccount`：
    - 存在 → 更新 `access_token`/`refresh_token`/`expires_at`，使用已有 User。`is_verified` **不升级**（仅在新创建 User 时设置）。
    - 不存在 → 按 `email` 查找 User：
@@ -576,7 +601,7 @@ Location: {frontend_redirect_url}#access_token=eyJ...&refresh_token=eyJ...&token
        - `email_verified=true` → 关联到已有 User（提供商已验证邮箱所有权）。`is_verified` **不升级**。
        - `email_verified=false` → 返回 409，拒绝关联（提供商明确声明未验证邮箱）。
        - `email_verified` 缺失 → 返回 400，拒绝关联（保守安全，无法确认邮箱所有权）。
-     - 不存在 → 创建新 User（`display_name` 从 userinfo 填充，`is_verified` 从 `email_verified` 设置）。
+     - 不存在 → 创建新 User（`display_name` 填充，`is_verified` 从 `email_verified` 设置）。
 5. 创建 `OAuthAccount` 记录（关联到 User）。
 6. 签发令牌对（access + refresh）。
 7. 返回 JSON 或重定向到前端。
@@ -650,7 +675,7 @@ src/mineru_gateway/auth/
 |------|------|------|------|
 | `get_authorization_url(redirect_uri, state)` | `redirect_uri: str, state: str` | `str` | 返回 OIDC 提供商授权页面的 URL |
 | `get_access_token(code, redirect_uri)` | `code: str, redirect_uri: str` | `OAuth2Token` | 交换 code 获取 access_token |
-| `get_profile(token)` | `token: str` | `dict` | 调用 `userinfo_endpoint` 返回用户信息（含 `sub`、`email`、`name`、`email_verified` 等） |
+| `get_profile(token)` | `token: str` | `dict` | 如果配置了 `userinfo_endpoint`，调用后返回用户信息；否则返回空 `{}`。返回值可能包含 `sub`、`email`、`name`、`email_verified` 等 |
 
 #### `auth/service.py` — owner 作用域 API Key
 
@@ -872,6 +897,11 @@ curl -X POST http://localhost:8000/auth/keys \
 - OAuth 回调端点：userinfo 不返回 `name` 时，按优先级回退到 `preferred_username` → `given_name` → email 本地部分。
 - OAuth 回调端点：`email_verified=true` 时新创建 User 的 `is_verified=true`；关联已有 User 时 `is_verified` 不升级。
 - OAuth 回调返回的 `access_token` 可调用 `/users/me`。
+- 回调端点：无 `userinfo_endpoint` 时，`id_token` 中的声明被使用（模拟 token 响应包含 `id_token`）。
+- 回调端点：`id_token` + `userinfo_endpoint` 同时存在时，userinfo 的字段覆盖 id_token 中的同名字段。
+- 回调端点：`email_fallback_domain` 配置后，不返回 email 的 profile 合成 `<sub>@<domain>` 占位邮箱。
+- 回调端点：`email_fallback_domain` 未配置且 profile 无 email → 400。
+- 回调端点：`user_info_mapping` 自定义映射生效（如 `{"email": "mail"}` 从 `mail` 声明取值）。
 - 提供商列表端点：`GET /auth/oauth/providers` → 200 + `{"providers": [{"name": "..."}]}`，每个条目仅包含 `name` 字段。
 - 提供商列表端点：响应不包含 `client_id`、`client_secret`、`openid_configuration_endpoint`。
 - 提供商列表端点：无 OIDC 提供商配置时 → 200 + `{"providers": []}`。
