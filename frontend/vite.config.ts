@@ -15,11 +15,12 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       proxy: {
-        '^\/(auth|users|me|tasks|health|file_parse|docs|openapi\.json)': {
-          target: env.VITE_PUBLIC_API_BASE,
+        '^/api': {
+          target: env.VITE_API_BASE,
           changeOrigin: true,
           secure: false,
           ws: true,
+          rewrite: (path) => path.replace(/^\/api/, ''),
         },
       },
     },
