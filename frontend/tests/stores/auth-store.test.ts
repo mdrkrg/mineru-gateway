@@ -435,12 +435,27 @@ describe('AuthStore: logout', () => {
     storage.set('auth_access_token', 'at-force');
     storage.set('auth_refresh_token', 'rt-force');
 
+    m.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'u-force',
+          email: 'force@example.com',
+          is_active: true,
+          is_superuser: false,
+          is_verified: true,
+          display_name: null,
+          created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-01-01T00:00:00Z',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
     m.mockRejectedValueOnce(new NetworkError('offline', { cause: new Error('dns') }));
 
     const store = createTestStore();
-    // Simulate a logged-in state by setting tokens directly
-    // (implementation detail: the store should expose a way to set this
-    // for testing, or we can call init with tokens in localStorage)
+    await store.init();
+    expect(store.isAuthenticated()).toBe(true);
+
     await store.logout();
 
     expect(store.isAuthenticated()).toBe(false);
