@@ -1,6 +1,8 @@
 import { createSignal, createMemo } from 'solid-js';
 import { login as apiLogin, refreshToken as apiRefreshToken, logout as apiLogout, getCurrentUser } from '../api/functions/auth';
 import type { UserRead } from '../api/schemas/auth';
+import { isHttpError, isNetworkError, isValidationError, isUnhandledStatusError, isUnexpectedError } from '../core/error-model';
+import type { ApiErrorBase, HttpError } from '../core/error-model';
 
 export interface AuthStore {
   user: () => UserRead | null;
@@ -32,20 +34,24 @@ function persistTokens(accessToken: string, refreshToken: string) {
   localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
 }
 
+function persistAccessToken(at: string) {
+  localStorage.setItem(ACCESS_TOKEN_KEY, at);
+}
+
 function clearTokens() {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
-function errorMessage(error: unknown): string {
-  if (error && typeof error === 'object' && '_type' in error) {
-    const err = error as Record<string, unknown>;
-    if (err._type === 'HttpError') return `HTTP ${err.status}: ${(err as { data: { detail?: string } }).data?.detail ?? 'unknown'}`;
-    if (err._type === 'NetworkError') return `${(err as { error: Error }).error?.message ?? 'Network error'}`;
-    if (err._type === 'ValidationError') return (err as { summary: string }).summary ?? 'Validation error';
-    if (err._type === 'UnhandledStatusError') return `Unexpected status ${err.status}`;
-    if (err._type === 'UnexpectedError') return 'Unexpected error';
+function errorMessage(error: ApiErrorBase | HttpError<number, unknown>): string {
+  if (isHttpError(error)) {
+    const data = error.data as { detail?: string } | undefined;
+    return `HTTP ${error.status}: ${data?.detail ?? 'unknown'}`;
   }
+  if (isNetworkError(error)) return error.error?.message ?? 'Network error';
+  if (isValidationError(error)) return error.summary ?? 'Validation error';
+  if (isUnhandledStatusError(error)) return `Unexpected status ${error.status}`;
+  if (isUnexpectedError(error)) return 'Unexpected error';
   return 'Unknown error';
 }
 
@@ -72,15 +78,11 @@ export function createAuthStore(): AuthStore {
 
     const result = await getCurrentUser(tokens.accessToken);
     if (result.isErr()) {
-      const err = result.error;
-      if (err && typeof err === 'object' && '_type' in err && (err as Record<string, unknown>)._type === 'HttpError') {
-        const httpErr = err as { status: number };
-        if (httpErr.status === 401) {
-          setUser(null);
-          setAccessToken(null);
-          setRefreshToken(null);
-          clearTokens();
-        }
+      if (isHttpError(result.error) && result.error.status === 401) {
+        setUser(null);
+        setAccessToken(null);
+        setRefreshToken(null);
+        clearTokens();
       }
       setError(errorMessage(result.error));
     } else {
@@ -145,6 +147,9 @@ export function createAuthStore(): AuthStore {
     setIsLoading(true);
     setError(null);
 
+    // RefreshTokenRequestSchema.infer gives snake_case ({ refresh_token })
+    // after morph, but validateRequest expects camelCase input.  This
+    // is a pre-existing type issue in the API layer.
     const result = await apiRefreshToken({ refreshToken: rt } as never);
     if (result.isErr()) {
       setUser(null);
@@ -157,7 +162,7 @@ export function createAuthStore(): AuthStore {
     }
 
     const { accessToken: at } = result.value;
-    localStorage.setItem(ACCESS_TOKEN_KEY, at);
+    persistAccessToken(at);
     setAccessToken(at);
     setIsLoading(false);
   }
