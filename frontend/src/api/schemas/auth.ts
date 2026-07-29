@@ -208,20 +208,27 @@ export const OAuthProvidersResponseSchema = defineResponseSchema(
 
 // ===== Type exports =====
 
-export type ApiKeyCreateRequest = typeof ApiKeyCreateRequestSchema.infer;
+export type ApiKeyCreateRequest = { label: string | null; expiresAt: string | null };
 export type ApiKeyCreatedResponse = typeof ApiKeyCreatedResponseSchema.infer;
 export type ApiKeyInfo = typeof ApiKeyInfoSchema.infer;
 export type ApiKeyListResponse = typeof ApiKeyListResponseSchema.infer;
 
-export type MyApiKeyCreateRequest = typeof MyApiKeyCreateRequestSchema.infer;
+export type MyApiKeyCreateRequest = { label: string | null; expiresAt: string | null };
 
-export type LoginRequest = typeof LoginRequestSchema.infer;
+export type LoginRequest = { email: string; password: string };
 export type TokenPairResponse = typeof TokenPairResponseSchema.infer;
 export type AccessTokenResponse = typeof AccessTokenResponseSchema.infer;
-export type RefreshTokenRequest = typeof RefreshTokenRequestSchema.infer;
+export type RefreshTokenRequest = { refreshToken: string };
 
 export type UserRead = typeof UserReadSchema.infer;
-export type UserCreateRequest = typeof UserCreateRequestSchema.infer;
-export type UserUpdateRequest = typeof UserUpdateRequestSchema.infer;
+export type UserCreateRequest = {
+  email: string;
+  password: string;
+  isActive: boolean | null;
+  isSuperuser: boolean | null;
+  isVerified: boolean | null;
+  displayName: string | null;
+};
+export type UserUpdateRequest = { password: string | null; displayName: string | null };
 
 export type OAuthProvidersResponse = typeof OAuthProvidersResponseSchema.infer;

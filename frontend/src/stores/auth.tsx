@@ -143,10 +143,7 @@ export function createAuthStore(): AuthStore {
     setIsLoading(true);
     setError(null);
 
-    // RefreshTokenRequestSchema.infer gives snake_case ({ refresh_token })
-    // after morph, but validateRequest expects camelCase input.  This
-    // is a pre-existing type issue in the API layer.
-    const result = await apiRefreshToken({ refreshToken: rt } as never);
+    const result = await apiRefreshToken({ refreshToken: rt });
     if (result.isErr()) {
       setUser(null);
       setAccessToken(null);

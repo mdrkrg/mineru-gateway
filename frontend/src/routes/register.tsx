@@ -27,9 +27,6 @@ function RegisterPage() {
     }
 
     setIsSubmitting(true);
-    // NOTE: UserCreateRequest's TS type is the snake_case wire format,
-    // but validateRequest expects camelCase input (pre-existing API-layer
-    // type quirk, same workaround as AuthStore.refresh).
     const result = await register({
       email: email(),
       password: password(),
@@ -37,7 +34,7 @@ function RegisterPage() {
       isSuperuser: null,
       isVerified: null,
       displayName: displayName().trim() || null,
-    } as never);
+    });
     setIsSubmitting(false);
 
     if (result.isErr()) {
