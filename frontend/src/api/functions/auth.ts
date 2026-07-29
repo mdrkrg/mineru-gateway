@@ -80,13 +80,12 @@ export function refreshToken(body: RefreshTokenRequest) {
   });
 }
 
-export function logout(accessToken: string) {
+export function logout() {
   return fetchAndValidate('auth/jwt/logout', {
     success: LogoutResponseSchema,
     failures: { 401: ErrorDetailSchema },
   }, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}` },
   });
 }
 
@@ -121,16 +120,14 @@ export function adminCreateUser(body: UserCreateRequest, adminToken: string) {
 
 // ===== User Profile =====
 
-export function getCurrentUser(accessToken: string) {
+export function getCurrentUser() {
   return fetchAndValidate('users/me', {
     success: UserReadSchema,
     failures: { 401: ErrorDetailSchema },
-  }, {
-    headers: { Authorization: `Bearer ${accessToken}` },
   });
 }
 
-export function updateCurrentUser(body: UserUpdateRequest, accessToken: string) {
+export function updateCurrentUser(body: UserUpdateRequest) {
   const validated = validateRequest(UserUpdateRequestSchema)(body);
   if (validated.isErr()) return validated;
   return fetchAndValidate('users/me', {
@@ -139,22 +136,19 @@ export function updateCurrentUser(body: UserUpdateRequest, accessToken: string) 
   }, {
     method: 'PATCH',
     json: validated.value,
-    headers: { Authorization: `Bearer ${accessToken}` },
   });
 }
 
 // ===== Self-Service API Keys =====
 
-export function listMyApiKeys(accessToken: string) {
+export function listMyApiKeys() {
   return fetchAndValidate('me/api-keys', {
     success: ApiKeyListResponseSchema,
     failures: { 401: ErrorDetailSchema },
-  }, {
-    headers: { Authorization: `Bearer ${accessToken}` },
   });
 }
 
-export function createMyApiKey(body: MyApiKeyCreateRequest, accessToken: string) {
+export function createMyApiKey(body: MyApiKeyCreateRequest) {
   const validated = validateRequest(MyApiKeyCreateRequestSchema)(body);
   if (validated.isErr()) return validated;
   return fetchAndValidate('me/api-keys', {
@@ -163,14 +157,12 @@ export function createMyApiKey(body: MyApiKeyCreateRequest, accessToken: string)
   }, {
     method: 'POST',
     json: validated.value,
-    headers: { Authorization: `Bearer ${accessToken}` },
   });
 }
 
-export function revokeMyApiKey(keyId: string, accessToken: string) {
+export function revokeMyApiKey(keyId: string) {
   return request(`me/api-keys/${keyId}`, {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${accessToken}` },
   });
 }
 

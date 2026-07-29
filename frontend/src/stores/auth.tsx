@@ -65,7 +65,7 @@ export function createAuthStore(): AuthStore {
     setAccessToken(tokens.accessToken);
     setRefreshToken(tokens.refreshToken);
 
-    const result = await getCurrentUser(tokens.accessToken);
+    const result = await getCurrentUser();
     if (result.isErr()) {
       if (isHttpError(result.error) && result.error.status === 401) {
         setUser(null);
@@ -104,7 +104,7 @@ export function createAuthStore(): AuthStore {
     setAccessToken(at);
     setRefreshToken(rt);
 
-    const userResult = await getCurrentUser(at);
+    const userResult = await getCurrentUser();
     if (userResult.isErr()) {
       setUser(null);
       setAccessToken(null);
@@ -119,13 +119,12 @@ export function createAuthStore(): AuthStore {
   }
 
   async function logout() {
-    const at = accessToken();
-    if (!at) return;
+    if (!accessToken()) return;
 
     setIsLoading(true);
     setError(null);
 
-    const result = await apiLogout(at);
+    const result = await apiLogout();
 
     setUser(null);
     setAccessToken(null);
