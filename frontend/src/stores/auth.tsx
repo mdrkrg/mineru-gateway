@@ -107,6 +107,9 @@ export function createAuthStore(): AuthStore {
     const userResult = await getCurrentUser(at);
     if (userResult.isErr()) {
       setUser(null);
+      setAccessToken(null);
+      setRefreshToken(null);
+      clearTokens();
       setError(errorMessage(userResult.error));
     } else {
       setUser(userResult.value);

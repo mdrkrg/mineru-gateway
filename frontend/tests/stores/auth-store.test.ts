@@ -26,7 +26,8 @@
  *   localStorage, fetch user profile.
  * - `loginWithTokens(accessToken, refreshToken)` - store externally-obtained
  *   tokens (e.g. OAuth callback fragment) in localStorage, fetch user
- *   profile.
+ *   profile. On failure, roll back: clear tokens + state (same session
+ *   validity guarantee as `init`).
  * - `logout()` - POST `/auth/jwt/logout`, clear tokens + user from state
  *   and localStorage.
  * - `refresh()` - POST `/auth/jwt/refresh` with the current `refreshToken`,
@@ -393,10 +394,11 @@ describe('AuthStore: loginWithTokens', () => {
   });
 
   /**
-   * When the user fetch fails, tokens remain stored (same behaviour as
-   * login) and the error is surfaced.
+   * When the user fetch fails, tokens are cleared from state and
+   * localStorage — the caller must re-obtain them (same atomic
+   * semantics as `init`).
    */
-  it('keeps tokens but sets error when user fetch fails', async () => {
+  it('clears tokens when user fetch fails', async () => {
     const httpErr = new HTTPError(
       new Response(JSON.stringify({ detail: 'unauthorized' }), {
         status: 401,
@@ -411,11 +413,11 @@ describe('AuthStore: loginWithTokens', () => {
     const store = createAuthStore();
     await store.loginWithTokens('at-bad', 'rt-bad');
 
-    expect(store.isAuthenticated()).toBe(true);
+    expect(store.isAuthenticated()).toBe(false);
     expect(store.user()).toBeNull();
     expect(store.error()).toBeTruthy();
     expect(store.isLoading()).toBe(false);
-    expect(storage.get('auth_access_token')).toBe('at-bad');
+    expect(storage.has('auth_access_token')).toBe(false);
   });
 });
 
