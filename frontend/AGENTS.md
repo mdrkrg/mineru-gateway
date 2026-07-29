@@ -41,14 +41,18 @@ src/
   api/
     functions/      # endpoint functions (auth, health, tasks)
     schemas/        # request/response schemas + types
-  routes/           # TanStack file-based routes (__root.tsx, index.tsx, ...)
-  stores/           # global state (auth)
-  App.tsx           # unused (scaffold remnant)
-  index.tsx         # entry point - creates authStore, AuthProvider, RouterProvider
+  routes/           # TanStack file-based routes (__root.tsx, _authenticated.tsx layout, ...)
+  components/       # shared UI (layout/, StatusBadge, Pagination, NoActiveKey, ApiKeyReveal, AdminTokenGate)
+  stores/           # global state (auth, api-key, admin-token)
+  utils/            # constants, format, download, api-error helpers
+  env.ts            # typed import.meta.env access
+  index.tsx         # entry point - creates stores, providers, RouterProvider
   routeTree.gen.ts  # auto-generated route tree (do not edit)
 specs/core/         # infra-layer behavioral contracts (source of truth)
 tests/core/         # tests for the infrastructure layer
 tests/api/          # tests for the API/auth layer (hooks, etc.)
+tests/stores/       # tests for global stores (auth, api-key, admin-token)
+tests/utils/        # tests for utils (format, constants, download)
 tests/e2e/          # e2e tests against running gateway + mock upstream
 ```
 
@@ -72,9 +76,25 @@ tests/e2e/          # e2e tests against running gateway + mock upstream
 
 | File | Purpose |
 |------|---------|
-| `auth.tsx` | `AuthStore` - JWT tokens in localStorage, `login`/`logout`/`refresh`/`init`, error mapping |
+| `auth.tsx` | `AuthStore` - JWT tokens in localStorage, `login`/`loginWithTokens`/`logout`/`refresh`/`init`, error mapping |
 | `auth-context.tsx` | `AuthContext` + `useAuth()` hook + `AuthProvider` |
-| `guard.ts` | `requireAuth()` - throws `redirect('/login')` if not authenticated |
+| `guard.ts` | `requireAuth()` / `requireSuperuser()` - throw redirects for route `beforeLoad` |
+| `api-key.tsx` | `ApiKeyStore` - active `X-API-Key` for task endpoints, localStorage-backed |
+| `api-key-context.tsx` | `useApiKey()` hook + `ApiKeyProvider` |
+| `admin-token.tsx` | `AdminTokenStore` - gateway admin token, sessionStorage-backed (tab-scoped) |
+| `admin-token-context.tsx` | `useAdminToken()` hook + `AdminTokenProvider` |
+
+### Routes & auth model
+
+- `routes/_authenticated.tsx` is a pathless layout route: `beforeLoad` runs
+  `requireAuth` and wraps children in `AppShell` (Sidebar + Header). All
+  protected pages live under `routes/_authenticated/`.
+- Admin pages additionally run `requireSuperuser` in `beforeLoad`.
+- **Two credential systems**: user endpoints use the JWT (`Authorization:
+  Bearer`), task endpoints use `X-API-Key`. Pages calling task APIs read the
+  active key from `useApiKey()` and render `<NoActiveKey/>` when unset.
+  Admin endpoints take the gateway admin token from `useAdminToken()`,
+  gated by `<AdminTokenGate/>`.
 
 ## Critical constraints
 
@@ -99,8 +119,12 @@ tests/e2e/          # e2e tests against running gateway + mock upstream
 ## Where things live when adding a feature
 
 - New API endpoint schemas / fetch functions? -> `src/api/schemas/` + `src/api/functions/`
-- New route/page? -> add a file to `src/routes/`
-- New global state? -> add to `src/stores/`
+- New route/page? -> add a file to `src/routes/` (protected pages under
+  `src/routes/_authenticated/`)
+- New global state? -> add to `src/stores/` (store + `-context.tsx` provider,
+  wired in `src/index.tsx`)
+- New shared UI? -> `src/components/` (extract only when reused 3+ times;
+  prefer plain elements + UnoCSS classes otherwise)
 - New core primitives? -> extend files in `src/core/`, update matching spec in
   `specs/core/`.
 
