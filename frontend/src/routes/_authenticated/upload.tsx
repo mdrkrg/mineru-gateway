@@ -39,6 +39,7 @@ function UploadPage() {
   const [formulaEnable, setFormulaEnable] = createSignal(true);
   const [tableEnable, setTableEnable] = createSignal(true);
   const [imageAnalysis, setImageAnalysis] = createSignal(false);
+  const [responseZip, setResponseZip] = createSignal(true);
   const [serverUrl, setServerUrl] = createSignal('');
 
   const [isSubmitting, setIsSubmitting] = createSignal(false);
@@ -89,6 +90,7 @@ function UploadPage() {
         formulaEnable: formulaEnable(),
         tableEnable: tableEnable(),
         imageAnalysis: imageAnalysis(),
+        responseFormat: responseZip() ? 'zip' : 'json',
         serverUrl: needsServerUrl(backend()) ? serverUrl().trim() : undefined,
       },
     });
@@ -268,6 +270,14 @@ function UploadPage() {
                   onChange={(e) => setImageAnalysis(e.currentTarget.checked)}
                 />
                 图像分析
+              </label>
+              <label class="flex items-center gap-1.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={responseZip()}
+                  onChange={(e) => setResponseZip(e.currentTarget.checked)}
+                />
+                Zip 格式下载
               </label>
             </div>
           </section>

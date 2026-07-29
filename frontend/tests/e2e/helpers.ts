@@ -60,5 +60,6 @@ export function samplePdfFormData(): ParseRequestFields {
   return {
     files: [new File([MINIMAL_PDF], 'doc.pdf', { type: 'application/pdf' })],
     backend: 'hybrid-engine',
+    responseFormat: 'zip',
   };
 }

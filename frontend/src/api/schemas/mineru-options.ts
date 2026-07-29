@@ -49,6 +49,11 @@ export interface ParseRequestFields {
   formulaEnable?: boolean;
   tableEnable?: boolean;
   imageAnalysis?: boolean;
+  /**
+   * `'zip'`  -> `response_format_zip=true` (downloadable)
+   * `'json'` -> inline JSON/Markdown
+   * */
+  responseFormat?: 'json' | 'zip';
   serverUrl?: string;
   startPageId?: number;
   endPageId?: number;
@@ -68,6 +73,7 @@ export function createParseFormData(fields: ParseRequestFields): FormData {
   if (fields.formulaEnable !== undefined) fd.append('formula_enable', String(fields.formulaEnable));
   if (fields.tableEnable !== undefined) fd.append('table_enable', String(fields.tableEnable));
   if (fields.imageAnalysis !== undefined) fd.append('image_analysis', String(fields.imageAnalysis));
+  if (fields.responseFormat) fd.append('response_format_zip', fields.responseFormat === 'zip' ? 'true' : 'false');
   if (fields.serverUrl !== undefined) fd.append('server_url', fields.serverUrl);
   if (fields.startPageId !== undefined) fd.append('start_page_id', String(fields.startPageId));
   if (fields.endPageId !== undefined) fd.append('end_page_id', String(fields.endPageId));
