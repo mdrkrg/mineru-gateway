@@ -41,6 +41,8 @@ import {
   parseBlob,
   parseArrayBuffer,
   passthrough,
+  registerAuthHooks,
+  setApiBaseUrl,
   type RawResponse,
   type BlobResult,
 } from '../../src/core/http-client';
@@ -541,7 +543,7 @@ describe('http-client: request() throwHttpErrors requirement', () => {
 
   it('enforces throwHttpErrors: true even when caller passes false', async () => {
     m.mockResolvedValueOnce(mockResponse('{}'));
-    // Caller tries to disable throwHttpErrors — impl must override to true
+    // Caller tries to disable throwHttpErrors - impl must override to true
     await request('tasks', { method: 'POST', throwHttpErrors: false });
     const callOpts = m.mock.calls[0][1];
     // The implementation must force throwHttpErrors to true (or remove the
@@ -556,6 +558,10 @@ describe('http-client: request() throwHttpErrors requirement', () => {
     expect(callOpts?.throwHttpErrors).not.toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// ky instance configuration
+// ---------------------------------------------------------------------------
 
 describe('http-client: ky instance configuration', () => {
   // Spec: http-client.md "ky instance configuration contract" & invariant 7
@@ -639,3 +645,168 @@ describe('http-client: ky instance configuration', () => {
     expect(m.extend.mock.calls.length).toBe(extendCallsAfterFirst);
   });
 });
+
+// ---------------------------------------------------------------------------
+// registerAuthHooks tests
+// ---------------------------------------------------------------------------
+
+describe('http-client: registerAuthHooks', () => {
+  let getToken: ReturnType<typeof vi.fn<() => string | null>>;
+  let refresh: ReturnType<typeof vi.fn<() => Promise<string | null>>>;
+
+  function getLatestExtendHooks() {
+    const lastCall = m.extend.mock.calls[m.extend.mock.calls.length - 1];
+    return (lastCall?.[0] as { hooks?: { beforeRequest?: unknown[]; afterResponse?: unknown[] } })?.hooks;
+  }
+
+  function invokeBeforeRequest(
+    hook: unknown,
+    req: Request,
+  ): Request | void {
+    const result = (hook as (state: { request: Request; options: Record<string, unknown>; retryCount: number }) => Request | void)(
+      { request: req, options: {}, retryCount: 0 },
+    );
+    return result;
+  }
+
+  async function invokeAfterResponse(
+    hook: unknown,
+    req: Request,
+    status: number,
+    retryCount?: number,
+  ): Promise<unknown> {
+    const resp = new Response(JSON.stringify({ detail: 'test' }), { status });
+    return (hook as (state: { request: Request; options: Record<string, unknown>; response: Response; retryCount: number }) => unknown)(
+      { request: req, options: {}, response: resp, retryCount: retryCount ?? 0 },
+    );
+  }
+
+  beforeEach(() => {
+    getToken = vi.fn<() => string | null>(() => null);
+    refresh = vi.fn<() => Promise<string | null>>(async () => null);
+    // Override the lazy singleton so existing _api does not shadow ours.
+    setApiBaseUrl('http://test');
+    registerAuthHooks(getToken, refresh);
+  });
+
+  describe('hook registration', () => {
+    it('beforeRequest hook is populated', () => {
+      const hooks = getLatestExtendHooks();
+      expect(hooks?.beforeRequest?.length).toBe(1);
+    });
+
+    it('afterResponse hook is populated', () => {
+      const hooks = getLatestExtendHooks();
+      expect(hooks?.afterResponse?.length).toBe(1);
+    });
+  });
+
+  describe('beforeRequest hook', () => {
+    it('injects Authorization header when token is available', () => {
+      getToken.mockReturnValue('at-abc');
+      registerAuthHooks(getToken, refresh);
+
+      const hook = getLatestExtendHooks()!.beforeRequest![0];
+      const req = new Request('http://test/api/tasks');
+      const result = invokeBeforeRequest(hook, req);
+
+      expect(result).toBeInstanceOf(Request);
+      if (result instanceof Request) {
+        expect(result.headers.get('Authorization')).toBe('Bearer at-abc');
+      }
+    });
+
+    it('passes through when token is null', () => {
+      getToken.mockReturnValue(null);
+      registerAuthHooks(getToken, refresh);
+
+      const hook = getLatestExtendHooks()!.beforeRequest![0];
+      const req = new Request('http://test/api/tasks');
+      const result = invokeBeforeRequest(hook, req);
+
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('afterResponse hook', () => {
+    it('calls refresh on 401', async () => {
+      refresh.mockResolvedValue('new-at');
+      registerAuthHooks(getToken, refresh);
+
+      const hook = getLatestExtendHooks()!.afterResponse![0];
+      const req = new Request('http://test/api/tasks');
+      await invokeAfterResponse(hook, req, 401);
+
+      expect(refresh).toHaveBeenCalledOnce();
+    });
+
+    it('skips refresh for non-401 status', async () => {
+      refresh.mockResolvedValue('new-at');
+      registerAuthHooks(getToken, refresh);
+
+      const hook = getLatestExtendHooks()!.afterResponse![0];
+      const req = new Request('http://test/api/tasks');
+      await invokeAfterResponse(hook, req, 200);
+
+      expect(refresh).not.toHaveBeenCalled();
+    });
+
+    it('skips refresh for /auth/jwt/refresh requests', async () => {
+      refresh.mockResolvedValue('new-at');
+      registerAuthHooks(getToken, refresh);
+
+      const hook = getLatestExtendHooks()!.afterResponse![0];
+      const req = new Request('http://test/auth/jwt/refresh');
+      await invokeAfterResponse(hook, req, 401);
+
+      expect(refresh).not.toHaveBeenCalled();
+    });
+
+    it('deduplicates concurrent 401 calls (single refresh)', async () => {
+      let resolveRefresh: (v: string | null) => void;
+      refresh.mockImplementation(
+        () => new Promise<string | null>((r) => { resolveRefresh = r; }),
+      );
+      registerAuthHooks(getToken, refresh);
+
+      const hook = getLatestExtendHooks()!.afterResponse![0];
+      const req = new Request('http://test/api/tasks');
+
+      const p1 = invokeAfterResponse(hook, req, 401);
+      const p2 = invokeAfterResponse(hook, req, 401);
+
+      expect(refresh).toHaveBeenCalledTimes(1);
+
+      resolveRefresh!('new-at');
+      await Promise.all([p1, p2]);
+
+      expect(refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns retried Response on successful refresh', async () => {
+      refresh.mockResolvedValue('new-at');
+      registerAuthHooks(getToken, refresh);
+
+      const hook = getLatestExtendHooks()!.afterResponse![0];
+      const req = new Request('http://test/api/tasks');
+      const retriedResp = new Response('ok', { status: 200 });
+
+      m.mockResolvedValueOnce(retriedResp);
+
+      const result = await invokeAfterResponse(hook, req, 401);
+      expect(result).toBe(retriedResp);
+    });
+
+    it('returns undefined when refresh returns null (pass through 401)', async () => {
+      refresh.mockResolvedValue(null);
+      registerAuthHooks(getToken, refresh);
+
+      const hook = getLatestExtendHooks()!.afterResponse![0];
+      const req = new Request('http://test/api/tasks');
+
+      const result = await invokeAfterResponse(hook, req, 401);
+      expect(result).toBeUndefined();
+    });
+  });
+});
+
