@@ -255,15 +255,21 @@ export function passthrough(
 }
 
 export function createAuthBeforeRequest(
-  _getToken: () => string | null,
+  getToken: () => string | null,
 ): (state: { request: Request }) => Request | void {
-  return (_state) => {};
+  return (state) => {
+    const token = getToken();
+    if (!token) return;
+    const headers = new Headers(state.request.headers);
+    headers.set('Authorization', `Bearer ${token}`);
+    return new Request(state.request, { headers });
+  };
 }
 
 export function createAuthAfterResponse(
   _getToken: () => string | null,
-  _refresh: () => Promise<string | null>,
-  _retryFn: (request: Request) => unknown,
+  refresh: () => Promise<string | null>,
+  retryFn: (request: Request) => unknown,
 ): (
   state: {
     request: Request;
@@ -271,5 +277,23 @@ export function createAuthAfterResponse(
     retryCount: number;
   },
 ) => Promise<unknown> {
-  return async (_state) => {};
+  let refreshPromise: Promise<string | null> | null = null;
+
+  return async (state) => {
+    if (state.response.status !== 401) return;
+    if (state.request.url.includes('/auth/jwt/refresh')) return;
+    if (state.retryCount > 0) return;
+
+    if (!refreshPromise) {
+      refreshPromise = refresh();
+    }
+    const newToken = await refreshPromise;
+    refreshPromise = null;
+
+    if (!newToken) return;
+
+    const headers = new Headers(state.request.headers);
+    headers.set('Authorization', `Bearer ${newToken}`);
+    return retryFn(new Request(state.request, { headers }));
+  };
 }
