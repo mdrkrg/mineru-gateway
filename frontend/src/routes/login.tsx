@@ -1,9 +1,9 @@
 import { Show, createSignal, onMount, For } from 'solid-js';
 import { Link, createFileRoute, useNavigate } from '@tanstack/solid-router';
-import { useAuth } from '../stores/auth-context';
-import { getOAuthProviders } from '../api/functions/auth';
-import { ROUTES } from '../utils/constants';
-import { env } from '../env';
+import { useAuth } from '@/stores/auth-context';
+import { getOAuthProviders } from '@/api/functions/auth';
+import { ROUTES } from '@/utils/constants';
+import { env } from '@/env';
 
 export const Route = createFileRoute('/login')({
   component: LoginPage,

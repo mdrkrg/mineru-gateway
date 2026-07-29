@@ -10,8 +10,8 @@ import {
   User,
   Users,
 } from 'lucide-solid';
-import { useAuth } from '../../stores/auth-context';
-import { ROUTES } from '../../utils/constants';
+import { useAuth } from '@/stores/auth-context';
+import { ROUTES } from '@/utils/constants';
 
 interface NavItem {
   to: string;

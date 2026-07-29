@@ -1,5 +1,5 @@
-import type { TaskStatus } from '../api/schemas/tasks';
-import { TASK_STATUS_LABELS } from '../utils/constants';
+import type { TaskStatus } from '@/api/schemas/tasks';
+import { TASK_STATUS_LABELS } from '@/utils/constants';
 
 const COLORS: Record<TaskStatus, string> = {
   pending: 'bg-yellow-100 text-yellow-700',

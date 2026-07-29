@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config';
+import { resolve } from 'node:path';
 import solidPlugin from 'vite-plugin-solid';
 
 export default defineConfig({
@@ -14,6 +15,9 @@ export default defineConfig({
     },
   },
   resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
+    },
     conditions: ['browser', 'module', 'import', 'default'],
   },
 });

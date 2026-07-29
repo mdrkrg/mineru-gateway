@@ -1,6 +1,6 @@
 import { type } from 'arktype';
-import { defineResponseSchema, defineRequestSchema } from '../../core/conventions';
-import type { MineruBackend } from './mineru-options';
+import { defineResponseSchema, defineRequestSchema } from '@/core/conventions';
+import type { MineruBackend } from '@/api/schemas/mineru-options';
 
 const BACKEND_DEF = "'pipeline' | 'vlm-engine' | 'hybrid-engine' | 'vlm-http-client' | 'hybrid-http-client'" as const;
 

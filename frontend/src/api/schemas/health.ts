@@ -1,4 +1,4 @@
-import { defineResponseSchema } from '../../core/conventions';
+import { defineResponseSchema } from '@/core/conventions';
 
 export const HealthResponseSchema = defineResponseSchema(
   {

@@ -1,8 +1,8 @@
 import { Show } from 'solid-js';
 import { useLocation, useNavigate } from '@tanstack/solid-router';
 import { LogOut } from 'lucide-solid';
-import { useAuth } from '../../stores/auth-context';
-import { ROUTES } from '../../utils/constants';
+import { useAuth } from '@/stores/auth-context';
+import { ROUTES } from '@/utils/constants';
 
 /** Exact and prefix path → page title mappings for the header breadcrumb. */
 const EXACT_TITLES: Record<string, string> = {

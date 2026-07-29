@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'solid-js';
 import type { JSX } from 'solid-js';
-import type { AdminTokenStore } from './admin-token';
+import type { AdminTokenStore } from '@/stores/admin-token';
 
 const AdminTokenCtx = createContext<AdminTokenStore>();
 

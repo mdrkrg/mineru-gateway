@@ -1,9 +1,9 @@
 import { Show, createSignal } from 'solid-js';
 import { createFileRoute } from '@tanstack/solid-router';
-import { updateCurrentUser } from '../../api/functions/auth';
-import { useAuth } from '../../stores/auth-context';
-import { errorMessage } from '../../utils/api-error';
-import { formatDateTime } from '../../utils/format';
+import { updateCurrentUser } from '@/api/functions/auth';
+import { useAuth } from '@/stores/auth-context';
+import { errorMessage } from '@/utils/api-error';
+import { formatDateTime } from '@/utils/format';
 
 export const Route = createFileRoute('/_authenticated/profile')({
   component: ProfilePage,

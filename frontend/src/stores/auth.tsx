@@ -1,8 +1,8 @@
 import { createSignal, createMemo } from 'solid-js';
-import { login as apiLogin, refreshToken as apiRefreshToken, logout as apiLogout, getCurrentUser } from '../api/functions/auth';
-import type { UserRead } from '../api/schemas/auth';
-import { isHttpError } from '../core/error-model';
-import { errorMessage } from '../utils/api-error';
+import { login as apiLogin, refreshToken as apiRefreshToken, logout as apiLogout, getCurrentUser } from '@/api/functions/auth';
+import type { UserRead } from '@/api/schemas/auth';
+import { isHttpError } from '@/core/error-model';
+import { errorMessage } from '@/utils/api-error';
 
 export interface AuthStore {
   user: () => UserRead | null;

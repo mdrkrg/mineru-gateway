@@ -1,12 +1,12 @@
 import type { ResultAsync } from 'neverthrow';
-import type { ApiError, HttpError } from '../../core/error-model';
-import { fetchAndValidate } from '../../core/validation';
+import type { ApiError, HttpError } from '@/core/error-model';
+import { fetchAndValidate } from '@/core/validation';
 import {
   HealthResponseSchema,
   HealthDegradedResponseSchema,
   type HealthResponse,
   type HealthDegradedResponse,
-} from '../schemas/health';
+} from '@/api/schemas/health';
 
 export function getHealth(): ResultAsync<
   HealthResponse,

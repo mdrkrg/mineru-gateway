@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'solid-js';
 import type { JSX } from 'solid-js';
-import type { AuthStore } from './auth';
+import type { AuthStore } from '@/stores/auth';
 
 const AuthCtx = createContext<AuthStore>();
 

@@ -1,2 +1,2 @@
-export * from './schemas';
-export * from './functions';
+export * from '@/api/schemas';
+export * from '@/api/functions';

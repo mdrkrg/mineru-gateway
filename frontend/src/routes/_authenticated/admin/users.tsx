@@ -1,12 +1,12 @@
 import { Show, createSignal } from 'solid-js';
 import { createFileRoute } from '@tanstack/solid-router';
-import { adminCreateUser } from '../../../api/functions/auth';
-import type { UserRead } from '../../../api/schemas/auth';
-import AdminTokenGate from '../../../components/AdminTokenGate';
-import type { AuthStore } from '../../../stores/auth';
-import { useAdminToken } from '../../../stores/admin-token-context';
-import { requireSuperuser } from '../../../stores/guard';
-import { errorMessage } from '../../../utils/api-error';
+import { adminCreateUser } from '@/api/functions/auth';
+import type { UserRead } from '@/api/schemas/auth';
+import AdminTokenGate from '@/components/AdminTokenGate';
+import type { AuthStore } from '@/stores/auth';
+import { useAdminToken } from '@/stores/admin-token-context';
+import { requireSuperuser } from '@/stores/guard';
+import { errorMessage } from '@/utils/api-error';
 
 export const Route = createFileRoute('/_authenticated/admin/users')({
   beforeLoad: ({ context }) => {

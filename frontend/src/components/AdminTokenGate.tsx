@@ -1,7 +1,7 @@
 import { Show, createSignal } from 'solid-js';
 import type { JSX } from 'solid-js';
 import { ShieldCheck } from 'lucide-solid';
-import { useAdminToken } from '../stores/admin-token-context';
+import { useAdminToken } from '@/stores/admin-token-context';
 
 /**
  * Gates admin pages behind the gateway admin token (`X-Admin-Token`).

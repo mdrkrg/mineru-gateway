@@ -1,5 +1,5 @@
 import { type } from 'arktype';
-import { defineResponseSchema, defineRequestSchema } from '../../core/conventions';
+import { defineResponseSchema, defineRequestSchema } from '@/core/conventions';
 
 // ===== API Key management =====
 

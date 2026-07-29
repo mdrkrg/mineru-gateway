@@ -6,14 +6,14 @@ import type { Result, ResultAsync } from 'neverthrow';
 import {
   createHttpError,
   isHttpError,
-} from './error-model';
+} from '@/core/error-model';
 import type {
   ApiError,
   HttpError,
   InferHttpErrors,
-} from './error-model';
-import { request, parseJson, parseBlob, parseArrayBuffer } from './http-client';
-import type { BlobResult } from './http-client';
+} from '@/core/error-model';
+import { request, parseJson, parseBlob, parseArrayBuffer } from '@/core/http-client';
+import type { BlobResult } from '@/core/http-client';
 
 // Spec: frontend/specs/core/validation.md
 

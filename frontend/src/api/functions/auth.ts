@@ -1,6 +1,6 @@
-import { fetchAndValidate, validateRequest } from '../../core/validation';
-import { request } from '../../core/http-client';
-import { ErrorDetailSchema } from '../schemas/shared';
+import { fetchAndValidate, validateRequest } from '@/core/validation';
+import { request } from '@/core/http-client';
+import { ErrorDetailSchema } from '@/api/schemas/shared';
 import {
   ApiKeyCreatedResponseSchema,
   ApiKeyListResponseSchema,
@@ -21,7 +21,7 @@ import {
   type UserCreateRequest,
   type UserUpdateRequest,
   type MyApiKeyCreateRequest,
-} from '../schemas/auth';
+} from '@/api/schemas/auth';
 
 // ===== Admin API Keys =====
 

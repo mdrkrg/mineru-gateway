@@ -2,9 +2,9 @@ import ky_default, { HTTPError, NetworkError, TimeoutError, isHTTPError, isNetwo
 import type { Options, BeforeRequestHook, AfterResponseHook } from 'ky';
 import { ResultAsync, ok } from 'neverthrow';
 import type { Result } from 'neverthrow';
-import { createHttpError } from './error-model';
-import type { ApiError, HttpError } from './error-model';
-import { env } from '../env';
+import { createHttpError } from '@/core/error-model';
+import type { ApiError, HttpError } from '@/core/error-model';
+import { env } from '@/env';
 
 // Spec: frontend/specs/core/http-client.md
 
@@ -126,7 +126,7 @@ export function registerAuthHooks(
  *
  * @example
  * // In an e2e test globalSetup or beforeAll:
- * import { setApiBaseUrl } from './http-client';
+ * import { setApiBaseUrl } from '@/http-client';
  * setApiBaseUrl('http://127.0.0.1:8765');
  */
 export function setApiBaseUrl(baseUrl: string): void {
@@ -155,7 +155,7 @@ export function setApiBaseUrl(baseUrl: string): void {
  * @returns `ResultAsync<RawResponse, ApiError<HttpError<number, unknown>>>`
  *
  * @example
- * import { request, parseJson } from './http-client';
+ * import { request, parseJson } from '@/http-client';
  *
  * const result = await request('auth/jwt/login', {
  *     method: 'POST',

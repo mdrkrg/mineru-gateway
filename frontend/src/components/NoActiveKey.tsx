@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/solid-router';
 import { KeyRound } from 'lucide-solid';
-import { ROUTES } from '../utils/constants';
+import { ROUTES } from '@/utils/constants';
 
 /**
  * Shown on pages that call task endpoints when no active API key is set.

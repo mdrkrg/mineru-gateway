@@ -1,7 +1,7 @@
 import { onMount } from 'solid-js';
 import { Link, Outlet, createRootRoute } from '@tanstack/solid-router';
 import { TanStackRouterDevtools } from '@tanstack/solid-router-devtools';
-import type { AuthStore } from '../stores/auth';
+import type { AuthStore } from '@/stores/auth';
 
 export const Route = createRootRoute({
   component: RootComponent,

@@ -1,15 +1,15 @@
 import { Show, createSignal, onMount } from 'solid-js';
 import { Link, createFileRoute } from '@tanstack/solid-router';
 import { Upload } from 'lucide-solid';
-import { getTaskStats } from '../../api/functions/tasks';
-import type { TaskStatsResponse } from '../../api/schemas/tasks';
-import NoActiveKey from '../../components/NoActiveKey';
-import { useApiKey } from '../../stores/api-key-context';
-import { useAuth } from '../../stores/auth-context';
-import { errorMessage } from '../../utils/api-error';
-import { ROUTES, TASK_STATUS_LABELS } from '../../utils/constants';
-import { formatFileSize, formatMilliseconds } from '../../utils/format';
-import type { TaskStatus } from '../../api/schemas/tasks';
+import { getTaskStats } from '@/api/functions/tasks';
+import type { TaskStatsResponse } from '@/api/schemas/tasks';
+import NoActiveKey from '@/components/NoActiveKey';
+import { useApiKey } from '@/stores/api-key-context';
+import { useAuth } from '@/stores/auth-context';
+import { errorMessage } from '@/utils/api-error';
+import { ROUTES, TASK_STATUS_LABELS } from '@/utils/constants';
+import { formatFileSize, formatMilliseconds } from '@/utils/format';
+import type { TaskStatus } from '@/api/schemas/tasks';
 
 export const Route = createFileRoute('/_authenticated/')({
   component: DashboardPage,

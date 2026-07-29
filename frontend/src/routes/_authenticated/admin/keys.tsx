@@ -5,15 +5,15 @@ import {
   createApiKey,
   listApiKeys,
   revokeApiKey,
-} from '../../../api/functions/auth';
-import type { ApiKeyCreatedResponse, ApiKeyInfo } from '../../../api/schemas/auth';
-import AdminTokenGate from '../../../components/AdminTokenGate';
-import ApiKeyReveal from '../../../components/ApiKeyReveal';
-import type { AuthStore } from '../../../stores/auth';
-import { useAdminToken } from '../../../stores/admin-token-context';
-import { requireSuperuser } from '../../../stores/guard';
-import { errorMessage } from '../../../utils/api-error';
-import { formatDateTime } from '../../../utils/format';
+} from '@/api/functions/auth';
+import type { ApiKeyCreatedResponse, ApiKeyInfo } from '@/api/schemas/auth';
+import AdminTokenGate from '@/components/AdminTokenGate';
+import ApiKeyReveal from '@/components/ApiKeyReveal';
+import type { AuthStore } from '@/stores/auth';
+import { useAdminToken } from '@/stores/admin-token-context';
+import { requireSuperuser } from '@/stores/guard';
+import { errorMessage } from '@/utils/api-error';
+import { formatDateTime } from '@/utils/format';
 
 export const Route = createFileRoute('/_authenticated/admin/keys')({
   beforeLoad: ({ context }) => {

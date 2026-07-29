@@ -1,6 +1,6 @@
 import { Show, createSignal } from 'solid-js';
 import { Check, Copy } from 'lucide-solid';
-import type { ApiKeyCreatedResponse } from '../api/schemas/auth';
+import type { ApiKeyCreatedResponse } from '@/api/schemas/auth';
 
 /**
  * One-time reveal of a freshly created API key. The full key is only

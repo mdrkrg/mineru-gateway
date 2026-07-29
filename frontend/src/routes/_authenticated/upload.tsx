@@ -1,8 +1,8 @@
 import { For, Show, createSignal } from 'solid-js';
 import { Link, createFileRoute } from '@tanstack/solid-router';
 import { FileUp, X } from 'lucide-solid';
-import { submitTask } from '../../api/functions/tasks';
-import type { TaskSubmitResponse } from '../../api/schemas/tasks';
+import { submitTask } from '@/api/functions/tasks';
+import type { TaskSubmitResponse } from '@/api/schemas/tasks';
 import {
   MINERU_BACKENDS,
   MINERU_EFFORTS,
@@ -12,12 +12,12 @@ import {
   type MineruEffort,
   type MineruLanguage,
   type MineruParseMethod,
-} from '../../api/schemas/mineru-options';
-import NoActiveKey from '../../components/NoActiveKey';
-import { useApiKey } from '../../stores/api-key-context';
-import { errorMessage } from '../../utils/api-error';
-import { ROUTES } from '../../utils/constants';
-import { formatFileSize } from '../../utils/format';
+} from '@/api/schemas/mineru-options';
+import NoActiveKey from '@/components/NoActiveKey';
+import { useApiKey } from '@/stores/api-key-context';
+import { errorMessage } from '@/utils/api-error';
+import { ROUTES } from '@/utils/constants';
+import { formatFileSize } from '@/utils/format';
 
 export const Route = createFileRoute('/_authenticated/upload')({
   component: UploadPage,

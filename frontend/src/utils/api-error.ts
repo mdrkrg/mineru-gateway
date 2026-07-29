@@ -4,8 +4,8 @@ import {
   isUnhandledStatusError,
   isUnexpectedError,
   isValidationError,
-} from '../core/error-model';
-import type { ApiErrorBase, HttpError } from '../core/error-model';
+} from '@/core/error-model';
+import type { ApiErrorBase, HttpError } from '@/core/error-model';
 
 /**
  * Maps an API error to a human-readable Chinese message for display.

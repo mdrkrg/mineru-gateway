@@ -1,8 +1,8 @@
 import { Show, createSignal } from 'solid-js';
 import { Link, createFileRoute, useNavigate } from '@tanstack/solid-router';
-import { register } from '../api/functions/auth';
-import { errorMessage } from '../utils/api-error';
-import { ROUTES } from '../utils/constants';
+import { register } from '@/api/functions/auth';
+import { errorMessage } from '@/utils/api-error';
+import { ROUTES } from '@/utils/constants';
 
 export const Route = createFileRoute('/register')({
   component: RegisterPage,

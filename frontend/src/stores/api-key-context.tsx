@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'solid-js';
 import type { JSX } from 'solid-js';
-import type { ApiKeyStore } from './api-key';
+import type { ApiKeyStore } from '@/stores/api-key';
 
 const ApiKeyCtx = createContext<ApiKeyStore>();
 

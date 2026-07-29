@@ -5,13 +5,13 @@ import {
   createMyApiKey,
   listMyApiKeys,
   revokeMyApiKey,
-} from '../../api/functions/auth';
-import type { ApiKeyCreatedResponse, ApiKeyInfo } from '../../api/schemas/auth';
-import ApiKeyReveal from '../../components/ApiKeyReveal';
-import { useAuth } from '../../stores/auth-context';
-import { useApiKey } from '../../stores/api-key-context';
-import { errorMessage } from '../../utils/api-error';
-import { formatDateTime } from '../../utils/format';
+} from '@/api/functions/auth';
+import type { ApiKeyCreatedResponse, ApiKeyInfo } from '@/api/schemas/auth';
+import ApiKeyReveal from '@/components/ApiKeyReveal';
+import { useAuth } from '@/stores/auth-context';
+import { useApiKey } from '@/stores/api-key-context';
+import { errorMessage } from '@/utils/api-error';
+import { formatDateTime } from '@/utils/format';
 
 export const Route = createFileRoute('/_authenticated/api-keys')({
   component: ApiKeysPage,

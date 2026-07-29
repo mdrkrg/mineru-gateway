@@ -1,6 +1,6 @@
-export * from './error-model';
-export * from './conventions';
-export * from './http-client';
-export * from './validation';
+export * from '@/core/error-model';
+export * from '@/core/conventions';
+export * from '@/core/http-client';
+export * from '@/core/validation';
 
-export { setApiBaseUrl } from './http-client';
+export { setApiBaseUrl } from '@/core/http-client';

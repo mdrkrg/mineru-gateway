@@ -1,7 +1,7 @@
 import { Show, createSignal, onMount } from 'solid-js';
 import { Link, createFileRoute, useNavigate } from '@tanstack/solid-router';
-import { useAuth } from '../../stores/auth-context';
-import { ROUTES } from '../../utils/constants';
+import { useAuth } from '@/stores/auth-context';
+import { ROUTES } from '@/utils/constants';
 
 export const Route = createFileRoute('/oauth/callback')({
   component: OAuthCallbackPage,

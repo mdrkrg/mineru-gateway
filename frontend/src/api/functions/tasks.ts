@@ -1,11 +1,11 @@
 import type { ResultAsync } from 'neverthrow';
-import type { ApiError, HttpError } from '../../core/error-model';
-import { fetchAndValidate, fetchBinaryAndValidate, validateRequest, validateSuccess } from '../../core/validation';
-import { request, parseJson, parseBlob, passthrough } from '../../core/http-client';
-import type { BlobResult, RawResponse } from '../../core/http-client';
-import type { MineruBackend, ParseRequestFields } from '../schemas/mineru-options';
-import { createParseFormData } from '../schemas/mineru-options';
-import { ErrorDetailSchema } from '../schemas/shared';
+import type { ApiError, HttpError } from '@/core/error-model';
+import { fetchAndValidate, fetchBinaryAndValidate, validateRequest, validateSuccess } from '@/core/validation';
+import { request, parseJson, parseBlob, passthrough } from '@/core/http-client';
+import type { BlobResult, RawResponse } from '@/core/http-client';
+import type { MineruBackend, ParseRequestFields } from '@/api/schemas/mineru-options';
+import { createParseFormData } from '@/api/schemas/mineru-options';
+import { ErrorDetailSchema } from '@/api/schemas/shared';
 import {
   TaskSubmitResponseSchema,
   TaskListResponseSchema,
@@ -22,7 +22,7 @@ import {
   type TaskStatsResponse,
   type BatchCancelResponse,
   type NonDownloadableError,
-} from '../schemas/tasks';
+} from '@/api/schemas/tasks';
 
 // ===== Proxy: Task Submission =====
 

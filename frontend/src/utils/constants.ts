@@ -1,4 +1,4 @@
-import type { TaskStatus } from '../api/schemas/tasks';
+import type { TaskStatus } from '@/api/schemas/tasks';
 
 /**
  * Application route paths. Use these instead of hardcoding path strings

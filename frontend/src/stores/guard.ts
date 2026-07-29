@@ -1,5 +1,5 @@
 import { redirect } from '@tanstack/solid-router';
-import type { AuthStore } from './auth';
+import type { AuthStore } from '@/stores/auth';
 
 /**
  * Throws a redirect to `/login` if the user is not authenticated.

@@ -1,6 +1,6 @@
 export {
   getHealth,
-} from './health';
+} from '@/api/functions/health';
 
 export {
   createApiKey,
@@ -17,7 +17,7 @@ export {
   createMyApiKey,
   revokeMyApiKey,
   getOAuthProviders,
-} from './auth';
+} from '@/api/functions/auth';
 
 export {
   submitTask,
@@ -29,10 +29,10 @@ export {
   getTaskResult,
   downloadResultZip,
   batchCancelTasks,
-} from './tasks';
+} from '@/api/functions/tasks';
 
 export type {
   TaskSubmissionOptions,
   FileParseOptions,
   TaskListParams,
-} from './tasks';
+} from '@/api/functions/tasks';

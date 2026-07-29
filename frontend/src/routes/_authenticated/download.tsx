@@ -1,16 +1,16 @@
 import { For, Show, createSignal, onMount } from 'solid-js';
 import { Link, createFileRoute } from '@tanstack/solid-router';
 import { Download, Package } from 'lucide-solid';
-import { downloadResultZip, getTaskResult, listTasks } from '../../api/functions/tasks';
-import type { TaskListItem } from '../../api/schemas/tasks';
-import NoActiveKey from '../../components/NoActiveKey';
-import Pagination from '../../components/Pagination';
-import { useApiKey } from '../../stores/api-key-context';
-import { errorMessage } from '../../utils/api-error';
-import { isHttpError } from '../../core/error-model';
-import { ROUTES } from '../../utils/constants';
-import { filenameFromContentDisposition, saveBlob } from '../../utils/download';
-import { formatDateTime } from '../../utils/format';
+import { downloadResultZip, getTaskResult, listTasks } from '@/api/functions/tasks';
+import type { TaskListItem } from '@/api/schemas/tasks';
+import NoActiveKey from '@/components/NoActiveKey';
+import Pagination from '@/components/Pagination';
+import { useApiKey } from '@/stores/api-key-context';
+import { errorMessage } from '@/utils/api-error';
+import { isHttpError } from '@/core/error-model';
+import { ROUTES } from '@/utils/constants';
+import { filenameFromContentDisposition, saveBlob } from '@/utils/download';
+import { formatDateTime } from '@/utils/format';
 
 export const Route = createFileRoute('/_authenticated/download')({
   component: ResultDownloadPage,

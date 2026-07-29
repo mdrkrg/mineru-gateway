@@ -5,6 +5,12 @@
     "jsxImportSource": "solid-js",
     "target": "ESNext",
 
+    // Alias
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+
     // Modules
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
