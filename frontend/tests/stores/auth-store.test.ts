@@ -24,6 +24,9 @@
  *   `getCurrentUser` to validate the session and populate `user`.
  * - `login(email, password)` - POST `/auth/jwt/login`, store tokens in
  *   localStorage, fetch user profile.
+ * - `loginWithTokens(accessToken, refreshToken)` - store externally-obtained
+ *   tokens (e.g. OAuth callback fragment) in localStorage, fetch user
+ *   profile.
  * - `logout()` - POST `/auth/jwt/logout`, clear tokens + user from state
  *   and localStorage.
  * - `refresh()` - POST `/auth/jwt/refresh` with the current `refreshToken`,
@@ -350,9 +353,75 @@ describe('AuthStore: login', () => {
 });
 
 // ---------------------------------------------------------------------------
-// logout()
+// loginWithTokens()
 // ---------------------------------------------------------------------------
 
+describe('AuthStore: loginWithTokens', () => {
+  /**
+   * Stores externally-obtained tokens (OAuth callback) in localStorage,
+   * fetches the user profile, and sets isAuthenticated to true.
+   */
+  it('stores tokens and fetches user on success', async () => {
+    m.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'u-oauth',
+          email: 'oauth@example.com',
+          is_active: true,
+          is_superuser: false,
+          is_verified: true,
+          display_name: 'Olive',
+          created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-01-01T00:00:00Z',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const store = createAuthStore();
+    await store.loginWithTokens('at-oauth', 'rt-oauth');
+
+    expect(store.isAuthenticated()).toBe(true);
+    expect(store.accessToken()).toBe('at-oauth');
+    expect(store.refreshToken()).toBe('rt-oauth');
+    const user = store.user() as Record<string, unknown>;
+    expect(user?.email).toBe('oauth@example.com');
+    expect(store.isLoading()).toBe(false);
+    expect(store.error()).toBeNull();
+    expect(storage.get('auth_access_token')).toBe('at-oauth');
+    expect(storage.get('auth_refresh_token')).toBe('rt-oauth');
+  });
+
+  /**
+   * When the user fetch fails, tokens remain stored (same behaviour as
+   * login) and the error is surfaced.
+   */
+  it('keeps tokens but sets error when user fetch fails', async () => {
+    const httpErr = new HTTPError(
+      new Response(JSON.stringify({ detail: 'unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      new Request('http://test'),
+      {},
+    );
+    httpErr.data = { detail: 'unauthorized' };
+    m.mockRejectedValueOnce(httpErr);
+
+    const store = createAuthStore();
+    await store.loginWithTokens('at-bad', 'rt-bad');
+
+    expect(store.isAuthenticated()).toBe(true);
+    expect(store.user()).toBeNull();
+    expect(store.error()).toBeTruthy();
+    expect(store.isLoading()).toBe(false);
+    expect(storage.get('auth_access_token')).toBe('at-bad');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// logout()
+// ---------------------------------------------------------------------------
 describe('AuthStore: logout', () => {
   /**
    * Logout clears user, tokens, and localStorage, and sets

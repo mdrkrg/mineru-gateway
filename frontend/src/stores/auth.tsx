@@ -1,8 +1,8 @@
 import { createSignal, createMemo } from 'solid-js';
 import { login as apiLogin, refreshToken as apiRefreshToken, logout as apiLogout, getCurrentUser } from '../api/functions/auth';
 import type { UserRead } from '../api/schemas/auth';
-import { isHttpError, isNetworkError, isValidationError, isUnhandledStatusError, isUnexpectedError } from '../core/error-model';
-import type { ApiErrorBase, HttpError } from '../core/error-model';
+import { isHttpError } from '../core/error-model';
+import { errorMessage } from '../utils/api-error';
 
 export interface AuthStore {
   user: () => UserRead | null;
@@ -13,6 +13,7 @@ export interface AuthStore {
   error: () => string | null;
   init: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
+  loginWithTokens: (accessToken: string, refreshToken: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -41,18 +42,6 @@ function persistAccessToken(at: string) {
 function clearTokens() {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
-}
-
-function errorMessage(error: ApiErrorBase | HttpError<number, unknown>): string {
-  if (isHttpError(error)) {
-    const data = error.data as { detail?: string } | undefined;
-    return `HTTP ${error.status}: ${data?.detail ?? 'unknown'}`;
-  }
-  if (isNetworkError(error)) return error.error?.message ?? 'Network error';
-  if (isValidationError(error)) return error.summary ?? 'Validation error';
-  if (isUnhandledStatusError(error)) return `Unexpected status ${error.status}`;
-  if (isUnexpectedError(error)) return 'Unexpected error';
-  return 'Unknown error';
 }
 
 export function createAuthStore(): AuthStore {
@@ -104,6 +93,13 @@ export function createAuthStore(): AuthStore {
     }
 
     const { accessToken: at, refreshToken: rt } = result.value;
+    await loginWithTokens(at, rt);
+  }
+
+  async function loginWithTokens(at: string, rt: string) {
+    setIsLoading(true);
+    setError(null);
+
     persistTokens(at, rt);
     setAccessToken(at);
     setRefreshToken(rt);
@@ -176,6 +172,7 @@ export function createAuthStore(): AuthStore {
     error,
     init,
     login,
+    loginWithTokens,
     logout,
     refresh,
   };
