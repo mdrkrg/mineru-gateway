@@ -130,7 +130,7 @@ function AdminKeysContent() {
           <label class="flex flex-col gap-1">
             <span class="text-sm font-medium text-gray-700">过期时间(可选)</span>
             <input
-              type="datetime-local"
+              type="date"
               value={expiresAt()}
               onInput={(e) => setExpiresAt(e.currentTarget.value)}
               class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
