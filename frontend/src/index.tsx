@@ -1,15 +1,24 @@
 import 'uno.css';
 import { render } from 'solid-js/web';
 import 'solid-devtools';
+import { RouterProvider, createRouter } from '@tanstack/solid-router';
+import { routeTree } from './routeTree.gen';
 
-import App from './App';
+const router = createRouter({
+  routeTree,
+  defaultPreload: 'intent',
+  defaultStaleTime: 5000,
+  scrollRestoration: true,
+});
 
-const root = document.getElementById('root');
+const rootElement = document.getElementById('root')!;
 
-if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
+if (import.meta.env.DEV && !(rootElement instanceof HTMLElement)) {
   throw new Error(
-    'Root element not found. Did you forget to add it to your index.html? Or maybe the id attribute got misspelled?',
+    'Root element not found.',
   );
 }
 
-render(() => <App />, root!);
+if (!rootElement.innerHTML) {
+  render(() => <RouterProvider router={router} />, rootElement);
+}

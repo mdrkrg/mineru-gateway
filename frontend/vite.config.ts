@@ -2,13 +2,13 @@ import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
 import devtools from 'solid-devtools/vite';
 import UnocssPlugin from '@unocss/vite';
+import { tanstackRouter } from '@tanstack/router-plugin/vite';
 
 export default defineConfig({
   plugins: [
+    tanstackRouter({ target: 'solid' }),
     solidPlugin(),
-    UnocssPlugin({
-      // your config or in uno.config.ts
-    }),
+    UnocssPlugin(),
   ],
   server: {
     port: 3000,
