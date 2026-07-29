@@ -1,15 +1,15 @@
 import { For, Show, createSignal, onMount } from 'solid-js';
 import { Link, createFileRoute } from '@tanstack/solid-router';
 import { ArrowLeft, Download } from 'lucide-solid';
-import { cancelTask, getTaskDetail, getTaskResult } from '../../api/functions/tasks';
-import type { TaskDetail } from '../../api/schemas/tasks';
-import NoActiveKey from '../../components/NoActiveKey';
-import StatusBadge from '../../components/StatusBadge';
-import { useApiKey } from '../../stores/api-key-context';
-import { errorMessage } from '../../utils/api-error';
-import { ACTIVE_TASK_STATUSES, ROUTES } from '../../utils/constants';
-import { filenameFromContentDisposition, saveBlob } from '../../utils/download';
-import { formatDateTime, formatDuration } from '../../utils/format';
+import { cancelTask, getTaskDetail, getTaskResult } from '../../../api/functions/tasks';
+import type { TaskDetail } from '../../../api/schemas/tasks';
+import NoActiveKey from '../../../components/NoActiveKey';
+import StatusBadge from '../../../components/StatusBadge';
+import { useApiKey } from '../../../stores/api-key-context';
+import { errorMessage } from '../../../utils/api-error';
+import { ACTIVE_TASK_STATUSES, ROUTES } from '../../../utils/constants';
+import { filenameFromContentDisposition, saveBlob } from '../../../utils/download';
+import { formatDateTime, formatDuration } from '../../../utils/format';
 
 export const Route = createFileRoute('/_authenticated/tasks/$id')({
   component: TaskDetailPage,

@@ -1,21 +1,21 @@
 import { For, Show, createSignal, onMount } from 'solid-js';
 import { Link, createFileRoute } from '@tanstack/solid-router';
-import { listTasks, cancelTask, batchCancelTasks } from '../../api/functions/tasks';
-import type { TaskListItem } from '../../api/schemas/tasks';
-import NoActiveKey from '../../components/NoActiveKey';
-import Pagination from '../../components/Pagination';
-import StatusBadge from '../../components/StatusBadge';
-import { useApiKey } from '../../stores/api-key-context';
-import { errorMessage } from '../../utils/api-error';
+import { listTasks, cancelTask, batchCancelTasks } from '../../../api/functions/tasks';
+import type { TaskListItem } from '../../../api/schemas/tasks';
+import NoActiveKey from '../../../components/NoActiveKey';
+import Pagination from '../../../components/Pagination';
+import StatusBadge from '../../../components/StatusBadge';
+import { useApiKey } from '../../../stores/api-key-context';
+import { errorMessage } from '../../../utils/api-error';
 import {
   ACTIVE_TASK_STATUSES,
   ROUTES,
   TASK_STATUSES,
   TASK_STATUS_LABELS,
-} from '../../utils/constants';
-import { formatDateTime } from '../../utils/format';
+} from '../../../utils/constants';
+import { formatDateTime } from '../../../utils/format';
 
-export const Route = createFileRoute('/_authenticated/tasks')({
+export const Route = createFileRoute('/_authenticated/tasks/')({
   component: TaskListPage,
 });
 

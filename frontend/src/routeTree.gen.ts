@@ -16,12 +16,12 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedApiKeysRouteImport } from './routes/_authenticated/api-keys'
 import { Route as AuthenticatedDownloadRouteImport } from './routes/_authenticated/download'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
-import { Route as AuthenticatedTasksRouteImport } from './routes/_authenticated/tasks'
 import { Route as AuthenticatedUploadRouteImport } from './routes/_authenticated/upload'
 import { Route as OauthCallbackRouteImport } from './routes/oauth/callback'
 import { Route as AuthenticatedAdminKeysRouteImport } from './routes/_authenticated/admin/keys'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
-import { Route as AuthenticatedTasksIdRouteImport } from './routes/_authenticated/tasks.$id'
+import { Route as AuthenticatedTasksIndexRouteImport } from './routes/_authenticated/tasks/index'
+import { Route as AuthenticatedTasksIdRouteImport } from './routes/_authenticated/tasks/$id'
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
@@ -57,11 +57,6 @@ const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedTasksRoute = AuthenticatedTasksRouteImport.update({
-  id: '/tasks',
-  path: '/tasks',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedUploadRoute = AuthenticatedUploadRouteImport.update({
   id: '/upload',
   path: '/upload',
@@ -82,10 +77,15 @@ const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   path: '/admin/users',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedTasksIndexRoute = AuthenticatedTasksIndexRouteImport.update({
+  id: '/tasks/',
+  path: '/tasks/',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedTasksIdRoute = AuthenticatedTasksIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
-  getParentRoute: () => AuthenticatedTasksRoute,
+  id: '/tasks/$id',
+  path: '/tasks/$id',
+  getParentRoute: () => AuthenticatedRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -95,12 +95,12 @@ export interface FileRoutesByFullPath {
   '/api-keys': typeof AuthenticatedApiKeysRoute
   '/download': typeof AuthenticatedDownloadRoute
   '/profile': typeof AuthenticatedProfileRoute
-  '/tasks': typeof AuthenticatedTasksRouteWithChildren
   '/upload': typeof AuthenticatedUploadRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/admin/keys': typeof AuthenticatedAdminKeysRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/tasks/$id': typeof AuthenticatedTasksIdRoute
+  '/tasks/': typeof AuthenticatedTasksIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -108,13 +108,13 @@ export interface FileRoutesByTo {
   '/api-keys': typeof AuthenticatedApiKeysRoute
   '/download': typeof AuthenticatedDownloadRoute
   '/profile': typeof AuthenticatedProfileRoute
-  '/tasks': typeof AuthenticatedTasksRouteWithChildren
   '/upload': typeof AuthenticatedUploadRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/': typeof AuthenticatedIndexRoute
   '/admin/keys': typeof AuthenticatedAdminKeysRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/tasks/$id': typeof AuthenticatedTasksIdRoute
+  '/tasks': typeof AuthenticatedTasksIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -124,13 +124,13 @@ export interface FileRoutesById {
   '/_authenticated/api-keys': typeof AuthenticatedApiKeysRoute
   '/_authenticated/download': typeof AuthenticatedDownloadRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
-  '/_authenticated/tasks': typeof AuthenticatedTasksRouteWithChildren
   '/_authenticated/upload': typeof AuthenticatedUploadRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/admin/keys': typeof AuthenticatedAdminKeysRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/tasks/$id': typeof AuthenticatedTasksIdRoute
+  '/_authenticated/tasks/': typeof AuthenticatedTasksIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -141,12 +141,12 @@ export interface FileRouteTypes {
     | '/api-keys'
     | '/download'
     | '/profile'
-    | '/tasks'
     | '/upload'
     | '/oauth/callback'
     | '/admin/keys'
     | '/admin/users'
     | '/tasks/$id'
+    | '/tasks/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -154,13 +154,13 @@ export interface FileRouteTypes {
     | '/api-keys'
     | '/download'
     | '/profile'
-    | '/tasks'
     | '/upload'
     | '/oauth/callback'
     | '/'
     | '/admin/keys'
     | '/admin/users'
     | '/tasks/$id'
+    | '/tasks'
   id:
     | '__root__'
     | '/_authenticated'
@@ -169,13 +169,13 @@ export interface FileRouteTypes {
     | '/_authenticated/api-keys'
     | '/_authenticated/download'
     | '/_authenticated/profile'
-    | '/_authenticated/tasks'
     | '/_authenticated/upload'
     | '/oauth/callback'
     | '/_authenticated/'
     | '/_authenticated/admin/keys'
     | '/_authenticated/admin/users'
     | '/_authenticated/tasks/$id'
+    | '/_authenticated/tasks/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -236,13 +236,6 @@ declare module '@tanstack/solid-router' {
       preLoaderRoute: typeof AuthenticatedProfileRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/tasks': {
-      id: '/_authenticated/tasks'
-      path: '/tasks'
-      fullPath: '/tasks'
-      preLoaderRoute: typeof AuthenticatedTasksRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/upload': {
       id: '/_authenticated/upload'
       path: '/upload'
@@ -271,47 +264,45 @@ declare module '@tanstack/solid-router' {
       preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/tasks/': {
+      id: '/_authenticated/tasks/'
+      path: '/tasks'
+      fullPath: '/tasks/'
+      preLoaderRoute: typeof AuthenticatedTasksIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/tasks/$id': {
       id: '/_authenticated/tasks/$id'
-      path: '/$id'
+      path: '/tasks/$id'
       fullPath: '/tasks/$id'
       preLoaderRoute: typeof AuthenticatedTasksIdRouteImport
-      parentRoute: typeof AuthenticatedTasksRoute
+      parentRoute: typeof AuthenticatedRoute
     }
   }
 }
-
-interface AuthenticatedTasksRouteChildren {
-  AuthenticatedTasksIdRoute: typeof AuthenticatedTasksIdRoute
-}
-
-const AuthenticatedTasksRouteChildren: AuthenticatedTasksRouteChildren = {
-  AuthenticatedTasksIdRoute: AuthenticatedTasksIdRoute,
-}
-
-const AuthenticatedTasksRouteWithChildren =
-  AuthenticatedTasksRoute._addFileChildren(AuthenticatedTasksRouteChildren)
 
 interface AuthenticatedRouteChildren {
   AuthenticatedApiKeysRoute: typeof AuthenticatedApiKeysRoute
   AuthenticatedDownloadRoute: typeof AuthenticatedDownloadRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
-  AuthenticatedTasksRoute: typeof AuthenticatedTasksRouteWithChildren
   AuthenticatedUploadRoute: typeof AuthenticatedUploadRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedAdminKeysRoute: typeof AuthenticatedAdminKeysRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
+  AuthenticatedTasksIdRoute: typeof AuthenticatedTasksIdRoute
+  AuthenticatedTasksIndexRoute: typeof AuthenticatedTasksIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedApiKeysRoute: AuthenticatedApiKeysRoute,
   AuthenticatedDownloadRoute: AuthenticatedDownloadRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
-  AuthenticatedTasksRoute: AuthenticatedTasksRouteWithChildren,
   AuthenticatedUploadRoute: AuthenticatedUploadRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedAdminKeysRoute: AuthenticatedAdminKeysRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
+  AuthenticatedTasksIdRoute: AuthenticatedTasksIdRoute,
+  AuthenticatedTasksIndexRoute: AuthenticatedTasksIndexRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
