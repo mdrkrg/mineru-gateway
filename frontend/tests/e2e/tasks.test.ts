@@ -64,7 +64,7 @@ describe('POST /tasks (submit)', () => {
 
     const result = await submitTask({
       apiKey,
-      formData: samplePdfFormData(),
+      parseFields: samplePdfFormData(),
     });
 
     expect(result.isOk()).toBe(true);
@@ -87,7 +87,7 @@ describe('POST /tasks (submit)', () => {
   it('returns 401 when no API key is provided', async () => {
     await mock.reset();
 
-    const result = await submitTask({ formData: samplePdfFormData() });
+    const result = await submitTask({ parseFields: samplePdfFormData() });
 
     expect(result.isErr()).toBe(true);
     if (!result.isErr()) return;
@@ -101,7 +101,7 @@ describe('POST /tasks (submit)', () => {
 
     const result = await submitTask({
       apiKey: 'mru_invalidkey123',
-      formData: samplePdfFormData(),
+      parseFields: samplePdfFormData(),
     });
 
     expect(result.isErr()).toBe(true);
@@ -118,7 +118,7 @@ describe('POST /tasks (submit)', () => {
 
     const result = await submitTask({
       apiKey,
-      formData: samplePdfFormData(),
+      parseFields: samplePdfFormData(),
     });
 
     expect(result.isErr()).toBe(true);
@@ -136,7 +136,7 @@ describe('POST /file_parse (sync parse)', () => {
 
     const result = await parseFile({
       apiKey,
-      formData: samplePdfFormData(),
+      parseFields: samplePdfFormData(),
     });
 
     expect(result.isOk()).toBe(true);
@@ -152,7 +152,7 @@ describe('POST /file_parse (sync parse)', () => {
 describe('GET /tasks (list)', () => {
   it('lists submitted tasks with pagination', async () => {
     await mock.reset();
-    await submitTask({ apiKey, formData: samplePdfFormData() });
+    await submitTask({ apiKey, parseFields: samplePdfFormData() });
 
     const result = await listTasks({ apiKey });
 
@@ -173,7 +173,7 @@ describe('GET /tasks (list)', () => {
 describe('GET /tasks/stats', () => {
   it('returns task counters', async () => {
     await mock.reset();
-    await submitTask({ apiKey, formData: samplePdfFormData() });
+    await submitTask({ apiKey, parseFields: samplePdfFormData() });
 
     const result = await getTaskStats(apiKey);
 
@@ -191,7 +191,7 @@ describe('GET /tasks/stats', () => {
 describe('GET /tasks/{id} (detail)', () => {
   it('returns full task detail for an existing task', async () => {
     await mock.reset();
-    const submitResult = await submitTask({ apiKey, formData: samplePdfFormData() });
+    const submitResult = await submitTask({ apiKey, parseFields: samplePdfFormData() });
     if (!submitResult.isOk()) throw new Error('submit failed');
     const taskId = submitResult.value.taskId;
 
@@ -221,7 +221,7 @@ describe('GET /tasks/{id} (detail)', () => {
 describe('DELETE /tasks/{id} (cancel)', () => {
   it('cancels a pending task', async () => {
     await mock.reset();
-    const submitResult = await submitTask({ apiKey, formData: samplePdfFormData() });
+    const submitResult = await submitTask({ apiKey, parseFields: samplePdfFormData() });
     if (!submitResult.isOk()) throw new Error('submit failed');
     const taskId = submitResult.value.taskId;
 
@@ -251,7 +251,7 @@ describe('POST /tasks/cancel (batch cancel)', () => {
     await mock.reset();
     const ids: string[] = [];
     for (let i = 0; i < 2; i++) {
-      const r = await submitTask({ apiKey, formData: samplePdfFormData() });
+      const r = await submitTask({ apiKey, parseFields: samplePdfFormData() });
       if (r.isOk()) ids.push(r.value.taskId);
     }
     expect(ids.length).toBe(2);

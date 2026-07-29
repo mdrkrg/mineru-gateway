@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import type { ParseRequestFields } from '../../src/api/schemas/mineru-options';
 
 const URLS_FILE = resolve(__dirname, '..', '..', '.e2e-tmp', 'urls.json');
 
@@ -55,9 +56,9 @@ export const MINIMAL_PDF = (() => {
   return new Blob([lines.join('\n') + '\n'], { type: 'application/pdf' });
 })();
 
-export function samplePdfFormData(): FormData {
-  const formData = new FormData();
-  formData.append('files', MINIMAL_PDF, 'doc.pdf');
-  formData.append('backend', 'hybrid-engine');
-  return formData;
+export function samplePdfFormData(): ParseRequestFields {
+  return {
+    files: [new File([MINIMAL_PDF], 'doc.pdf', { type: 'application/pdf' })],
+    backend: 'hybrid-engine',
+  };
 }

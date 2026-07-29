@@ -3,7 +3,8 @@ import type { ApiError, HttpError } from '../../core/error-model';
 import { fetchAndValidate, fetchBinaryAndValidate, validateRequest, validateSuccess } from '../../core/validation';
 import { request, parseJson, parseBlob, passthrough } from '../../core/http-client';
 import type { BlobResult, RawResponse } from '../../core/http-client';
-import type { MineruBackend } from '../schemas/mineru-options';
+import type { MineruBackend, ParseRequestFields } from '../schemas/mineru-options';
+import { createParseFormData } from '../schemas/mineru-options';
 import { ErrorDetailSchema } from '../schemas/shared';
 import {
   TaskSubmitResponseSchema,
@@ -28,7 +29,7 @@ import {
 export interface TaskSubmissionOptions {
   apiKey?: string;
   idempotencyKey?: string;
-  formData: FormData;
+  parseFields: ParseRequestFields;
   signal?: AbortSignal;
 }
 
@@ -39,7 +40,7 @@ export function submitTask(options: TaskSubmissionOptions) {
 
   return request('tasks', {
     method: 'POST',
-    body: options.formData,
+    body: createParseFormData(options.parseFields),
     headers,
     signal: options.signal,
   })
@@ -51,7 +52,7 @@ export function submitTask(options: TaskSubmissionOptions) {
 
 export interface FileParseOptions {
   apiKey?: string;
-  formData: FormData;
+  parseFields: ParseRequestFields;
   signal?: AbortSignal;
 }
 
@@ -63,7 +64,7 @@ export function parseFile(
 
   return request('file_parse', {
     method: 'POST',
-    body: options.formData,
+    body: createParseFormData(options.parseFields),
     headers,
     signal: options.signal,
   }).andThen(passthrough);
