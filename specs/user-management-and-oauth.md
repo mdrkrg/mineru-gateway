@@ -164,23 +164,56 @@ User ──1:N──► ApiKey（通过 owner_id，nullable）
 
 ### 3.2 OIDC 提供商配置格式
 
-`GATEWAY_OIDC_PROVIDERS` 是一个 JSON 数组，每个元素：
+`GATEWAY_OIDC_PROVIDERS` 是一个 JSON 数组，每个元素支持两种模式。
+
+#### 字段说明
+
+| 字段 | 类型 | 必需 | 适用模式 | 说明 |
+|------|------|------|----------|------|
+| `name` | string | **是** | 全部 | 提供商标识，用于 URL 路径（`/auth/oauth/{name}/authorize`）。必须 URL-safe（字母、数字、连字符）且唯一 |
+| `client_id` | string | **是** | 全部 | OAuth 2.0 客户端 ID |
+| `client_secret` | string | **是** | 全部 | OAuth 2.0 客户端密钥 |
+| `openid_configuration_endpoint` | string | 否 | 模式 A | OIDC Discovery URL（指向 `.well-known/openid-configuration`）。设置此字段时进入模式 A |
+| `authorization_endpoint` | string | 否 | 模式 B | OAuth 2.0 授权端点 URL |
+| `token_endpoint` | string | 否 | 模式 B | OAuth 2.0 令牌端点 URL（同时用于 code 交换和令牌刷新） |
+| `userinfo_endpoint` | string | 否 | 模式 B | OIDC UserInfo 端点 URL（用于获取用户信息） |
+| `scopes` | array[string] | 否 | 全部 | 授权请求的作用域列表。默认 `["openid", "email"]` |
+
+#### 模式选择规则
+
+每个 OIDC 提供商配置必须选择且只能选择一种模式：
+
+- **模式 A（Discovery）**：设置 `openid_configuration_endpoint`，其余端点字段（`authorization_endpoint`、`token_endpoint`、`userinfo_endpoint`）**忽略**。端点地址由 Discovery 文档自动获取。
+- **模式 B（手动）**：不设置 `openid_configuration_endpoint`，**必须**同时设置 `authorization_endpoint`、`token_endpoint`、`userinfo_endpoint` 三个字段。`refresh_token_endpoint` 默认等于 `token_endpoint`。
+- **`scopes`** 两种模式均可选配，未设置时默认 `["openid", "email"]`。
+- **无效配置**：`openid_configuration_endpoint` 未设置，且三个手动端点未完整提供 → Gateway 拒绝启动并提示错误。
+
+#### JSON 示例
+
+模式 A（Discovery，带自定义 scope）：
 
 ```json
 {
   "name": "keycloak",
   "openid_configuration_endpoint": "https://keycloak.example.com/realms/myrealm/.well-known/openid-configuration",
   "client_id": "my-client-id",
-  "client_secret": "my-client-secret"
+  "client_secret": "my-client-secret",
+  "scopes": ["openid", "email", "offline_access"]
 }
 ```
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `name` | string | 提供商标识，用于 URL 路径（`/auth/oauth/{name}/authorize`）。必须 URL-safe（字母、数字、连字符）且唯一 |
-| `openid_configuration_endpoint` | string | OIDC Discovery URL（指向 `.well-known/openid-configuration`） |
-| `client_id` | string | OAuth 2.0 客户端 ID |
-| `client_secret` | string | OAuth 2.0 客户端密钥 |
+模式 B（手动指定端点）：
+
+```json
+{
+  "name": "my-idp",
+  "authorization_endpoint": "https://idp.example.com/authorize",
+  "token_endpoint": "https://idp.example.com/token",
+  "userinfo_endpoint": "https://idp.example.com/userinfo",
+  "client_id": "my-client-id",
+  "client_secret": "my-client-secret"
+}
+```
 
 ### 3.3 现有配置新增含义
 
