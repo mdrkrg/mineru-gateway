@@ -17,6 +17,7 @@ export {
   createMyApiKey,
   revokeMyApiKey,
   getOAuthAuthorizeUrl,
+  getOAuthProviders,
 } from './auth';
 
 export {

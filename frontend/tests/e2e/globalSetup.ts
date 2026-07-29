@@ -82,6 +82,10 @@ export async function setup(): Promise<void> {
   ], {
     GATEWAY_UPSTREAM_URL: mockUrl,
     GATEWAY_ADMIN_TOKEN: 'e2e-admin-token',
+    GATEWAY_USER_AUTH_ENABLED: 'true',
+    GATEWAY_JWT_SECRET: 'e2e-jwt-secret-at-least-32-chars!!',
+    GATEWAY_OPEN_REGISTRATION: 'true',
+    GATEWAY_OIDC_PROVIDERS: '[{"name":"keycloak","openid_configuration_endpoint":"https://e2e.example.com/.well-known/openid-configuration","client_id":"e2e-client","client_secret":"e2e-secret"}]',
     GATEWAY_CORS_ALLOW_ORIGINS: '["http://localhost:5173"]',
     GATEWAY_CORS_ALLOW_CREDENTIALS: 'true',
     GATEWAY_CREATE_TABLES: 'true',
