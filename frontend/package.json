@@ -26,12 +26,14 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
+    "@kobalte/core": "^0.13.12",
     "@tanstack/router-plugin": "^1.168.23",
     "@tanstack/solid-router": "^1.170.18",
     "@tanstack/solid-router-devtools": "^1.167.0",
     "arktype": "^2.2.3",
     "change-case": "^5.4.4",
     "ky": "^2.0.2",
+    "lucide-solid": "^1.27.0",
     "neverthrow": "^8.2.0",
     "solid-js": "^1.9.9"
   }
