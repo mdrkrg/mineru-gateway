@@ -1,8 +1,8 @@
 :80 {
+  log
 	encode zstd gzip
 
-	handle /api/* {
-		uri strip_prefix /api
+	handle_path /api/* {
 		reverse_proxy gateway:8000
 	}
 

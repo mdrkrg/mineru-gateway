@@ -22,6 +22,8 @@ services:
       context: ..
       dockerfile: container/Containerfile
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       GATEWAY_UPSTREAM_URL: ${GATEWAY_UPSTREAM_URL:?set upstream router/api URL}
       GATEWAY_DATABASE_URL: postgresql+asyncpg://gateway:${POSTGRES_PASSWORD:?set in .env}@db:5432/gateway
@@ -41,10 +43,13 @@ services:
         condition: service_healthy
 
   frontend:
+    image: mineru-gateway-ui
     build:
       context: ..
       dockerfile: container/Containerfile.frontend
     restart: unless-stopped
+    volumes:
+      - ./caddy:/etc/caddy:ro
     ports:
       - "${FRONTEND_LISTEN:-127.0.0.1:3000}:80"
     depends_on:
