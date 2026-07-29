@@ -4,6 +4,7 @@ import { ResultAsync, ok } from 'neverthrow';
 import type { Result } from 'neverthrow';
 import { createHttpError } from './error-model';
 import type { ApiError, HttpError } from './error-model';
+import { env } from '../env';
 
 // Spec: frontend/specs/core/http-client.md
 
@@ -44,11 +45,6 @@ export interface BlobResult {
   readonly headers: Headers;
 }
 
-const VITE_API_PREFIX: string =
-  (import.meta as unknown as Record<string, unknown>).env
-    ? ((import.meta as unknown as Record<string, { VITE_API_PREFIX?: string }>).env?.VITE_API_PREFIX ?? '')
-    : '';
-
 let _api: typeof ky_default | null = null;
 
 function _createApi(base: string): typeof ky_default {
@@ -63,7 +59,7 @@ function _createApi(base: string): typeof ky_default {
 
 function getApi(): typeof ky_default {
   if (!_api) {
-    _api = _createApi(VITE_API_PREFIX);
+    _api = _createApi(env.apiPrefix);
   }
   return _api;
 }
