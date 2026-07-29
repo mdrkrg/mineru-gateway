@@ -193,6 +193,19 @@ export const LogoutResponseSchema = defineResponseSchema(
   {} as { message: string },
 );
 
+// ===== OAuth =====
+
+export const OAuthProvidersResponseSchema = defineResponseSchema(
+  {
+    providers: type({
+      name: 'string',
+    }).array(),
+  },
+  {} as {
+    providers: { name: string }[];
+  },
+);
+
 // ===== Type exports =====
 
 export type ApiKeyCreateRequest = typeof ApiKeyCreateRequestSchema.infer;
@@ -210,3 +223,5 @@ export type RefreshTokenRequest = typeof RefreshTokenRequestSchema.infer;
 export type UserRead = typeof UserReadSchema.infer;
 export type UserCreateRequest = typeof UserCreateRequestSchema.infer;
 export type UserUpdateRequest = typeof UserUpdateRequestSchema.infer;
+
+export type OAuthProvidersResponse = typeof OAuthProvidersResponseSchema.infer;

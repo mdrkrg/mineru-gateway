@@ -14,6 +14,7 @@ import {
   UserCreateRequestSchema,
   UserUpdateRequestSchema,
   MyApiKeyCreateRequestSchema,
+  OAuthProvidersResponseSchema,
   type ApiKeyCreateRequest,
   type LoginRequest,
   type RefreshTokenRequest,
@@ -174,6 +175,12 @@ export function revokeMyApiKey(keyId: string, accessToken: string) {
 }
 
 // ===== OAuth =====
+
+export function getOAuthProviders() {
+  return fetchAndValidate('auth/oauth/providers', {
+    success: OAuthProvidersResponseSchema,
+  });
+}
 
 export function getOAuthAuthorizeUrl(provider: string): string {
   return `auth/oauth/${provider}/authorize`;
