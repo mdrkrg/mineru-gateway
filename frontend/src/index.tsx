@@ -8,9 +8,12 @@ import { AuthProvider } from './stores/auth-context';
 import { registerAuthHooks } from './core/http-client';
 import { createApiKeyStore } from './stores/api-key';
 import { ApiKeyProvider } from './stores/api-key-context';
+import { createAdminTokenStore } from './stores/admin-token';
+import { AdminTokenProvider } from './stores/admin-token-context';
 
 const authStore = createAuthStore();
 const apiKeyStore = createApiKeyStore();
+const adminTokenStore = createAdminTokenStore();
 
 registerAuthHooks(
   () => authStore.accessToken(),
@@ -41,7 +44,9 @@ if (!rootElement.innerHTML) {
     () => (
       <AuthProvider store={authStore}>
         <ApiKeyProvider store={apiKeyStore}>
-          <RouterProvider router={router} />
+          <AdminTokenProvider store={adminTokenStore}>
+            <RouterProvider router={router} />
+          </AdminTokenProvider>
         </ApiKeyProvider>
       </AuthProvider>
     ),

@@ -1,12 +1,13 @@
 import { For, Show, createSignal, onMount } from 'solid-js';
 import { createFileRoute } from '@tanstack/solid-router';
-import { Check, Copy, KeyRound, Trash2 } from 'lucide-solid';
+import { KeyRound, Trash2 } from 'lucide-solid';
 import {
   createMyApiKey,
   listMyApiKeys,
   revokeMyApiKey,
 } from '../../api/functions/auth';
 import type { ApiKeyCreatedResponse, ApiKeyInfo } from '../../api/schemas/auth';
+import ApiKeyReveal from '../../components/ApiKeyReveal';
 import { useAuth } from '../../stores/auth-context';
 import { useApiKey } from '../../stores/api-key-context';
 import { errorMessage } from '../../utils/api-error';
@@ -29,7 +30,6 @@ function ApiKeysPage() {
   const [expiresAt, setExpiresAt] = createSignal('');
   const [isCreating, setIsCreating] = createSignal(false);
   const [created, setCreated] = createSignal<ApiKeyCreatedResponse | null>(null);
-  const [copied, setCopied] = createSignal(false);
 
   // Manual active-key paste
   const [pastedKey, setPastedKey] = createSignal('');
@@ -95,14 +95,6 @@ function ApiKeysPage() {
     await loadKeys();
   }
 
-  async function copyCreatedKey() {
-    const full = created()?.apiKey;
-    if (!full) return;
-    await navigator.clipboard.writeText(full);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
   const isActivePrefix = (prefix: string) => {
     const active = apiKeyStore.activeKey();
     return active !== null && active.startsWith(prefix);
@@ -118,31 +110,12 @@ function ApiKeysPage() {
 
       {/* Newly created key — shown once */}
       <Show when={created()}>
-        <div class="bg-green-50 border border-green-300 rounded-lg p-4">
-          <h3 class="font-semibold text-green-800 mb-2">
-            Key 创建成功 — 请立即保存,完整 Key 只显示这一次
-          </h3>
-          <div class="flex items-center gap-2 mb-3">
-            <code class="flex-1 bg-white border border-green-200 rounded px-3 py-2 text-sm break-all">
-              {created()!.apiKey}
-            </code>
-            <button
-              type="button"
-              onClick={copyCreatedKey}
-              class="flex items-center gap-1 border border-gray-300 rounded px-3 py-2 text-sm hover:bg-gray-50"
-            >
-                {copied() ? <Check class="w-4 h-4 text-green-600" /> : <Copy class="w-4 h-4" />}
-              {copied() ? '已复制' : '复制'}
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={() => apiKeyStore.setActiveKey(created()!.apiKey)}
-            class="bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-blue-700"
-          >
-            在此浏览器中使用此 Key
-          </button>
-        </div>
+        {(c) => (
+          <ApiKeyReveal
+            created={c()}
+            onUseKey={(key) => apiKeyStore.setActiveKey(key)}
+          />
+        )}
       </Show>
 
       {/* Create form */}
