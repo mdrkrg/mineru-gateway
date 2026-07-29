@@ -13,6 +13,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi_users import exceptions as fu_exceptions
 from fastapi_users.db import SQLAlchemyUserDatabase
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +26,19 @@ from ..schemas import TokenPair
 from . import base
 
 router = APIRouter(prefix="/auth/oauth", tags=["oauth"])
+
+
+class OAuthProviderInfo(BaseModel):
+    """Section 4.5: minimal OAuth provider info for frontend discovery."""
+
+    name: str
+
+
+class OAuthProvidersResponse(BaseModel):
+    """Section 4.5: list of configured OIDC provider names (secrets excluded)."""
+
+    providers: list[OAuthProviderInfo]
+
 
 _COOKIE_NAME = "gateway_oauth_state"
 
@@ -101,6 +115,16 @@ async def _get_user_manager(
 ) -> tuple[SQLAlchemyUserDatabase, UserManager]:
     user_db = SQLAlchemyUserDatabase(session, User, OAuthAccount)
     return user_db, UserManager(user_db, settings)
+
+
+@router.get("/providers", response_model=OAuthProvidersResponse)
+async def providers(
+    settings: Settings = Depends(get_settings_dep),
+) -> OAuthProvidersResponse:
+    """Section 4.5: list configured OIDC provider names (secrets excluded)."""
+    return OAuthProvidersResponse(
+        providers=[OAuthProviderInfo(name=p.name) for p in settings.oidc_providers]
+    )
 
 
 @router.get("/{provider}/authorize")
