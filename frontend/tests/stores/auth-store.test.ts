@@ -535,6 +535,22 @@ describe('AuthStore: refresh', () => {
     storage.set('auth_access_token', 'at-stale');
     storage.set('auth_refresh_token', 'rt-stale');
 
+    m.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'u-stale',
+          email: 'stale@example.com',
+          is_active: true,
+          is_superuser: false,
+          is_verified: true,
+          display_name: null,
+          created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-01-01T00:00:00Z',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
     const httpErr = new HTTPError(
       new Response(JSON.stringify({ detail: 'refresh token expired' }), {
         status: 401,
@@ -545,9 +561,9 @@ describe('AuthStore: refresh', () => {
     );
     httpErr.data = { detail: 'refresh token expired' };
     m.mockRejectedValueOnce(httpErr);
-    m.mockRejectedValueOnce(httpErr);
 
     const store = createTestStore();
+    await store.init();
     await store.refresh();
 
     expect(store.isAuthenticated()).toBe(false);
