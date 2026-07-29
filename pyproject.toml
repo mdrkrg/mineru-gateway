@@ -49,6 +49,9 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.15.21",
 ]
+postgres = [
+    "asyncpg>=0.31.0",
+]
 
 [tool.ruff]
 exclude = ["alembic/versions"]
