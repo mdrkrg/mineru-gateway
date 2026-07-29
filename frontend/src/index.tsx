@@ -6,8 +6,11 @@ import { routeTree } from './routeTree.gen';
 import { createAuthStore } from './stores/auth';
 import { AuthProvider } from './stores/auth-context';
 import { registerAuthHooks } from './core/http-client';
+import { createApiKeyStore } from './stores/api-key';
+import { ApiKeyProvider } from './stores/api-key-context';
 
 const authStore = createAuthStore();
+const apiKeyStore = createApiKeyStore();
 
 registerAuthHooks(
   () => authStore.accessToken(),
@@ -37,7 +40,9 @@ if (!rootElement.innerHTML) {
   render(
     () => (
       <AuthProvider store={authStore}>
-        <RouterProvider router={router} />
+        <ApiKeyProvider store={apiKeyStore}>
+          <RouterProvider router={router} />
+        </ApiKeyProvider>
       </AuthProvider>
     ),
     rootElement,
