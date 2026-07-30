@@ -26,6 +26,22 @@ export function filenameFromContentDisposition(header: string | null): string | 
 }
 
 /**
+ * Returns the appropriate file extension based on the Content-Type
+ * response header. Used as fallback when Content-Disposition has no
+ * filename or the upstream returns a misleading extension.
+ *
+ * - `application/json` -> `.json`
+ * - `application/zip` -> `.zip`
+ * - anything else -> `.bin`
+ */
+export function extensionFromContentType(contentType: string | null): string {
+  if (!contentType) return '.zip';
+  if (contentType.includes('application/json')) return '.json';
+  if (contentType.includes('application/zip')) return '.zip';
+  return '.bin';
+}
+
+/**
  * Triggers a browser "save as" download for a blob.
  */
 export function saveBlob(blob: Blob, filename: string): void {

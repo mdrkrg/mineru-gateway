@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filenameFromContentDisposition } from '../../src/utils/download';
+import { filenameFromContentDisposition, extensionFromContentType } from '@/utils/download';
 
 describe('filenameFromContentDisposition', () => {
   it('returns null for null/empty header', () => {
@@ -35,5 +35,29 @@ describe('filenameFromContentDisposition', () => {
 
   it('returns null when no filename directive exists', () => {
     expect(filenameFromContentDisposition('attachment')).toBeNull();
+  });
+});
+
+describe('extensionFromContentType', () => {
+  it('returns .json for application/json', () => {
+    expect(extensionFromContentType('application/json')).toBe('.json');
+  });
+
+  it('returns .json for application/json with charset', () => {
+    expect(extensionFromContentType('application/json; charset=utf-8')).toBe('.json');
+  });
+
+  it('returns .zip for application/zip', () => {
+    expect(extensionFromContentType('application/zip')).toBe('.zip');
+  });
+
+  it('returns .zip for null/undefined content type', () => {
+    expect(extensionFromContentType(null)).toBe('.zip');
+  });
+
+  it('returns .bin for unknown content types', () => {
+    expect(extensionFromContentType('text/plain')).toBe('.bin');
+    expect(extensionFromContentType('image/png')).toBe('.bin');
+    expect(extensionFromContentType('application/pdf')).toBe('.bin');
   });
 });
