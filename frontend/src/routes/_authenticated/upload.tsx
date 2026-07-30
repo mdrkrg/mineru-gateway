@@ -113,6 +113,7 @@ function UploadPage() {
         formulaEnable: formulaEnable(),
         tableEnable: tableEnable(),
         imageAnalysis: imageAnalysis(),
+        returnImages: true,
         responseFormat: responseZip() ? 'zip' : 'json',
         serverUrl: needsServerUrl(backend()) ? serverUrl().trim() : undefined,
       },
