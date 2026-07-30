@@ -10,8 +10,9 @@
     "serve": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
-    "e2e": "vitest run --config vitest.e2e.config.ts"
+    "test:e2e": "TEST_ENV=e2e vitest run",
+    "test:all": "TEST_ENV=all vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
