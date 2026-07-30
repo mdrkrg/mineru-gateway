@@ -8,7 +8,7 @@ import StatusBadge from '@/components/StatusBadge';
 import { useApiKey } from '@/stores/api-key-context';
 import { errorMessage } from '@/utils/api-error';
 import { ACTIVE_TASK_STATUSES, ROUTES } from '@/utils/constants';
-import { filenameFromContentDisposition, saveBlob } from '@/utils/download';
+import { filenameFromContentDisposition, saveBlob, extensionFromContentType } from '@/utils/download';
 import { formatDateTime, formatDuration } from '@/utils/format';
 
 export const Route = createFileRoute('/_authenticated/tasks/$id')({
@@ -80,10 +80,11 @@ function TaskDetailPage() {
     if (result.isErr()) {
       setError(errorMessage(result.error));
     } else {
+      const contentType = result.value.headers.get('Content-Type');
       const filename =
         filenameFromContentDisposition(
           result.value.headers.get('Content-Disposition'),
-        ) ?? `${t.taskId}.zip`;
+        ) ?? `${t.taskId}${extensionFromContentType(contentType)}`;
       saveBlob(result.value.blob, filename);
     }
     setIsActing(false);

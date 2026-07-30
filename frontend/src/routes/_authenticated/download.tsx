@@ -9,7 +9,7 @@ import { useApiKey } from '@/stores/api-key-context';
 import { errorMessage } from '@/utils/api-error';
 import { isHttpError } from '@/core/error-model';
 import { ROUTES } from '@/utils/constants';
-import { filenameFromContentDisposition, saveBlob } from '@/utils/download';
+import { filenameFromContentDisposition, saveBlob, extensionFromContentType } from '@/utils/download';
 import { formatDateTime } from '@/utils/format';
 
 export const Route = createFileRoute('/_authenticated/download')({
@@ -78,9 +78,10 @@ function ResultDownloadPage() {
     if (result.isErr()) {
       setError(errorMessage(result.error));
     } else {
+      const contentType = result.value.headers.get('Content-Type');
       const filename =
         filenameFromContentDisposition(result.value.headers.get('Content-Disposition')) ??
-        `${task.taskId}.zip`;
+        `${task.taskId}${extensionFromContentType(contentType)}`;
       saveBlob(result.value.blob, filename);
     }
     setIsActing(false);
