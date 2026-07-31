@@ -433,10 +433,14 @@ async def test_callback_display_name_fallback_to_preferred_username(
     assert me.json()["display_name"] == "pref-username"
 
 
-async def test_callback_display_name_fallback_to_given_name(
+async def test_callback_display_name_skips_given_name_falls_to_email_local_part(
     oauth_client, mock_oauth_client
 ):
-    """Section 9.7: name + preferred_username missing -> fallback to given_name."""
+    """Section 9.7: given_name is not in the spec step 3e chain.
+
+    Profile has only given_name (no name, no preferred_username).
+    Fallback should go to email local part, not given_name.
+    """
     mock_oauth_client.get_profile.return_value = {
         "sub": "oidc-sub-given",
         "email": "given-user@example.com",
@@ -451,7 +455,7 @@ async def test_callback_display_name_fallback_to_given_name(
     me = await oauth_client.get(
         "/users/me", headers={"Authorization": f"Bearer {token}"}
     )
-    assert me.json()["display_name"] == "GivenOnly"
+    assert me.json()["display_name"] == "given-user"
 
 
 async def test_callback_display_name_fallback_to_email_local_part(

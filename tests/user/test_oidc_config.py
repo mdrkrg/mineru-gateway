@@ -29,7 +29,7 @@ def test_mode_a_requires_discovery_endpoint():
 
 def test_mode_a_ignores_manual_endpoints():
     """Section 3.2: Mode A ignores authorization_endpoint, token_endpoint,
-    userinfo_endpoint when discovery is set."""
+    userinfo_endpoint when discovery is set. Their values are None."""
     cfg = OIDCProviderConfig(
         name="keycloak",
         openid_configuration_endpoint="https://idp.example.com/.well-known/openid-configuration",
@@ -40,6 +40,9 @@ def test_mode_a_ignores_manual_endpoints():
         userinfo_endpoint="https://idp.example.com/userinfo",
     )
     assert cfg.name == "keycloak"
+    assert cfg.authorization_endpoint is None
+    assert cfg.token_endpoint is None
+    assert cfg.userinfo_endpoint is None
 
 
 # ===== Section 3.2: Mode B (Manual) =====
@@ -126,7 +129,7 @@ def test_scopes_default():
         client_id="cid",
         client_secret="secret",
     )
-    assert cfg.scopes == ["openid", "email"] or cfg.scopes is None
+    assert cfg.scopes == ["openid", "email"]
 
 
 def test_scopes_custom():
@@ -191,3 +194,88 @@ def test_email_fallback_domain_set():
         email_fallback_domain="idp.example.com",
     )
     assert cfg.email_fallback_domain == "idp.example.com"
+
+
+# ===== Section 3.2: name validation =====
+
+
+def test_name_required():
+    """Section 3.2: name is required."""
+    with pytest.raises((ValueError, ValidationError)):
+        OIDCProviderConfig(
+            client_id="cid",
+            client_secret="secret",
+            openid_configuration_endpoint="https://example.com/.well-known/openid-configuration",
+        )
+
+
+def test_client_id_required():
+    """Section 3.2: client_id is required."""
+    with pytest.raises((ValueError, ValidationError)):
+        OIDCProviderConfig(
+            name="keycloak",
+            client_secret="secret",
+            openid_configuration_endpoint="https://example.com/.well-known/openid-configuration",
+        )
+
+
+def test_client_secret_required():
+    """Section 3.2: client_secret is required."""
+    with pytest.raises((ValueError, ValidationError)):
+        OIDCProviderConfig(
+            name="keycloak",
+            client_id="cid",
+            openid_configuration_endpoint="https://example.com/.well-known/openid-configuration",
+        )
+
+
+def test_name_url_safe():
+    """Section 3.2: name must be URL-safe (letters, digits, hyphens)."""
+    with pytest.raises((ValueError, ValidationError)):
+        OIDCProviderConfig(
+            name="my provider!",
+            client_id="cid",
+            client_secret="secret",
+            openid_configuration_endpoint="https://example.com/.well-known/openid-configuration",
+        )
+
+
+def test_name_with_underscore_rejected():
+    """Section 3.2: underscores are not URL-safe."""
+    with pytest.raises((ValueError, ValidationError)):
+        OIDCProviderConfig(
+            name="my_provider",
+            client_id="cid",
+            client_secret="secret",
+            openid_configuration_endpoint="https://example.com/.well-known/openid-configuration",
+        )
+
+
+# ===== Section 3.2: Settings-level validation =====
+
+
+def test_provider_names_must_be_unique():
+    """Section 3.2: provider names must be unique within GATEWAY_OIDC_PROVIDERS."""
+    from mineru_gateway.config import Settings
+
+    with pytest.raises((ValueError, ValidationError)):
+        Settings(
+            database_url="sqlite+aiosqlite:///:memory:",
+            user_auth_enabled=True,
+            jwt_secret="a" * 32,
+            create_tables=True,
+            oidc_providers=[
+                {
+                    "name": "dup",
+                    "openid_configuration_endpoint": "https://a.example.com/.well-known/openid-configuration",
+                    "client_id": "cid1",
+                    "client_secret": "secret1",
+                },
+                {
+                    "name": "dup",
+                    "openid_configuration_endpoint": "https://b.example.com/.well-known/openid-configuration",
+                    "client_id": "cid2",
+                    "client_secret": "secret2",
+                },
+            ],
+        )

@@ -341,3 +341,136 @@ async def test_callback_display_name_from_mapping_field(
         "/users/me", headers={"Authorization": f"Bearer {token}"}
     )
     assert me.json()["display_name"] == "FromNickname"
+
+
+async def test_callback_display_name_mapped_field_empty_falls_to_literal_name(
+    fallback_client, mock_oauth_client
+):
+    """Section 9.7: mapped display_name field is empty -> falls back to
+    literal 'name' claim."""
+    mock_oauth_client.get_profile = AsyncMock(
+        return_value={
+            "sub": "idp-sub-dn2",
+            "mail": "dn-test@example.com",
+            "nickname": "",
+            "name": "RealName",
+            "email_verified": True,
+        }
+    )
+
+    resp = await _oauth_flow(fallback_client)
+    assert resp.status_code == 200, resp.text
+
+    token = resp.json()["access_token"]
+    me = await fallback_client.get(
+        "/users/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert me.json()["display_name"] == "RealName"
+
+
+async def test_callback_display_name_email_local_part_with_custom_mapping(
+    fallback_client, mock_oauth_client
+):
+    """Section 9.7: all display_name fields missing with custom mapping
+    -> fallback to email local part."""
+    mock_oauth_client.get_profile = AsyncMock(
+        return_value={
+            "sub": "idp-sub-dn3",
+            "mail": "test@example.com",
+            "email_verified": True,
+        }
+    )
+
+    resp = await _oauth_flow(fallback_client)
+    assert resp.status_code == 200, resp.text
+
+    token = resp.json()["access_token"]
+    me = await fallback_client.get(
+        "/users/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert me.json()["display_name"] == "test"
+
+
+# ===== Section 4.5 step 3f: display_name falls to sub with email_fallback =====
+
+
+async def test_callback_display_name_falls_back_to_sub_when_email_fallback_used(
+    fallback_client, mock_oauth_client
+):
+    """Section 9.7: email_fallback_domain used, no display_name fields
+    -> display_name falls back to sub."""
+    mock_oauth_client.get_profile = AsyncMock(
+        return_value={
+            "sub": "some-sub",
+            "email_verified": True,
+        }
+    )
+
+    resp = await _oauth_flow(fallback_client)
+    assert resp.status_code == 200, resp.text
+
+    token = resp.json()["access_token"]
+    me = await fallback_client.get(
+        "/users/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert me.json()["email"] == "some-sub@idp.example.com"
+    assert me.json()["display_name"] == "some-sub"
+
+
+async def test_callback_email_fallback_sub_priority(fallback_client, mock_oauth_client):
+    """Section 9.7: sub for email fallback prefers id_token sub over
+    userinfo sub when both exist."""
+    id_token = _make_id_token(
+        {
+            "sub": "idp-sub",
+            "email_verified": True,
+        }
+    )
+    mock_oauth_client.get_access_token = AsyncMock(
+        return_value={
+            "access_token": "oidc-access-token",
+            "id_token": id_token,
+            "token_type": "bearer",
+        }
+    )
+    mock_oauth_client.get_profile = AsyncMock(
+        return_value={
+            "sub": "userinfo-sub",
+            "email_verified": True,
+        }
+    )
+
+    resp = await _oauth_flow(fallback_client)
+    assert resp.status_code == 200, resp.text
+
+    token = resp.json()["access_token"]
+    me = await fallback_client.get(
+        "/users/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert me.json()["email"] == "idp-sub@idp.example.com"
+
+
+# ===== Section 4.5 step 3g: _coerce_email_verified unit tests =====
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (True, True),
+        (False, False),
+        ("true", True),
+        ("false", False),
+        (1, True),
+        (0, False),
+        (None, None),
+        ("maybe", None),
+        ({}, None),
+    ],
+)
+def test_coerce_email_verified(value, expected):
+    """Section 4.5 step 3g: _coerce_email_verified converts various
+    claim values to bool or None."""
+    from mineru_gateway.auth.oauth.routes import _coerce_email_verified
+
+    result = _coerce_email_verified(value)
+    assert result is expected or result == expected
