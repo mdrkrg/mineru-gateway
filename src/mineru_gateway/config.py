@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 
-from pydantic import BaseModel, ValidationInfo, field_validator
+
+from pydantic import BaseModel, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9\-]+$")
 
 
 class OIDCProviderConfig(BaseModel):
@@ -16,9 +21,49 @@ class OIDCProviderConfig(BaseModel):
     """
 
     name: str
-    openid_configuration_endpoint: str
+    openid_configuration_endpoint: str | None = None
     client_id: str
     client_secret: str
+    authorization_endpoint: str | None = None
+    token_endpoint: str | None = None
+    userinfo_endpoint: str | None = None
+    scopes: list[str] = ["openid", "email"]
+    user_info_mapping: dict[str, str] = {"display_name": "name", "email": "email"}
+    email_fallback_domain: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _name_must_be_url_safe(cls, v: str) -> str:
+        if not _NAME_PATTERN.match(v):
+            raise ValueError(
+                f"OIDC provider name {v!r} is not URL-safe; "
+                f"use only letters, digits, and hyphens"
+            )
+        return v
+
+    @model_validator(mode="after")
+    def _validate_mode(self) -> "OIDCProviderConfig":
+        has_discovery = self.openid_configuration_endpoint is not None
+        has_auth = self.authorization_endpoint is not None
+        has_token = self.token_endpoint is not None
+
+        if has_discovery:
+            self.authorization_endpoint = None
+            self.token_endpoint = None
+            self.userinfo_endpoint = None
+        else:
+            if not has_auth or not has_token:
+                missing = []
+                if not has_auth:
+                    missing.append("authorization_endpoint")
+                if not has_token:
+                    missing.append("token_endpoint")
+                raise ValueError(
+                    f"Mode B (manual) requires authorization_endpoint and "
+                    f"token_endpoint; missing: {', '.join(missing)}"
+                )
+
+        return self
 
 
 class Settings(BaseSettings):
@@ -101,6 +146,19 @@ class Settings(BaseSettings):
                 return parsed
             return [item.strip() for item in v.split(",") if item.strip()]
         return v  # type: ignore[return-value]
+
+    @field_validator("oidc_providers")
+    @classmethod
+    def _validate_unique_provider_names(
+        cls, v: list[OIDCProviderConfig]
+    ) -> list[OIDCProviderConfig]:
+        names = [p.name for p in v]
+        if len(names) != len(set(names)):
+            raise ValueError(
+                f"OIDC provider names must be unique, got duplicates: "
+                f"{[n for n in names if names.count(n) > 1]}"
+            )
+        return v
 
 
 @lru_cache
