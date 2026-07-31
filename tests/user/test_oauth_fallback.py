@@ -450,6 +450,58 @@ async def test_callback_email_fallback_sub_priority(fallback_client, mock_oauth_
     assert me.json()["email"] == "idp-sub@idp.example.com"
 
 
+# ===== Section 3.2/4.5 step 3g: email_verified is fixed mapping =====
+
+
+async def test_callback_email_verified_not_affected_by_user_info_mapping(
+    fallback_client, mock_oauth_client
+):
+    """Section 9.7: email_verified is a fixed mapping and NOT affected by
+    user_info_mapping. Even if mapping includes an email_verified key,
+    the claim is still read from claims.get('email_verified')."""
+    mock_oauth_client.get_profile = AsyncMock(
+        return_value={
+            "sub": "idp-sub-ev",
+            "mail": "ev-test@example.com",
+            "nickname": "EVUser",
+            "email_verified": True,
+        }
+    )
+
+    resp = await _oauth_flow(fallback_client)
+    assert resp.status_code == 200, resp.text
+
+    token = resp.json()["access_token"]
+    me = await fallback_client.get(
+        "/users/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert me.json()["is_verified"] is True
+
+
+async def test_callback_email_verified_false_when_claim_false(
+    fallback_client, mock_oauth_client
+):
+    """Section 9.7: email_verified=False in claims results in
+    is_verified=False, even if mapping exists."""
+    mock_oauth_client.get_profile = AsyncMock(
+        return_value={
+            "sub": "idp-sub-ev2",
+            "mail": "ev2-test@example.com",
+            "nickname": "EVUser2",
+            "email_verified": False,
+        }
+    )
+
+    resp = await _oauth_flow(fallback_client)
+    assert resp.status_code == 200, resp.text
+
+    token = resp.json()["access_token"]
+    me = await fallback_client.get(
+        "/users/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert me.json()["is_verified"] is False
+
+
 # ===== Section 4.5 step 3g: _coerce_email_verified unit tests =====
 
 
