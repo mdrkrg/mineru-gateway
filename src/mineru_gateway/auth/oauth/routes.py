@@ -5,8 +5,10 @@ Spec: user-management-and-oauth.md Section 4.5.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
+import json as jsonlib
 import secrets
 from urllib.parse import urlencode
 
@@ -17,7 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...config import Settings
+from ...config import OIDCProviderConfig, Settings
 from ...models import OAuthAccount, User
 from ..backend import issue_token_pair
 from ..dependencies import get_session, get_settings_dep
@@ -43,14 +45,48 @@ class OAuthProvidersResponse(BaseModel):
 _COOKIE_NAME = "gateway_oauth_state"
 
 
-def _resolve_display_name(profile: dict) -> str:
-    """Section 4.5: display_name fallback chain."""
-    for key in ("name", "preferred_username", "given_name"):
-        val = profile.get(key)
-        if val:
-            return val
-    email = profile.get("email", "")
-    return email.split("@")[0] if email else ""
+def _get_provider_config(
+    provider: str, settings: Settings
+) -> OIDCProviderConfig | None:
+    """Lookup provider config by name."""
+    for p in settings.oidc_providers:
+        if p.name == provider:
+            return p
+    return None
+
+
+def _decode_id_token(id_token: str) -> dict:
+    """Section 4.5 step 3a: base64-decode JWT payload without signature
+    verification."""
+    parts = id_token.split(".")
+    if len(parts) < 2:
+        return {}
+    payload = parts[1]
+    padded = payload + "=" * (4 - len(payload) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(padded)
+    except Exception:
+        return {}
+    try:
+        return jsonlib.loads(decoded)
+    except Exception:
+        return {}
+
+
+def _coerce_email_verified(value) -> bool | None:
+    """Section 4.5: extract boolean from email_verified claim.
+
+    Some providers return "true"/"false" strings or 1/0.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.lower() == "true"
+    return None
 
 
 def _get_redirect_base_url(settings: Settings) -> str:
@@ -91,22 +127,6 @@ def _extract_state_from_cookie(
     expected = _sign_state(state, settings)
     if hmac.compare_digest(expected, cookie_value):
         return state
-    return None
-
-
-def _coerce_email_verified(value) -> bool | None:
-    """Section 4.5: extract boolean from email_verified claim.
-
-    Some providers return "true"/"false" strings or 1/0.
-    """
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return bool(value)
-    if isinstance(value, str):
-        return value.lower() == "true"
     return None
 
 
@@ -170,6 +190,10 @@ async def callback(
     if client is None:
         raise HTTPException(status_code=404, detail="Unknown OAuth provider")
 
+    prov_cfg = _get_provider_config(provider, settings)
+    mapping = prov_cfg.user_info_mapping if prov_cfg else {}
+    email_fallback_domain = prov_cfg.email_fallback_domain if prov_cfg else None
+
     # Step 1: Verify CSRF state (cookie is HMAC-signed)
     cookie_state = _extract_state_from_cookie(
         request.cookies.get(_COOKIE_NAME), settings
@@ -191,15 +215,57 @@ async def callback(
         else getattr(token_data, "access_token", None)
     )
 
-    # Step 3: Get user profile
-    profile = await client.get_profile(oidc_access_token)
-    sub = profile.get("sub")
-    email = profile.get("email", "")
-    display_name = _resolve_display_name(profile)
-    email_verified = _coerce_email_verified(profile.get("email_verified"))
+    # Step 3: Claim fallback chain (Section 4.5 step 3a-3g)
 
-    if not sub or not email:
-        raise HTTPException(status_code=400, detail="OIDC profile missing sub or email")
+    # 3a: Decode id_token if present
+    raw_id_token = (
+        token_data.get("id_token")
+        if isinstance(token_data, dict)
+        else getattr(token_data, "id_token", None)
+    )
+    id_token_claims = _decode_id_token(raw_id_token) if raw_id_token else {}
+
+    # 3b: Call userinfo if configured
+    userinfo_claims = {}
+    if oidc_access_token:
+        userinfo_claims = await client.get_profile(oidc_access_token)
+
+    # 3c: Merge, userinfo overrides id_token
+    claims = {**id_token_claims, **userinfo_claims}
+
+    # 3d: Apply user_info_mapping
+    display_name_claim = mapping.get("display_name", "name")
+    email_claim = mapping.get("email", "email")
+    raw_display_name = claims.get(display_name_claim, "")
+    raw_email = claims.get(email_claim, "")
+
+    # 3e: display_name fallback chain
+    display_name = raw_display_name
+    if not display_name:
+        for key in ("preferred_username", "name"):
+            val = claims.get(key, "")
+            if val:
+                display_name = val
+                break
+    if not display_name:
+        display_name = raw_email.split("@")[0] if raw_email else ""
+
+    # 3f: email fallback chain
+    email = raw_email
+    sub = id_token_claims.get("sub") or userinfo_claims.get("sub") or ""
+    if not email:
+        if email_fallback_domain:
+            email = f"{sub}@{email_fallback_domain}"
+            if not display_name:
+                display_name = sub
+        else:
+            raise HTTPException(status_code=400, detail="OIDC profile missing email")
+
+    # 3g: email_verified (fixed mapping, not affected by user_info_mapping)
+    email_verified = _coerce_email_verified(claims.get("email_verified"))
+
+    if not sub:
+        raise HTTPException(status_code=400, detail="OIDC profile missing sub")
 
     _, user_manager = await _get_user_manager(session, settings)
 

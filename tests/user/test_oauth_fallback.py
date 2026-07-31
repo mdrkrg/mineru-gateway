@@ -17,6 +17,7 @@ import httpx
 import pytest
 from asgi_lifespan import LifespanManager
 
+from mineru_gateway.config import OIDCProviderConfig
 from mineru_gateway.main import create_app
 
 
@@ -38,25 +39,31 @@ def _make_id_token(payload: dict) -> str:
 # ===== Fixtures =====
 
 
+_FALLBACK_PROVIDER = OIDCProviderConfig(
+    name="keycloak",
+    openid_configuration_endpoint="https://keycloak.example.com/.well-known/openid-configuration",
+    client_id="test-client-id",
+    client_secret="test-client-secret",
+    user_info_mapping={"display_name": "nickname", "email": "mail"},
+    email_fallback_domain="idp.example.com",
+)
+
+_NO_DOMAIN_PROVIDER = OIDCProviderConfig(
+    name="keycloak",
+    openid_configuration_endpoint="https://keycloak.example.com/.well-known/openid-configuration",
+    client_id="test-client-id",
+    client_secret="test-client-secret",
+    user_info_mapping={"display_name": "name", "email": "email"},
+)
+
+
 @pytest.fixture
 def fallback_settings(settings):
     """Base settings for fallback tests with user_info_mapping and
     email_fallback_domain configured."""
     return settings.model_copy(
         update={
-            "oidc_providers": [
-                {
-                    "name": "keycloak",
-                    "openid_configuration_endpoint": "https://keycloak.example.com/.well-known/openid-configuration",
-                    "client_id": "test-client-id",
-                    "client_secret": "test-client-secret",
-                    "user_info_mapping": {
-                        "display_name": "nickname",
-                        "email": "mail",
-                    },
-                    "email_fallback_domain": "idp.example.com",
-                }
-            ],
+            "oidc_providers": [_FALLBACK_PROVIDER],
             "oauth_redirect_base_url": "http://testserver",
         }
     )
@@ -94,18 +101,7 @@ def no_fallback_domain_settings(settings):
     """Settings without email_fallback_domain."""
     return settings.model_copy(
         update={
-            "oidc_providers": [
-                {
-                    "name": "keycloak",
-                    "openid_configuration_endpoint": "https://keycloak.example.com/.well-known/openid-configuration",
-                    "client_id": "test-client-id",
-                    "client_secret": "test-client-secret",
-                    "user_info_mapping": {
-                        "display_name": "name",
-                        "email": "email",
-                    },
-                }
-            ],
+            "oidc_providers": [_NO_DOMAIN_PROVIDER],
             "oauth_redirect_base_url": "http://testserver",
         }
     )
