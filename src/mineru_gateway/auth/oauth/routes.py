@@ -13,6 +13,7 @@ import secrets
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from starlette.responses import JSONResponse, RedirectResponse
 from fastapi_users import exceptions as fu_exceptions
 from fastapi_users.db import SQLAlchemyUserDatabase
 from pydantic import BaseModel
@@ -269,9 +270,6 @@ async def callback(
 
     _, user_manager = await _get_user_manager(session, settings)
 
-    # Prepare response to clear CSRF cookie (Section 7.2: single-use)
-    response = Response()
-
     # Step 4: Lookup existing OAuthAccount by (oauth_name, account_id)
     existing_oauth = (
         await session.execute(
@@ -367,10 +365,13 @@ async def callback(
 
     # Step 6: Issue token pair
     tokens = await issue_token_pair(user, settings)
-    await user_manager.on_after_login(user, request=request, response=response)
+    await user_manager.on_after_login(user, request=request, response=None)
 
     # Step 7: Return JSON or redirect to frontend
-    response.delete_cookie(_COOKIE_NAME)
+    # Clear CSRF cookie (Section 7.2: single-use)
+    cookie_jar = Response()
+    cookie_jar.delete_cookie(_COOKIE_NAME)
+    set_cookie_header = cookie_jar.headers.get("set-cookie", "")
 
     if settings.oauth_frontend_redirect_url:
         fragment_params = urlencode(
@@ -381,10 +382,15 @@ async def callback(
             }
         )
         redirect_url = f"{settings.oauth_frontend_redirect_url}#{fragment_params}"
-        response.status_code = status.HTTP_302_FOUND
-        response.headers["location"] = redirect_url
-        return response
+        resp = RedirectResponse(redirect_url, status_code=status.HTTP_302_FOUND)
+        if set_cookie_header:
+            resp.headers["set-cookie"] = set_cookie_header
+        return resp
 
-    response.media_type = "application/json"
-    response.body = TokenPair(**tokens).model_dump_json().encode()
-    return response
+    resp = JSONResponse(
+        content=TokenPair(**tokens).model_dump(),
+        media_type="application/json",
+    )
+    if set_cookie_header:
+        resp.headers["set-cookie"] = set_cookie_header
+    return resp
