@@ -463,7 +463,7 @@ async def test_callback_email_fallback_sub_priority(fallback_client, mock_oauth_
         (1, True),
         (0, False),
         (None, None),
-        ("maybe", None),
+        ("maybe", False),
         ({}, None),
     ],
 )
