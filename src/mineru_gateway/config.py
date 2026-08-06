@@ -10,7 +10,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class OIDCProviderConfig(BaseModel):
-    """Section 3.2: OIDC provider configuration entry."""
+    """
+    specs/user-management-and-oauth.md Section 3.2:
+    OIDC provider configuration entry.
+    """
 
     name: str
     openid_configuration_endpoint: str
@@ -56,7 +59,7 @@ class Settings(BaseSettings):
     max_retries: int = 3
     poll_failure_threshold: int = 3
 
-    # --- User management & OAuth (Section 3.1) ---
+    # --- User management & OAuth ---
     user_auth_enabled: bool = False
     jwt_secret: str = "change-me"
     jwt_access_lifetime_seconds: int = 900
