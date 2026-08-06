@@ -339,6 +339,19 @@ async def test_callback_display_name_from_mapping_field(
     assert me.json()["display_name"] == "FromNickname"
 
 
+async def test_callback_userinfo_failure_returns_400(
+    fallback_client, mock_oauth_client
+):
+    """Section 9.7: userinfo endpoint request fails (network error or
+    HTTP >= 400) -> 400, not 500."""
+    mock_oauth_client.get_profile = AsyncMock(
+        side_effect=Exception("userinfo endpoint unreachable")
+    )
+
+    resp = await _oauth_flow(fallback_client)
+    assert resp.status_code == 400
+
+
 async def test_callback_display_name_mapped_field_empty_falls_to_literal_name(
     fallback_client, mock_oauth_client
 ):

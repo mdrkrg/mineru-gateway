@@ -251,6 +251,72 @@ def test_name_with_underscore_rejected():
         )
 
 
+# ===== Section 3.2: HTTPS endpoint validation =====
+
+
+def _mode_b_config(**kwargs):
+    """Helper: Mode B provider with overridable fields."""
+    defaults = {
+        "name": "manual",
+        "client_id": "cid",
+        "client_secret": "secret",
+        "authorization_endpoint": "https://idp.example.com/auth",
+        "token_endpoint": "https://idp.example.com/token",
+    }
+    defaults.update(kwargs)
+    return defaults
+
+
+def test_authorization_endpoint_requires_https():
+    """Section 3.2: Mode B authorization_endpoint must be https."""
+    with pytest.raises((ValueError, ValidationError)):
+        OIDCProviderConfig(
+            **_mode_b_config(authorization_endpoint="http://idp.example.com/auth")
+        )
+
+
+def test_token_endpoint_requires_https():
+    """Section 3.2: Mode B token_endpoint must be https."""
+    with pytest.raises((ValueError, ValidationError)):
+        OIDCProviderConfig(
+            **_mode_b_config(token_endpoint="http://idp.example.com/token")
+        )
+
+
+def test_userinfo_endpoint_requires_https():
+    """Section 3.2: Mode B userinfo_endpoint must be https."""
+    with pytest.raises((ValueError, ValidationError)):
+        OIDCProviderConfig(
+            **_mode_b_config(userinfo_endpoint="http://idp.example.com/userinfo")
+        )
+
+
+def test_discovery_endpoint_requires_https():
+    """Section 3.2: Mode A openid_configuration_endpoint must be https."""
+    with pytest.raises((ValueError, ValidationError)):
+        OIDCProviderConfig(
+            name="keycloak",
+            client_id="cid",
+            client_secret="secret",
+            openid_configuration_endpoint="http://idp.example.com/.well-known/openid-configuration",
+        )
+
+
+def test_http_loopback_endpoints_allowed():
+    """Section 3.2: http:// is allowed for loopback (localhost, 127.0.0.1,
+    [::1]) for local development."""
+    for host in ("localhost", "127.0.0.1", "[::1]"):
+        cfg = OIDCProviderConfig(
+            name="dev",
+            client_id="cid",
+            client_secret="secret",
+            authorization_endpoint=f"http://{host}:8080/auth",
+            token_endpoint=f"http://{host}:8080/token",
+            userinfo_endpoint=f"http://{host}:8080/userinfo",
+        )
+        assert cfg.authorization_endpoint == f"http://{host}:8080/auth"
+
+
 # ===== Section 3.2: Settings-level validation =====
 
 

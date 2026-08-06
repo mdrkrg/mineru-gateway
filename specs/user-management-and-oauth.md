@@ -192,6 +192,7 @@ User ──1:N──► ApiKey（通过 owner_id，nullable）
 - **`scopes`** 两种模式均可选配，未设置时默认 `["openid", "email"]`。
 - **`user_info_mapping`** 两种模式均可选配，未设置时默认 `{"display_name": "name", "email": "email"}`。
 - **`email_fallback_domain`** 两种模式均可选配，未设置时不启用邮箱回退。
+- **端点必须 HTTPS**：所有端点字段（`openid_configuration_endpoint`、`authorization_endpoint`、`token_endpoint`、`userinfo_endpoint`）必须是 `https://` URL，防止 client_secret 与 access_token 明文传输。仅 loopback（`localhost`、`127.0.0.1`、`[::1]`）允许 `http://`，用于本地开发。
 - **无效配置**：`openid_configuration_endpoint` 未设置，且 `authorization_endpoint` 或 `token_endpoint` 未提供 → Gateway 拒绝启动并提示错误。
 
 #### JSON 示例
@@ -567,6 +568,7 @@ Location: {frontend_redirect_url}#access_token=eyJ...&refresh_token=eyJ...&token
 
 - 400 — state 不匹配（CSRF 攻击或过期 cookie）。
 - 400 — code 交换失败（OIDC 提供商拒绝）。
+- 400 — userinfo 端点请求失败（网络错误或 HTTP ≥ 400）。
 - 400 — email 已存在且 OIDC 提供商未返回 `email_verified` 声明（无法确认邮箱所有权，返回 400 防止账户接管）。
 - 409 — email 已存在且 OIDC 提供商返回 `email_verified=false`（明确声明的未验证邮箱，拒绝关联）。
 - 400 — OIDC profile 缺少 email 且未配置 `email_fallback_domain`（无法获取用户邮箱）。
@@ -902,6 +904,9 @@ curl -X POST http://localhost:8000/auth/keys \
 - 回调端点：`email_fallback_domain` 配置后，不返回 email 的 profile 合成 `<sub>@<domain>` 占位邮箱。
 - 回调端点：`email_fallback_domain` 未配置且 profile 无 email → 400。
 - 回调端点：`user_info_mapping` 自定义映射生效（如 `{"email": "mail"}` 从 `mail` 声明取值）。
+- 回调端点：userinfo 端点请求失败（网络错误或 HTTP ≥ 400）→ 400，而非 500。
+- 配置校验：端点字段为非 `https://` URL（非 loopback）→ Gateway 拒绝启动。
+- 配置校验：loopback（`localhost`、`127.0.0.1`、`[::1]`）的 `http://` 端点允许。
 - 提供商列表端点：`GET /auth/oauth/providers` → 200 + `{"providers": [{"name": "..."}]}`，每个条目仅包含 `name` 字段。
 - 提供商列表端点：响应不包含 `client_id`、`client_secret`、`openid_configuration_endpoint`。
 - 提供商列表端点：无 OIDC 提供商配置时 → 200 + `{"providers": []}`。
