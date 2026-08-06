@@ -36,7 +36,7 @@ def _make_provider(**overrides) -> OIDCProviderConfig:
     return OIDCProviderConfig(**base)
 
 
-_TRUSTED_PROVIDER = _make_provider(trusted_email_domains=["example.com"])
+_TRUSTED_PROVIDER = _make_provider(trusted_email_domains=["Example.COM"])
 
 _TRUSTED_WITH_FALLBACK_PROVIDER = _make_provider(
     email_fallback_domain="idp.example.com",
@@ -244,6 +244,55 @@ async def test_callback_claim_false_untrusted_domain_still_409(
 
     resp = await _oauth_flow(trusted_client)
     assert resp.status_code == 409, resp.text
+
+
+async def test_callback_claim_false_trusted_domain_new_user_verified(
+    trusted_client, mock_oauth_client
+):
+    """Section 9.7: email_verified=false + domain in trusted_email_domains
+    -> new User is_verified=true."""
+    mock_oauth_client.get_profile = AsyncMock(
+        return_value={
+            "sub": "trusted-sub-4",
+            "email": "trusted-user@example.com",
+            "name": "Trusted User",
+            "email_verified": False,
+        }
+    )
+
+    resp = await _oauth_flow(trusted_client)
+    assert resp.status_code == 200, resp.text
+
+    token = resp.json()["access_token"]
+    me = await trusted_client.get(
+        "/users/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert me.json()["email"] == "trusted-user@example.com"
+    assert me.json()["is_verified"] is True
+
+
+async def test_callback_trusted_domain_match_case_insensitive(
+    trusted_client, mock_oauth_client
+):
+    """Section 4.5 step 3h: domain matching is case-insensitive on both
+    sides — the email domain is uppercase while the configured list uses
+    mixed-case 'Example.COM'."""
+    mock_oauth_client.get_profile = AsyncMock(
+        return_value={
+            "sub": "trusted-sub-5",
+            "email": "TrustedUser@EXAMPLE.com",
+            "name": "Trusted User",
+        }
+    )
+
+    resp = await _oauth_flow(trusted_client)
+    assert resp.status_code == 200, resp.text
+
+    token = resp.json()["access_token"]
+    me = await trusted_client.get(
+        "/users/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert me.json()["is_verified"] is True
 
 
 async def test_callback_fallback_synthetic_email_trusted_domain_verified(
