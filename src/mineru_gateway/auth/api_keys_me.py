@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models import User
 from ..schemas import ApiKeyCreated, ApiKeyInfo, ApiKeyList
 from . import service
-from .dependencies import current_active_user, get_session
+from .dependencies import current_active_user, get_session, require_verified_user
 from .schemas import MyApiKeyCreate
 
 router = APIRouter(prefix="/me/api-keys", tags=["me"])
@@ -50,10 +50,15 @@ async def list_my_keys(
 )
 async def create_my_key(
     body: MyApiKeyCreate,
-    user: Annotated[User, Depends(current_active_user)],
+    user: Annotated[User, Depends(require_verified_user)],
     session: AsyncSession = Depends(get_session),
 ) -> ApiKeyCreated:
-    """Section 4.4: create key with owner_id = current user."""
+    """Section 4.4: create key with owner_id = current user.
+
+    Section 3.1/4.4 (user-management-and-oauth.md): gated by
+    GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS (default false -> 403 for
+    unverified users).
+    """
     record, raw = await service.create_key_for_user(
         session, user.id, label=body.label, expires_at=body.expires_at
     )

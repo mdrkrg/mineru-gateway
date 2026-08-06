@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import secrets
 from collections.abc import AsyncIterator
+from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import APIKeyHeader
@@ -92,4 +93,18 @@ async def current_active_user(
     user = await strategy.read_token(token, user_manager)
     if user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+
+async def require_verified_user(
+    user: Annotated[User, Depends(current_active_user)],
+    settings: Settings = Depends(get_settings_dep),
+) -> User:
+    """Section 4.4/9.6: verification gate for self-service API keys.
+
+    Spec: user-management-and-oauth.md Section 3.1/4.4
+    (GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS, default false -> 403).
+    """
+    if not settings.allow_unverified_accounts and not user.is_verified:
+        raise HTTPException(status_code=403, detail="Email not verified")
     return user
