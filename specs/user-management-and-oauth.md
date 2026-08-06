@@ -179,7 +179,7 @@ User ──1:N──► ApiKey（通过 owner_id，nullable）
 | `userinfo_endpoint` | string | 否 | 模式 B | OIDC UserInfo 端点 URL。未设置时跳过 userinfo 调用，仅从 `id_token` 提取声明 |
 | `scopes` | array[string] | 否 | 全部 | 授权请求的作用域列表。默认 `["openid", "email"]` |
 | `user_info_mapping` | object | 否 | 全部 | 声明名到内部字段的映射，key 可选 `display_name`、`email`。默认 `{"display_name": "name", "email": "email"}` |
-| `email_fallback_domain` | string | 否 | 全部 | 当 OIDC 未返回 email 时，用 `<sub>@<domain>` 合成占位邮箱。未设置时不启用此回退，缺失 email 时报错 |
+| `email_fallback_domain` | string | 否 | 全部 | 当 OIDC 未返回 email 时，用 `<sub>@<domain>` 合成占位邮箱。未设置时不启用此回退，缺失 email 时报错。**仅限可信 Provider 使用**（见 [7.2](#72-oauth-csrf-保护与邮箱关联)） |
 
 > \* 模式 B 中 `authorization_endpoint`、`token_endpoint` 为必需；`userinfo_endpoint` 为可选。
 
@@ -191,7 +191,7 @@ User ──1:N──► ApiKey（通过 owner_id，nullable）
 - **模式 B（手动）**：不设置 `openid_configuration_endpoint`，**必须**设置 `authorization_endpoint`、`token_endpoint` 两个字段。令牌刷新复用 `token_endpoint`。`userinfo_endpoint` 可选，未设置时仅从 `id_token` 提取用户声明。
 - **`scopes`** 两种模式均可选配，未设置时默认 `["openid", "email"]`。
 - **`user_info_mapping`** 两种模式均可选配，未设置时默认 `{"display_name": "name", "email": "email"}`。
-- **`email_fallback_domain`** 两种模式均可选配，未设置时不启用邮箱回退。
+- **`email_fallback_domain`** 两种模式均可选配，未设置时不启用邮箱回退。**仅限可信 Provider**：此回退会合成从未被验证的占位邮箱（`<sub>@<domain>`），账户关联完全依赖对 Provider 的信任。仅当运营者完全信任该 Provider 时才应配置。
 - **端点必须 HTTPS**：所有端点字段（`openid_configuration_endpoint`、`authorization_endpoint`、`token_endpoint`、`userinfo_endpoint`）必须是 `https://` URL，防止 client_secret 与 access_token 明文传输。仅 loopback（`localhost`、`127.0.0.1`、`[::1]`）允许 `http://`，用于本地开发。
 - **无效配置**：`openid_configuration_endpoint` 未设置，且 `authorization_endpoint` 或 `token_endpoint` 未提供 → Gateway 拒绝启动并提示错误。
 
@@ -733,6 +733,11 @@ src/mineru_gateway/auth/
 - 授权请求生成随机 state 参数，存入签名 cookie（`httponly=true`，`secure=取决于环境`，`samesite=lax`）。
 - 回调时验证 state 参数与 cookie 一致，防止 CSRF 攻击。
 - 邮箱关联策略由 OIDC 标准声明 `email_verified` 驱动：提供商声明已验证时自动关联，否则拒绝。无需配置项，行为由提供商可信度决定。
+- **合成邮箱（`email_fallback_domain`）是信任决策，而非验证机制**：拼接出的 `<sub>@<domain>` 从未经过邮箱验证，`email_verified` 声明在此场景下语义失效。此功能的价值在于为**可信 Provider**（如自建 IdP）提供稳定的本地用户标识，前提是：
+  - Provider 的 `sub` 稳定且不跨账户复用；
+  - Provider 不会返回可被用户任意控制的 `email`（否则合成路径根本不会触发）；
+  - 多个使用同一 fallback domain 的 Provider 之间 `sub` 命名空间互不冲突（否则相同 `sub` 会合成相同邮箱并相互关联）。
+- 对不可信或半可信的 Provider，应**不配置** `email_fallback_domain`，缺失 email 时拒绝登录（400）。
 
 ### 7.3 令牌安全
 
