@@ -43,6 +43,8 @@ def settings(tmp_path) -> Settings:
         jwt_access_lifetime_seconds=900,
         jwt_refresh_lifetime_seconds=604800,
         open_registration=True,
+        # Allow explicitly for existing tests, gate tests pin their own settings
+        allow_unverified_accounts=True,
     )
 
 

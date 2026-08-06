@@ -142,6 +142,7 @@ class Settings(BaseSettings):
     jwt_access_lifetime_seconds: int = 900
     jwt_refresh_lifetime_seconds: int = 604800
     open_registration: bool = False
+    allow_unverified_accounts: bool = False
     oidc_providers: list[OIDCProviderConfig] = []
     oauth_redirect_base_url: str = ""
     oauth_frontend_redirect_url: str = ""

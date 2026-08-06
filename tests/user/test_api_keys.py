@@ -4,11 +4,18 @@ Spec: user-management-and-oauth.md
   Section 4.4 - list, create, revoke API keys (owner-scoped)
   Section 9.6 - API Key self-service test points
   Section 6.1 - relationship with admin API Key management
+  Section 4.4 / 9.6 - verification gate (GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS)
 """
 
 from __future__ import annotations
 
 import uuid
+
+import httpx
+import pytest
+from asgi_lifespan import LifespanManager
+
+from mineru_gateway.main import create_app
 
 
 # ===== Section 4.4 / 9.6: POST /me/api-keys (create) =====
@@ -249,3 +256,60 @@ async def test_user_created_key_works_for_tasks(client, user_headers, sample_fil
         "/tasks", headers={"X-API-Key": raw_key}, files=sample_files
     )
     assert resp.status_code == 202
+
+
+# ===== Section 3.1 / 4.4 / 9.6: verification gate =====
+# GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS (user-management-and-oauth.md §3.1):
+# default false -> unverified users get 403 on POST /me/api-keys.
+#
+# The setting is pinned explicitly in the fixtures so the tests do not
+# depend on the shared `settings` fixture's defaults (tests/conftest.py).
+
+
+@pytest.fixture
+def gated_settings(settings):
+    """Verification gate enabled: allow_unverified_accounts=false."""
+    return settings.model_copy(update={"allow_unverified_accounts": False})
+
+
+@pytest.fixture
+async def gated_app(gated_settings, upstream_client):
+    application = create_app(settings=gated_settings, upstream_client=upstream_client)
+    async with LifespanManager(application):
+        yield application
+
+
+@pytest.fixture
+async def gated_client(gated_app):
+    transport = httpx.ASGITransport(app=gated_app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as c:
+        yield c
+
+
+async def _register_and_login(client) -> dict:
+    """Register an unverified user (is_verified=false) and return headers."""
+    payload = {
+        "email": "gate-user@example.com",
+        "password": "secret123",
+        "display_name": "Gate User",
+    }
+    resp = await client.post("/auth/register", json=payload)
+    assert resp.status_code == 201, resp.text
+    login = await client.post("/auth/jwt/login", json=payload)
+    assert login.status_code == 200, login.text
+    return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+
+async def test_create_my_key_unverified_returns_403_when_gate_enabled(gated_client):
+    """Section 4.4/9.6: unverified user + allow_unverified_accounts=false
+    (default) -> 403, no key created."""
+    headers = await _register_and_login(gated_client)
+    resp = await gated_client.post(
+        "/me/api-keys", headers=headers, json={"label": "gated-key"}
+    )
+    assert resp.status_code == 403
+    listed = await gated_client.get("/me/api-keys", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()["keys"] == []
