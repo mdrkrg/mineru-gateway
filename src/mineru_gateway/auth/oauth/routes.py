@@ -268,6 +268,15 @@ async def callback(
     # 3g: email_verified (fixed mapping, not affected by user_info_mapping)
     email_verified = _coerce_email_verified(claims.get("email_verified"))
 
+    # 3h: trusted domain exception (spec: user-management-and-oauth.md
+    # Section 4.5 step 3h): an email whose domain (case-insensitive) is
+    # listed in the provider's trusted_email_domains is treated as
+    # verified even when the claim is missing or false.
+    if email_verified is not True and prov_cfg is not None:
+        trusted_domains = {d.lower() for d in prov_cfg.trusted_email_domains}
+        if trusted_domains and email.rsplit("@", 1)[-1].lower() in trusted_domains:
+            email_verified = True
+
     if not sub:
         raise HTTPException(status_code=400, detail="OIDC profile missing sub")
 

@@ -51,6 +51,7 @@ class OIDCProviderConfig(BaseModel):
     scopes: list[str] = ["openid", "email"]
     user_info_mapping: dict[str, str] = {"display_name": "name", "email": "email"}
     email_fallback_domain: str | None = None
+    trusted_email_domains: list[str] = []
 
     @field_validator("name")
     @classmethod
