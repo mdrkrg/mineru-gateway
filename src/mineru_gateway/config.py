@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from functools import lru_cache
+from urllib.parse import urlparse
 
 
 from pydantic import BaseModel, ValidationInfo, field_validator, model_validator
@@ -12,6 +13,26 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 _NAME_PATTERN = re.compile(r"^[a-zA-Z0-9\-]+$")
+
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "[::1]", "::1"}
+
+
+def _validate_https_endpoint(value: str | None, field: str) -> str | None:
+    """
+    specs/user-management-and-oauth.md Section 3.2:
+    endpoints must be https; loopback may use http.
+    """
+    if value is None:
+        return value
+    parsed = urlparse(value)
+    if parsed.scheme == "https":
+        return value
+    if parsed.scheme == "http" and parsed.hostname in _LOOPBACK_HOSTS:
+        return value
+    raise ValueError(
+        f"{field} must be an https:// URL (http only allowed for loopback), "
+        f"got: {value!r}"
+    )
 
 
 class OIDCProviderConfig(BaseModel):
@@ -40,6 +61,16 @@ class OIDCProviderConfig(BaseModel):
                 f"use only letters, digits, and hyphens"
             )
         return v
+
+    @field_validator(
+        "openid_configuration_endpoint",
+        "authorization_endpoint",
+        "token_endpoint",
+        "userinfo_endpoint",
+    )
+    @classmethod
+    def _endpoint_must_be_https(cls, v: str | None, info: ValidationInfo):
+        return _validate_https_endpoint(v, info.field_name)
 
     @model_validator(mode="after")
     def _validate_mode(self) -> "OIDCProviderConfig":
