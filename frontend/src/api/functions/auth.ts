@@ -155,7 +155,7 @@ export function createMyApiKey(body: MyApiKeyCreateRequest) {
   if (validated.isErr()) return validated;
   return fetchAndValidate('me/api-keys', {
     success: ApiKeyCreatedResponseSchema,
-    failures: { 401: ErrorDetailSchema },
+    failures: { 401: ErrorDetailSchema, 403: ErrorDetailSchema },
   }, {
     method: 'POST',
     json: validated.value,

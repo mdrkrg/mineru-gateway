@@ -8,6 +8,7 @@ import {
 } from '@/api/functions/auth';
 import type { ApiKeyCreatedResponse, ApiKeyInfo } from '@/api/schemas/auth';
 import ApiKeyReveal from '@/components/ApiKeyReveal';
+import { isHttpError } from '@/core/error-model';
 import { useAuth } from '@/stores/auth-context';
 import { useApiKey } from '@/stores/api-key-context';
 import { errorMessage } from '@/utils/api-error';
@@ -64,7 +65,12 @@ function ApiKeysPage() {
     setIsCreating(false);
 
     if (result.isErr()) {
-      setError(errorMessage(result.error));
+      const err = result.error;
+      if (isHttpError(err) && err.status === 403) {
+        setError('邮箱未验证，无法创建 API Key。请先完成邮箱验证后重试。');
+      } else {
+        setError(errorMessage(err));
+      }
       return;
     }
 
