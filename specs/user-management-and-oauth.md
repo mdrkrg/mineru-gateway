@@ -95,7 +95,7 @@ Authorization: Bearer <JWT> ──►  (新增: 用户管理, OAuth, /me/api-key
 | `hashed_password` | String(1024) | `SQLAlchemyBaseUserTable` | bcrypt 哈希 |
 | `is_active` | Boolean | `SQLAlchemyBaseUserTable` | 是否激活 |
 | `is_superuser` | Boolean | `SQLAlchemyBaseUserTable` | 是否超级管理员（本规约不使用） |
-| `is_verified` | Boolean | `SQLAlchemyBaseUserTable` | 是否已验证邮箱（本规约不强制，留作标识） |
+| `is_verified` | Boolean | `SQLAlchemyBaseUserTable` | 是否已验证邮箱。`false`（创建时默认）时受 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS` 约束（§4.4） |
 | `display_name` | String(255), nullable | 自定义 | 显示名称，OAuth 登录时从 userinfo 填充 |
 | `created_at` | DateTime(timezone=True) | 自定义 | 创建时间 |
 | `updated_at` | DateTime(timezone=True) | 自定义 | 更新时间 |
@@ -159,6 +159,7 @@ User ──1:N──► ApiKey（通过 owner_id，nullable）
 | `GATEWAY_OIDC_PROVIDERS` | `[]` | 否 | JSON 数组，每个元素描述一个 OIDC 提供商（见下方格式） |
 | `GATEWAY_OAUTH_REDIRECT_BASE_URL` | `GATEWAY_URL` 的值 | 否 | OAuth 回调的基础 URL。用于构造 `{base_url}/auth/oauth/{provider}/callback` |
 | `GATEWAY_OAUTH_FRONTEND_REDIRECT_URL` | `""` | 否 | 如果设置，OAuth 回调完成后 302 重定向到此 URL，令牌以 URI fragment 传递；未设置时返回 JSON |
+| `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS` | `false` | 否 | 是否信任未验证邮箱的账户。`false` 时未验证用户（`is_verified=false`，§2.1）调用 `POST /me/api-keys` 返回 403（§4.4）；`true` 时不拦截 |
 
 > \* `user_auth_enabled=true` 时 `jwt_secret` 为必需；启动时校验长度 >= 32 字符，不足则拒绝启动。
 
@@ -473,9 +474,12 @@ Content-Type: application/json
 **失败**：
 
 - 401 — 无 JWT 或无效 JWT。
+- 403 — 当前用户邮箱未验证（`is_verified=false` 且 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false`）。
 - 422 — `expires_at` 格式无效。
 
 **行为**：创建 Key，`owner_id` 设为当前用户 ID。`label` 语义为用户对 Key 的命名。返回的 API Key 明文仅此一次可见。
+
+创建 Key 受邮箱验证状态约束：`GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false` 时，`is_verified=false` 的用户返回 403。
 
 #### 吊销 API Key
 
@@ -768,7 +772,7 @@ src/mineru_gateway/auth/
 | `POST /auth/jwt/refresh` | 无 | 公开，但需要有效的刷新令牌 |
 | `GET /auth/oauth/{provider}/authorize` | 无 | 公开，但需要有效的 OIDC 提供商配置 |
 | `/users/me` | JWT | 仅已登录用户 |
-| `/me/api-keys` | JWT | 仅已登录用户，作用域为自己 |
+| `/me/api-keys` | JWT | 仅已登录用户，作用域为自己；未验证用户受 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS` 约束（§4.4） |
 | 现有 `/auth/keys` | `X-Admin-Token` | 不变 |
 
 ## 8. 使用示例
@@ -895,6 +899,7 @@ curl -X POST http://localhost:8000/auth/keys \
 - `DELETE /me/api-keys/{key_id}` 吊销不属于自己的 Key → 404（不区分不存在和无权限）。
 - 创建的 Key 可通过 `/tasks` 等业务端点使用（与现有 Key 行为一致）。
 - 无 JWT 或无效 JWT 访问 `/me/api-keys` → 401。
+- `POST /me/api-keys`：未验证用户 + `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false`（默认）→ 403，不创建 Key。
 
 ### 9.7 OAuth
 
