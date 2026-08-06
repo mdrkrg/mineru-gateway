@@ -229,7 +229,10 @@ async def callback(
     # 3b: Call userinfo if configured
     userinfo_claims = {}
     if oidc_access_token:
-        userinfo_claims = await client.get_profile(oidc_access_token)
+        try:
+            userinfo_claims = await client.get_profile(oidc_access_token)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Userinfo request failed")
 
     # 3c: Merge, userinfo overrides id_token
     claims = {**id_token_claims, **userinfo_claims}
