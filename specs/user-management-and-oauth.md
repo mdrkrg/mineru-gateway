@@ -180,7 +180,7 @@ User ──1:N──► ApiKey（通过 owner_id，nullable）
 | `scopes` | array[string] | 否 | 全部 | 授权请求的作用域列表。默认 `["openid", "email"]` |
 | `user_info_mapping` | object | 否 | 全部 | 声明名到内部字段的映射，key 可选 `display_name`、`email`。默认 `{"display_name": "name", "email": "email"}` |
 | `email_fallback_domain` | string | 否 | 全部 | 当 OIDC 未返回 email 时，用 `<sub>@<domain>` 合成占位邮箱。未设置时不启用此回退，缺失 email 时报错。**仅限可信 Provider 使用**（见 [7.2](#72-oauth-csrf-保护与邮箱关联)） |
-| `trusted_email_domains` | array[string] | 否 | 全部 | 信任域名列表。邮箱域名（`@` 后部分，大小写不敏感）命中列表时，即使 OIDC 未返回 `email_verified` 声明或返回 `false`，也视为已验证（`email_verified=true`）。**仅限可信 Provider 使用**（见 [7.2](#72-oauth-csrf-保护与邮箱关联)） |
+| `trusted_email_domains` | array[string] | 否 | 全部 | 信任域名列表。邮箱域名（`@` 后部分）须**精确匹配**列表条目（大小写不敏感，子域名不命中，如 `sub.example.com` 不命中 `example.com`）时，即使 OIDC 未返回 `email_verified` 声明或返回 `false`，也视为已验证（`email_verified=true`）。**仅限可信 Provider 使用**（见 [7.2](#72-oauth-csrf-保护与邮箱关联)） |
 
 > \* 模式 B 中 `authorization_endpoint`、`token_endpoint` 为必需；`userinfo_endpoint` 为可选。
 
@@ -744,7 +744,7 @@ src/mineru_gateway/auth/
   - Provider 不会返回可被用户任意控制的 `email`（否则合成路径根本不会触发）；
   - 多个使用同一 fallback domain 的 Provider 之间 `sub` 命名空间互不冲突（否则相同 `sub` 会合成相同邮箱并相互关联）。
 - 对不可信或半可信的 Provider，应**不配置** `email_fallback_domain`，缺失 email 时拒绝登录（400）。
-- **`trusted_email_domains` 是信任决策，而非验证机制**：域名命中即放行账户关联，等同于信任 Provider 对该域名下邮箱所有权的声明。仅当运营者完全信任 Provider（如自建 IdP，`sub` 稳定且 email 不可被用户任意控制）时才应配置。
+- **`trusted_email_domains` 是信任决策，而非验证机制**：域名命中即放行账户关联，等同于信任 Provider 对该域名下邮箱所有权的声明。仅当运营者完全信任 Provider（如自建 IdP，`sub` 稳定且 email 不可被用户任意控制）时才应配置。信任决策在用户创建时固化：`is_verified=true` 一经写入不会降级，之后移除信任域名不影响已创建用户。
 
 ### 7.3 令牌安全
 
