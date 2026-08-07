@@ -157,7 +157,7 @@ src/mineru_gateway/
 
 | 接口 | 输入 | 输出 | 行为 |
 |------|------|------|------|
-| `UserManager.on_after_request_verify(user, token, request)` | `user: User, token: str, request: Request \| None` | `None` | 调用 `send_verification_email(user.email, token, settings)` |
+| `UserManager.on_after_request_verify(user, token, request)` | `user: User, token: str, request: Request \| None` | `None` | 调用 `send_verification_email(user.email, token, settings)`；发送异常仅记录日志、不抛出（§4.4，保证注册/申请端点结果不受影响） |
 | `UserManager.on_after_verify(user, request)` | `user: User, request: Request \| None` | `None` | 打印结构化日志 `User {id} verified` |
 
 ### 5.3 修改文件
@@ -210,16 +210,18 @@ src/mineru_gateway/
 
 - 注册与管理员创建成功 → 201，`is_verified=false`（既有行为回归）。
 - SMTP 已配置时注册/管理员创建 → 自动发送验证邮件（stub 捕获收件人 = 注册邮箱，token 可用于验证）；SMTP 未配置 → 不发送，仍 201。
+- SMTP 已配置但发送失败（stub 抛错）→ 注册/管理员创建仍 201（§4.4，失败仅记日志）。
 - OIDC 回调创建用户 → **不**触发验证邮件发送（无论邮箱是否真实、是否未验证）。
 
 ### 8.3 `POST /auth/request-verify-token`
 
-- 未验证用户 + SMTP 已配置 → 202，且发送验证邮件（捕获的 token 可用于验证该用户邮箱）。
+- 未验证用户 + SMTP 已配置 → 发送验证邮件（stub 捕获收件人 = 请求邮箱与 token；token 可用性经 §8.7 端到端流程验证）。
+- 发送失败（stub 抛错）→ 申请结果不受影响（仍 202，§4.4）。
 - SMTP 未配置 → 404（路由不注册，见 §1 矩阵）。
 
 ### 8.4 `POST /auth/verify`
 
-- 有效 token → 200，`is_verified=true`，且持久化（后续 `GET /users/me` 仍为 true）。
+fastapi-users 提供的库接口，其 200/400 语义不单独测试；验证可用性（`is_verified=true`）与持久化经 §8.7 端到端流程覆盖。
 
 ### 8.5 `GET /auth/verify?token=`
 
@@ -229,12 +231,12 @@ src/mineru_gateway/
 
 ### 8.6 拦截 `POST /me/api-keys`
 
-- 未验证用户 + `allow_unverified_accounts=false`（默认）→ 403，不创建 Key。行为定义与实现见 `specs/user-management-and-oauth.md` §4.4（已实现，测试在 `tests/user/test_api_keys.py`）；本规约相关点：拦截与 SMTP 是否配置无关（开关组合矩阵见 §1）。
+- 未验证用户 + `allow_unverified_accounts=false`（默认）→ 403，不创建 Key。行为定义与实现见 `specs/user-management-and-oauth.md` §4.4（已实现，测试在 `tests/user/test_api_keys.py`）；本规约相关点：拦截与 SMTP 是否配置无关（开关组合矩阵见 §1）。门控测试夹具须配置 SMTP 以满足 §3.1 启动校验（如 `tests/user/test_api_keys.py` 的 gated fixtures 基于 `smtp_settings`）。
 - 其余端点（`GET/DELETE /me/api-keys`、`/users/me`、登录、刷新）不受验证状态影响。
 
 ### 8.7 端到端流程
 
-- 注册（SMTP 已配置）→ 自动捕获验证 token → `POST /auth/verify` → `POST /me/api-keys` 成功。
+- 注册（SMTP 已配置）→ 自动捕获验证 token → `POST /auth/verify` → `GET /users/me` 仍为 `is_verified=true`（§8.4 持久化）→ `POST /me/api-keys` 成功。
 - 注册 → 未验证 → `POST /me/api-keys` 403 → `POST /auth/request-verify-token` 补发 → 验证 → 成功。
 - OIDC 回调（`email_verified=false`，域名未命中信任列表）→ 新用户 `is_verified=false` → `POST /me/api-keys` 403 → 通过 `request-verify-token` 验证 → 201。
 
