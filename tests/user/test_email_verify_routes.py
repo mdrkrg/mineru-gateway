@@ -66,6 +66,21 @@ async def test_request_verify_token_triggers_send_for_unverified_user(
     assert email_sender.sent[0]["token"]
 
 
+async def test_request_verify_token_send_failure_does_not_break_202(
+    smtp_client, email_sender
+):
+    """Section 4.4 / 7: a send failure is logged and does not break the flow
+    -> request-verify-token still 202."""
+    user = await _register(smtp_client)
+    email_sender.reset()
+    email_sender.raise_error = RuntimeError("smtp down")
+
+    resp = await smtp_client.post(
+        "/auth/request-verify-token", json={"email": user["email"]}
+    )
+    assert resp.status_code == 202
+
+
 async def test_request_verify_token_404_without_smtp(client):
     """Section 8.3 / 1: SMTP not configured -> route not registered -> 404."""
     resp = await client.post(

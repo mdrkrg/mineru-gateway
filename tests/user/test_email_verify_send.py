@@ -114,6 +114,24 @@ async def test_register_without_smtp_sends_nothing(client, email_sender):
     assert email_sender.sent == []
 
 
+async def test_register_send_failure_does_not_break_registration(
+    smtp_client, email_sender
+):
+    """Section 4.4 / 7: a send failure is logged and does not break the flow
+    -> register still 201, user created unverified."""
+    email_sender.raise_error = RuntimeError("smtp down")
+    resp = await smtp_client.post(
+        "/auth/register",
+        json={
+            "email": "send-fail@example.com",
+            "password": "secret123",
+            "display_name": "SendFail",
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["is_verified"] is False
+
+
 # ===== Section 4.4 / 8.2: OIDC callback never auto-sends =====
 
 

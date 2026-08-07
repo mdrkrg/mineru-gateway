@@ -155,13 +155,17 @@ class EmailSenderStub:
 
     Records one entry per call. __call__ is synchronous and returns an
     already-completed awaitable, so implementations may either call or
-    await the function.
+    await the function. Set raise_error to simulate a send failure
+    (spec Section 4.4: failures are logged and must not break the flow).
     """
 
     def __init__(self) -> None:
         self.sent: list[dict] = []
+        self.raise_error: Exception | None = None
 
     def __call__(self, user_email: str, token: str, settings) -> Awaitable[None]:
+        if self.raise_error is not None:
+            raise self.raise_error
         self.sent.append(
             {"user_email": user_email, "token": token, "settings": settings}
         )
