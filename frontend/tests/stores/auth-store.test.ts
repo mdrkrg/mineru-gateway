@@ -32,6 +32,10 @@
  *   and localStorage.
  * - `refresh()` - POST `/auth/jwt/refresh` with the current `refreshToken`,
  *   update `accessToken` in state and localStorage.
+ * - `refreshUser()` - GET `/users/me` with the current access token, update
+ *   the `user` profile in state. On 401, clear the session (same semantics
+ *   as `init`); on other errors, keep the session and set `error`. Does not
+ *   touch tokens, `isLoading`, or localStorage.
  *
  * ### Persistence
  *
@@ -629,6 +633,149 @@ describe('AuthStore: refresh', () => {
 
     expect(store.isAuthenticated()).toBe(false);
     expect(m).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// refreshUser()
+// ---------------------------------------------------------------------------
+
+describe('AuthStore: refreshUser', () => {
+  /**
+   * refreshUser refetches the profile and updates the user signal,
+   * reflecting e.g. a freshly verified email without re-authenticating.
+   */
+  it('updates the user profile from the API', async () => {
+    storage.set('auth_access_token', 'at-rf');
+    storage.set('auth_refresh_token', 'rt-rf');
+
+    m.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'u-rf',
+          email: 'rf@example.com',
+          is_active: true,
+          is_superuser: false,
+          is_verified: false,
+          display_name: null,
+          created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-01-01T00:00:00Z',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    m.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'u-rf',
+          email: 'rf@example.com',
+          is_active: true,
+          is_superuser: false,
+          is_verified: true,
+          display_name: null,
+          created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-01-01T00:00:00Z',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const store = createAuthStore();
+    await store.init();
+    expect(store.user()?.isVerified).toBe(false);
+
+    await store.refreshUser();
+
+    expect(store.isAuthenticated()).toBe(true);
+    expect(store.user()?.isVerified).toBe(true);
+    expect(store.error()).toBeNull();
+    expect(storage.get('auth_access_token')).toBe('at-rf');
+  });
+
+  /**
+   * On 401 from getCurrentUser, the session is cleared (stale tokens)
+   * - same semantics as init.
+   */
+  it('clears the session on 401', async () => {
+    storage.set('auth_access_token', 'at-rf401');
+    storage.set('auth_refresh_token', 'rt-rf401');
+
+    m.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'u-rf401',
+          email: 'rf401@example.com',
+          is_active: true,
+          is_superuser: false,
+          is_verified: false,
+          display_name: null,
+          created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-01-01T00:00:00Z',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    const httpErr = new HTTPError(
+      new Response(JSON.stringify({ detail: 'unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      new Request('http://test'),
+      {},
+    );
+    httpErr.data = { detail: 'unauthorized' };
+    m.mockRejectedValueOnce(httpErr);
+
+    const store = createAuthStore();
+    await store.init();
+    expect(store.isAuthenticated()).toBe(true);
+
+    await store.refreshUser();
+
+    expect(store.isAuthenticated()).toBe(false);
+    expect(store.user()).toBeNull();
+    expect(store.error()).toBeTruthy();
+    expect(storage.has('auth_access_token')).toBe(false);
+    expect(storage.has('auth_refresh_token')).toBe(false);
+  });
+
+  /**
+   * On a network error the session and the last known user are kept,
+   * and the error is recorded.
+   */
+  it('keeps the session and user on network failure', async () => {
+    storage.set('auth_access_token', 'at-rfnet');
+    storage.set('auth_refresh_token', 'rt-rfnet');
+
+    m.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'u-rfnet',
+          email: 'rfnet@example.com',
+          is_active: true,
+          is_superuser: false,
+          is_verified: false,
+          display_name: null,
+          created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-01-01T00:00:00Z',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    m.mockRejectedValueOnce(
+      new NetworkError('offline', { cause: new Error('dns') }),
+    );
+
+    const store = createAuthStore();
+    await store.init();
+    expect(store.user()?.email).toBe('rfnet@example.com');
+
+    await store.refreshUser();
+
+    expect(store.isAuthenticated()).toBe(true);
+    expect(store.accessToken()).toBe('at-rfnet');
+    expect(store.user()?.email).toBe('rfnet@example.com');
+    expect(store.error()).toBeTruthy();
   });
 });
 
