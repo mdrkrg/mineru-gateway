@@ -63,7 +63,7 @@
 | `GATEWAY_SMTP_PORT` | `587` | 否 | SMTP 服务器端口 |
 | `GATEWAY_SMTP_USERNAME` | `null` | 否 | SMTP 认证用户名（多数服务商即发件邮箱） |
 | `GATEWAY_SMTP_PASSWORD` | `null` | 否 | SMTP 认证密码 |
-| `GATEWAY_SMTP_FROM` | `null` | 否 | 发件人邮箱。未配置时回退为 `GATEWAY_SMTP_USERNAME`；两者皆无且需发送邮件时，本次发送按失败处理（仅记日志，见 §4.4） |
+| `GATEWAY_SMTP_FROM` | `null` | 否 | 发件人邮箱。未配置时回退为 `GATEWAY_SMTP_USERNAME`；两者皆无的配置被启动校验拒绝（见下方校验规则） |
 | `GATEWAY_SMTP_FROM_NAME` | `"mineru-gateway"` | 否 | 发件人显示名称 |
 | `GATEWAY_SMTP_STARTTLS` | `true` | 否 | 是否使用 STARTTLS 升级加密连接 |
 | `GATEWAY_SMTP_SSL_TLS` | `false` | 否 | 是否使用 SSL/TLS 直连加密连接 |
@@ -75,9 +75,10 @@
 
 - `GATEWAY_SMTP_STARTTLS` 与 `GATEWAY_SMTP_SSL_TLS` 不能同时为 `true`（两者互斥，必须选择其一或都不启用）。
 - `GATEWAY_SMTP_FROM` 若配置，必须是合法邮箱地址。
+- `GATEWAY_SMTP_HOST` 已配置但发件地址不可确定（`GATEWAY_SMTP_FROM` 与 `GATEWAY_SMTP_USERNAME` 均未配置）→ 拒绝启动，提示配置 `GATEWAY_SMTP_FROM` 或 `GATEWAY_SMTP_USERNAME`（否则验证邮件将静默无法发送，未验证用户将永久无法使用受保护功能）。该校验与 `GATEWAY_USER_AUTH_ENABLED` 无关，只要 `GATEWAY_SMTP_HOST` 已配置即生效。
 - `GATEWAY_USER_AUTH_ENABLED=true` 且 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false`（默认，定义见 `specs/user-management-and-oauth.md` §3.1）且 `GATEWAY_SMTP_HOST` 未配置 → 拒绝启动，提示配置 SMTP 或设置 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=true`（否则未验证用户无验证路径，将永久无法使用受保护功能）。
 
-> **升级影响**：`GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false` 是默认值。既有部署若已开启用户认证（`user_auth_enabled=true`）但未配置 `GATEWAY_SMTP_HOST`，升级后启动校验将拒绝启动——须在升级时配置 SMTP 或显式设置 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=true`。
+> **升级影响**：`GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false` 是默认值。既有部署若已开启用户认证（`user_auth_enabled=true`）但未配置 `GATEWAY_SMTP_HOST`，升级后启动校验将拒绝启动——须在升级时配置 SMTP 或显式设置 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=true`。已配置 `GATEWAY_SMTP_HOST` 但未配置任何发件地址（`GATEWAY_SMTP_FROM`、`GATEWAY_SMTP_USERNAME` 均无）的部署同样会被拒绝——须补配其一。
 
 **新增依赖**：`pyproject.toml` 增加 [`fastapi-mail>=1.6.5`](https://pypi.org/project/fastapi-mail/)（异步 SMTP 发送）。
 
@@ -97,7 +98,7 @@
 
 - 未验证用户的**补发**验证邮件自助途径（注册成功时的自动发送见 §4.4）。
 - 恒 202、防邮箱枚举、用户存在/激活/未验证才触发发送等行为由 fastapi-users 提供（见本节开头文档参考）。
-- 本规约新增的发送条件：仅当发件地址可确定（`GATEWAY_SMTP_FROM` 或 `GATEWAY_SMTP_USERNAME` 任一存在）时实际发送邮件；不可确定时仍按库行为返回 202，但不发送。
+- 发件地址可确定（`GATEWAY_SMTP_FROM` 或 `GATEWAY_SMTP_USERNAME` 任一存在）由 §3.1 启动校验保证——不可确定的配置无法启动，运行时不存在静默不发送的状态（发送函数保留防御性跳过，见 §5.2）。
 
 ### 4.2 提交验证 token（`POST /auth/verify`）
 
@@ -114,7 +115,7 @@
 ### 4.4 验证邮件内容与发送时机
 
 - 邮件内容：主题为固定文案（含"验证"含义），正文包含验证链接 `{verify_email_base_url or gateway_url}/auth/verify?token={token}`。
-- 发送时机：`POST /auth/register` 与 `POST /auth/users` 成功后（SMTP 已配置时）自动发送；`POST /auth/request-verify-token` 满足 §4.1 条件时发送；**OIDC 回调创建用户不自动发送**。自动发送同样受 §4.1 发送条件约束（发件地址不可确定则跳过发送，仅记日志）。
+- 发送时机：`POST /auth/register` 与 `POST /auth/users` 成功后（SMTP 已配置时）自动发送；`POST /auth/request-verify-token` 满足 §4.1 条件时发送；**OIDC 回调创建用户不自动发送**。自动发送的发件地址可确定性由 §4.1/§3.1 启动校验保证。
 - 发送失败（网络错误、认证失败、超时等）仅记录日志，不影响主流程（注册仍 201、申请仍 202）；用户可经 `POST /auth/request-verify-token` 补发。
 - **OIDC 用户验证途径**：`is_verified=false` 的 OIDC 用户可经 `POST /auth/request-verify-token` 自助申请验证邮件并完成验证（OIDC 创建不自动发送，见上方发送时机）。
 
@@ -146,7 +147,7 @@ src/mineru_gateway/
 
 | 接口 | 输入 | 输出 | 行为 |
 |------|------|------|------|
-| `send_verification_email(user_email, token, settings)` | `user_email: str, token: str, settings: Settings` | `None` | 构造验证链接 `{verify_email_base_url or gateway_url}/auth/verify?token={token}`，通过已配置的 SMTP 服务发送邮件到 `user_email`。`smtp_host` 未配置或发件地址不可确定时直接返回（不发送）；发送失败记录日志不抛出 |
+| `send_verification_email(user_email, token, settings)` | `user_email: str, token: str, settings: Settings` | `None` | 构造验证链接 `{verify_email_base_url or gateway_url}/auth/verify?token={token}`，通过已配置的 SMTP 服务发送邮件到 `user_email`。`smtp_host` 未配置或发件地址不可确定时直接返回（不发送）——防御性行为，正常配置下不可达（§3.1 启动校验）；发送失败记录日志不抛出 |
 
 测试通过**替换此接口**捕获验证 token 与收件人，不连接真实 SMTP 服务器（遵循 `AGENTS.md` "Tests must not hit the network"）。
 
@@ -191,7 +192,7 @@ src/mineru_gateway/
 - **验证 token 安全**：验证 token 由 fastapi-users 验证流程签发，与用户及其邮箱绑定，无法冒用其他用户的 token；有效期默认 1 小时（`GATEWAY_VERIFY_EMAIL_TOKEN_LIFETIME_SECONDS`）。
 - **SMTP 安全**：凭据仅通过环境变量注入（`GATEWAY_SMTP_PASSWORD`），不得写入日志、响应或数据库；默认启用 STARTTLS（`GATEWAY_SMTP_STARTTLS=true`），支持 SSL/TLS 直连模式，两种加密模式互斥校验，防止误配置明文发送。
 - **不破坏主流程**：邮件发送失败不影响注册/创建/申请端点结果（§4.4）。
-- **防止永久锁死**：无验证路径（SMTP 未配置）且拦截开启的配置组合被启动校验拒绝（§3.1），从根源杜绝死锁状态。
+- **防止永久锁死**：无验证路径（SMTP 未配置）且拦截开启的配置组合被启动校验拒绝（§3.1），从根源杜绝死锁状态；SMTP 已配置但发件地址不可确定的组合同样被拒绝（§3.1），杜绝验证邮件静默无法送达导致的同样死锁。
 
 ## 8. 测试要点
 
@@ -202,6 +203,7 @@ src/mineru_gateway/
 - `GATEWAY_SMTP_HOST` 默认未配置（`null`）。
 - `GATEWAY_SMTP_STARTTLS=true` 且 `GATEWAY_SMTP_SSL_TLS=true` → 校验失败，拒绝启动。
 - `GATEWAY_SMTP_FROM` 为非法邮箱 → 校验失败，拒绝启动。
+- `GATEWAY_SMTP_HOST` 已配置但 `GATEWAY_SMTP_FROM`、`GATEWAY_SMTP_USERNAME` 均未配置 → 校验失败，拒绝启动。
 - 各新增配置项默认值符合 §3.1 表格。
 
 ### 8.2 注册与创建（`is_verified` 语义不变 + 自动发送）
@@ -213,7 +215,6 @@ src/mineru_gateway/
 ### 8.3 `POST /auth/request-verify-token`
 
 - 未验证用户 + SMTP 已配置 → 202，且发送验证邮件（捕获的 token 可用于验证该用户邮箱）。
-- 发件地址不可确定（无 `GATEWAY_SMTP_FROM` 也无 `GATEWAY_SMTP_USERNAME`）→ 202，不发送。
 - SMTP 未配置 → 404（路由不注册，见 §1 矩阵）。
 
 ### 8.4 `POST /auth/verify`
