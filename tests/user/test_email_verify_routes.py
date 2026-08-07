@@ -1,7 +1,7 @@
 """Email verification route integration tests.
 
 Spec: email-verification.md
-  Section 4.1 - POST /auth/request-verify-token (send hook, sender gating)
+  Section 4.1 - POST /auth/request-verify-token (send hook)
   Section 4.3 - GET /auth/verify (custom email-link endpoint)
   Section 8.3 - request-verify-token test points
   Section 8.5 - GET /auth/verify test points
@@ -10,8 +10,8 @@ POST /auth/request-verify-token and POST /auth/verify are provided by the
 fastapi-users verify router; their library behaviors (202 anti-enumeration
 matrix, token validation 400s) are out of scope per the spec Section 8
 preamble and are not tested here. Only our integration points are covered:
-the send hook, sender-address gating, route registration, and the custom
-GET /auth/verify endpoint (Section 4.3).
+the send hook, route registration, and the custom GET /auth/verify endpoint
+(Section 4.3).
 """
 
 from __future__ import annotations
@@ -64,21 +64,6 @@ async def test_request_verify_token_triggers_send_for_unverified_user(
     assert len(email_sender.sent) == 1
     assert email_sender.sent[0]["user_email"] == user["email"]
     assert email_sender.sent[0]["token"]
-
-
-async def test_request_verify_token_does_not_send_when_sender_unknown(
-    smtp_no_sender_client, email_sender
-):
-    """Section 8.3 / 4.1: no SMTP_FROM and no SMTP_USERNAME -> route still
-    registered but no email is sent."""
-    user = await _register(smtp_no_sender_client)
-    email_sender.reset()
-
-    resp = await smtp_no_sender_client.post(
-        "/auth/request-verify-token", json={"email": user["email"]}
-    )
-    assert resp.status_code != 404
-    assert email_sender.sent == []
 
 
 async def test_request_verify_token_404_without_smtp(client):

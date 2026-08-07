@@ -212,12 +212,6 @@ def smtp_settings(settings) -> Settings:
 
 
 @pytest.fixture
-def smtp_no_sender_settings(smtp_settings) -> Settings:
-    """Spec Section 4.1: SMTP host set but sender address undeterminable."""
-    return smtp_settings.model_copy(update={"smtp_username": None, "smtp_from": None})
-
-
-@pytest.fixture
 def redirect_settings(smtp_settings) -> Settings:
     """Spec Section 4.3: oauth_frontend_redirect_url configured."""
     return smtp_settings.model_copy(
@@ -270,24 +264,6 @@ async def smtp_app(smtp_settings, upstream_client, email_sender):
 @pytest.fixture
 async def smtp_client(smtp_app):
     transport = httpx.ASGITransport(app=smtp_app)
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as c:
-        yield c
-
-
-@pytest.fixture
-async def smtp_no_sender_app(smtp_no_sender_settings, upstream_client, email_sender):
-    application = create_app(
-        settings=smtp_no_sender_settings, upstream_client=upstream_client
-    )
-    async with LifespanManager(application):
-        yield application
-
-
-@pytest.fixture
-async def smtp_no_sender_client(smtp_no_sender_app):
-    transport = httpx.ASGITransport(app=smtp_no_sender_app)
     async with httpx.AsyncClient(
         transport=transport, base_url="http://testserver"
     ) as c:

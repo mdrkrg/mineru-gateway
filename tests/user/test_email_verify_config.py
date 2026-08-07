@@ -12,7 +12,7 @@ import pytest
 from mineru_gateway.config import Settings
 
 
-def _base_settings(tmp_path) -> Settings:
+def _base_settings(tmp_path, **extra) -> Settings:
     """Settings with user auth enabled and a long JWT secret."""
     return Settings(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
@@ -21,6 +21,7 @@ def _base_settings(tmp_path) -> Settings:
         jwt_secret="test-jwt-secret-at-least-32-characters",
         create_tables=True,
         enable_background=False,
+        **extra,
     )
 
 
@@ -55,44 +56,48 @@ def test_smtp_setting_defaults(tmp_path, field, expected):
 def test_starttls_and_ssl_tls_mutually_exclusive(tmp_path):
     """Section 8.1: STARTTLS=true and SSL_TLS=true together -> rejected."""
     with pytest.raises(ValueError):
-        Settings(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
-            admin_token="test-admin-token",
-            user_auth_enabled=True,
-            jwt_secret="test-jwt-secret-at-least-32-characters",
-            create_tables=True,
-            enable_background=False,
-            smtp_starttls=True,
-            smtp_ssl_tls=True,
-        )
+        _base_settings(tmp_path, smtp_starttls=True, smtp_ssl_tls=True)
 
 
 def test_smtp_from_invalid_email_rejected(tmp_path):
     """Section 3.1 / 8.1: SMTP_FROM must be a valid email address."""
     with pytest.raises(ValueError):
-        Settings(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
-            admin_token="test-admin-token",
-            user_auth_enabled=True,
-            jwt_secret="test-jwt-secret-at-least-32-characters",
-            create_tables=True,
-            enable_background=False,
-            smtp_from="not-an-email",
-        )
+        _base_settings(tmp_path, smtp_from="not-an-email")
 
 
 def test_smtp_from_valid_email_accepted(tmp_path):
     """Section 3.1: a valid SMTP_FROM address is accepted."""
-    settings = Settings(
-        database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
-        admin_token="test-admin-token",
-        user_auth_enabled=True,
-        jwt_secret="test-jwt-secret-at-least-32-characters",
-        create_tables=True,
-        enable_background=False,
-        smtp_from="sender@example.com",
-    )
+    settings = _base_settings(tmp_path, smtp_from="sender@example.com")
     assert settings.smtp_from == "sender@example.com"
+
+
+# ===== Section 3.1 / 8.1: sender address required when SMTP configured =====
+
+
+def test_smtp_host_without_sender_rejected(tmp_path):
+    """Section 3.1 / 8.1: SMTP_HOST configured but neither SMTP_FROM nor
+    SMTP_USERNAME -> rejected."""
+    from mineru_gateway.main import create_app
+
+    with pytest.raises((ValueError, RuntimeError)):
+        settings = _base_settings(tmp_path, smtp_host="smtp.example.com")
+        create_app(settings=settings)
+
+
+def test_smtp_host_with_username_accepted(tmp_path):
+    """Section 3.1: SMTP_HOST + SMTP_USERNAME (FROM falls back to it) -> OK."""
+    settings = _base_settings(
+        tmp_path, smtp_host="smtp.example.com", smtp_username="sender@example.com"
+    )
+    assert settings.smtp_host == "smtp.example.com"
+
+
+def test_smtp_host_with_from_accepted(tmp_path):
+    """Section 3.1: SMTP_HOST + SMTP_FROM -> OK."""
+    settings = _base_settings(
+        tmp_path, smtp_host="smtp.example.com", smtp_from="sender@example.com"
+    )
+    assert settings.smtp_host == "smtp.example.com"
 
 
 # ===== Section 3.1: startup validation (gate closed, no SMTP path) =====
