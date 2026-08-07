@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
 
-from mineru_gateway.config import Settings
+from mineru_gateway.config import OIDCProviderConfig, Settings
 from mineru_gateway.main import create_app
 
 
@@ -130,3 +131,246 @@ def mock_oauth_client():
         }
     )
     return client
+
+
+# ===== Email verification fixtures (spec: email-verification.md) =====
+#
+# The SMTP layer is replaced by EmailSenderStub (spec Section 5.2). The
+# implementation must resolve send_verification_email through the module
+# attribute (mineru_gateway.email.service.send_verification_email) at call
+# time so monkeypatching intercepts it.
+
+_EMAIL_VERIFY_OIDC_PROVIDER = OIDCProviderConfig(
+    name="keycloak",
+    openid_configuration_endpoint=(
+        "https://keycloak.example.com/.well-known/openid-configuration"
+    ),
+    client_id="test-client-id",
+    client_secret="test-client-secret",
+)
+
+
+class EmailSenderStub:
+    """Test double for email.service.send_verification_email (spec Section 5.2).
+
+    Records one entry per call. __call__ is synchronous and returns an
+    already-completed awaitable, so implementations may either call or
+    await the function.
+    """
+
+    def __init__(self) -> None:
+        self.sent: list[dict] = []
+
+    def __call__(self, user_email: str, token: str, settings) -> Awaitable[None]:
+        self.sent.append(
+            {"user_email": user_email, "token": token, "settings": settings}
+        )
+        return _completed()
+
+    def last(self) -> dict | None:
+        return self.sent[-1] if self.sent else None
+
+    def reset(self) -> None:
+        self.sent.clear()
+
+
+def _completed() -> Awaitable[None]:
+    """Return an already-completed awaitable for EmailSenderStub."""
+
+    async def _noop() -> None:
+        return None
+
+    return _noop()
+
+
+@pytest.fixture
+def email_sender(monkeypatch) -> EmailSenderStub:
+    """Replace email.service.send_verification_email (spec Section 5.2)."""
+    stub = EmailSenderStub()
+    monkeypatch.setattr("mineru_gateway.email.service.send_verification_email", stub)
+    return stub
+
+
+@pytest.fixture
+def smtp_settings(settings) -> Settings:
+    """Spec Section 3.1: SMTP fully configured."""
+    return settings.model_copy(
+        update={
+            "smtp_host": "smtp.example.com",
+            "smtp_port": 587,
+            "smtp_username": "sender@example.com",
+            "smtp_password": "smtp-secret",
+            "smtp_from": "sender@example.com",
+            "smtp_from_name": "mineru-gateway",
+            "smtp_starttls": True,
+            "smtp_ssl_tls": False,
+            "smtp_timeout": 10,
+            "verify_email_token_lifetime_seconds": 3600,
+            "verify_email_base_url": "",
+        }
+    )
+
+
+@pytest.fixture
+def smtp_no_sender_settings(smtp_settings) -> Settings:
+    """Spec Section 4.1: SMTP host set but sender address undeterminable."""
+    return smtp_settings.model_copy(update={"smtp_username": None, "smtp_from": None})
+
+
+@pytest.fixture
+def redirect_settings(smtp_settings) -> Settings:
+    """Spec Section 4.3: oauth_frontend_redirect_url configured."""
+    return smtp_settings.model_copy(
+        update={"oauth_frontend_redirect_url": "https://frontend.example.com/callback"}
+    )
+
+
+@pytest.fixture
+def gated_smtp_settings(smtp_settings) -> Settings:
+    """Spec Section 8.6/8.7: SMTP configured + verification gate enabled."""
+    return smtp_settings.model_copy(update={"allow_unverified_accounts": False})
+
+
+@pytest.fixture
+def smtp_oidc_settings(smtp_settings) -> Settings:
+    """Spec Section 8.7: SMTP + OIDC provider without trusted domains."""
+    return smtp_settings.model_copy(
+        update={
+            "oidc_providers": [_EMAIL_VERIFY_OIDC_PROVIDER],
+            "oauth_redirect_base_url": "http://testserver",
+        }
+    )
+
+
+@pytest.fixture
+def gated_smtp_oidc_settings(smtp_oidc_settings) -> Settings:
+    """Spec Section 8.7: SMTP + OIDC + verification gate enabled."""
+    return smtp_oidc_settings.model_copy(update={"allow_unverified_accounts": False})
+
+
+@pytest.fixture
+async def smtp_app(smtp_settings, upstream_client, email_sender):
+    application = create_app(settings=smtp_settings, upstream_client=upstream_client)
+    async with LifespanManager(application):
+        yield application
+
+
+@pytest.fixture
+async def smtp_client(smtp_app):
+    transport = httpx.ASGITransport(app=smtp_app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as c:
+        yield c
+
+
+@pytest.fixture
+async def smtp_no_sender_app(smtp_no_sender_settings, upstream_client, email_sender):
+    application = create_app(
+        settings=smtp_no_sender_settings, upstream_client=upstream_client
+    )
+    async with LifespanManager(application):
+        yield application
+
+
+@pytest.fixture
+async def smtp_no_sender_client(smtp_no_sender_app):
+    transport = httpx.ASGITransport(app=smtp_no_sender_app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as c:
+        yield c
+
+
+@pytest.fixture
+async def redirect_app(redirect_settings, upstream_client, email_sender):
+    application = create_app(
+        settings=redirect_settings, upstream_client=upstream_client
+    )
+    async with LifespanManager(application):
+        yield application
+
+
+@pytest.fixture
+async def redirect_client(redirect_app):
+    transport = httpx.ASGITransport(app=redirect_app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as c:
+        yield c
+
+
+@pytest.fixture
+async def gated_smtp_app(gated_smtp_settings, upstream_client, email_sender):
+    application = create_app(
+        settings=gated_smtp_settings, upstream_client=upstream_client
+    )
+    async with LifespanManager(application):
+        yield application
+
+
+@pytest.fixture
+async def gated_smtp_client(gated_smtp_app):
+    transport = httpx.ASGITransport(app=gated_smtp_app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as c:
+        yield c
+
+
+@pytest.fixture
+async def smtp_oidc_app(
+    smtp_oidc_settings, upstream_client, monkeypatch, mock_oauth_client, email_sender
+):
+    from mineru_gateway.auth.oauth import base
+
+    monkeypatch.setattr(
+        base,
+        "get_oauth_client",
+        lambda name: mock_oauth_client if name == "keycloak" else None,
+    )
+    application = create_app(
+        settings=smtp_oidc_settings, upstream_client=upstream_client
+    )
+    async with LifespanManager(application):
+        yield application
+
+
+@pytest.fixture
+async def smtp_oidc_client(smtp_oidc_app):
+    transport = httpx.ASGITransport(app=smtp_oidc_app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as c:
+        yield c
+
+
+@pytest.fixture
+async def gated_smtp_oidc_app(
+    gated_smtp_oidc_settings,
+    upstream_client,
+    monkeypatch,
+    mock_oauth_client,
+    email_sender,
+):
+    from mineru_gateway.auth.oauth import base
+
+    monkeypatch.setattr(
+        base,
+        "get_oauth_client",
+        lambda name: mock_oauth_client if name == "keycloak" else None,
+    )
+    application = create_app(
+        settings=gated_smtp_oidc_settings, upstream_client=upstream_client
+    )
+    async with LifespanManager(application):
+        yield application
+
+
+@pytest.fixture
+async def gated_smtp_oidc_client(gated_smtp_oidc_app):
+    transport = httpx.ASGITransport(app=gated_smtp_oidc_app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as c:
+        yield c
