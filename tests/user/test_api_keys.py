@@ -264,16 +264,19 @@ async def test_user_created_key_works_for_tasks(client, user_headers, sample_fil
 #
 # The setting is pinned explicitly in the fixtures so the tests do not
 # depend on the shared `settings` fixture's defaults (tests/conftest.py).
+# SMTP is configured (email-verification.md Section 3.1) so this combination
+# passes startup validation; the gate itself is independent of SMTP
+# configuration (email-verification.md Section 8.6).
 
 
 @pytest.fixture
-def gated_settings(settings):
+def gated_settings(smtp_settings):
     """Verification gate enabled: allow_unverified_accounts=false."""
-    return settings.model_copy(update={"allow_unverified_accounts": False})
+    return smtp_settings.model_copy(update={"allow_unverified_accounts": False})
 
 
 @pytest.fixture
-async def gated_app(gated_settings, upstream_client):
+async def gated_app(gated_settings, upstream_client, email_sender):
     application = create_app(settings=gated_settings, upstream_client=upstream_client)
     async with LifespanManager(application):
         yield application

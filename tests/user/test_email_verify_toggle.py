@@ -75,18 +75,9 @@ async def test_verify_routes_registered_when_smtp_configured(smtp_client):
 
 
 # ===== Section 8.6 / 1: gate independence from SMTP configuration =====
-
-
-async def test_unverified_create_key_403_with_smtp_configured(gated_smtp_client):
-    """Section 8.6: unverified user + gate closed + SMTP configured -> 403,
-    no key created (interception is independent of SMTP)."""
-    _, headers = await _register_and_login(gated_smtp_client)
-    resp = await gated_smtp_client.post(
-        "/me/api-keys", headers=headers, json={"label": "gated"}
-    )
-    assert resp.status_code == 403
-    listed = await gated_smtp_client.get("/me/api-keys", headers=headers)
-    assert listed.json()["keys"] == []
+# The 403 case with SMTP configured is covered by
+# tests/user/test_api_keys.py (gated fixtures, Section 8.6); here only the
+# gate-open side is pinned.
 
 
 async def test_unverified_create_key_201_with_smtp_when_gate_open(smtp_client):
