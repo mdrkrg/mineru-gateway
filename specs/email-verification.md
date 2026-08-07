@@ -61,7 +61,7 @@
 |---------|--------|------|------|
 | `GATEWAY_SMTP_HOST` | `null` | 否 | SMTP 服务器主机名。**未配置 = 邮箱验证功能关闭**：验证路由不注册（404）、不拦截（见 §1） |
 | `GATEWAY_SMTP_PORT` | `587` | 否 | SMTP 服务器端口 |
-| `GATEWAY_SMTP_USERNAME` | `null` | 否 | SMTP 认证用户名（多数服务商即发件邮箱） |
+| `GATEWAY_SMTP_USERNAME` | `null` | 否 | SMTP 认证用户名（多数服务商即发件邮箱）。**未配置时连接不执行 SMTP 认证**，适用于无需认证的本地/中继 SMTP 服务 |
 | `GATEWAY_SMTP_PASSWORD` | `null` | 否 | SMTP 认证密码 |
 | `GATEWAY_SMTP_FROM` | `null` | 否 | 发件人邮箱。未配置时回退为 `GATEWAY_SMTP_USERNAME`；两者皆无的配置被启动校验拒绝（见下方校验规则） |
 | `GATEWAY_SMTP_FROM_NAME` | `"mineru-gateway"` | 否 | 发件人显示名称 |
