@@ -60,7 +60,7 @@ async def test_request_verify_token_triggers_send_for_unverified_user(
     resp = await smtp_client.post(
         "/auth/request-verify-token", json={"email": user["email"]}
     )
-    assert resp.status_code != 404
+    assert resp.status_code == 202
     assert len(email_sender.sent) == 1
     assert email_sender.sent[0]["user_email"] == user["email"]
     assert email_sender.sent[0]["token"]
