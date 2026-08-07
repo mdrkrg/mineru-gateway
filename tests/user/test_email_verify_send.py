@@ -100,6 +100,42 @@ async def test_admin_create_sends_verification_email(
     assert email_sender.sent[0]["token"]
 
 
+async def test_register_with_undeterminable_sender_sends_nothing(
+    smtp_no_sender_client, email_sender
+):
+    """Section 4.4 / 8.2: SMTP host set but sender address undeterminable ->
+    register still 201, no email sent (the Section 4.1 sender constraint also
+    applies to the automatic send)."""
+    resp = await smtp_no_sender_client.post(
+        "/auth/register",
+        json={
+            "email": "no-sender@example.com",
+            "password": "secret123",
+            "display_name": "NoSender",
+        },
+    )
+    assert resp.status_code == 201
+    assert email_sender.sent == []
+
+
+async def test_admin_create_with_undeterminable_sender_sends_nothing(
+    smtp_no_sender_client, admin_headers, email_sender
+):
+    """Section 4.4 / 8.2: admin create with undeterminable sender address ->
+    201, no email sent."""
+    resp = await smtp_no_sender_client.post(
+        "/auth/users",
+        headers=admin_headers,
+        json={
+            "email": "no-sender-admin@example.com",
+            "password": "secret123",
+            "display_name": "NoSenderAdmin",
+        },
+    )
+    assert resp.status_code == 201
+    assert email_sender.sent == []
+
+
 async def test_register_without_smtp_sends_nothing(client, email_sender):
     """Section 8.2 / 4.4: SMTP not configured -> still 201, no email sent."""
     resp = await client.post(
