@@ -16,6 +16,7 @@ function RegisterPage() {
   const [displayName, setDisplayName] = createSignal('');
   const [isSubmitting, setIsSubmitting] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
+  const [registeredEmail, setRegisteredEmail] = createSignal<string | null>(null);
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
@@ -42,82 +43,105 @@ function RegisterPage() {
       return;
     }
 
-    navigate({ to: ROUTES.login });
+    setRegisteredEmail(email());
   }
 
   return (
     <div class="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div class="w-full max-w-sm bg-white rounded-lg shadow p-8">
-        <h1 class="text-2xl font-bold text-center mb-2">注册</h1>
-        <p class="text-sm text-gray-500 text-center mb-6">MinerU Gateway</p>
+        <Show
+          when={registeredEmail()}
+          fallback={
+            <>
+              <h1 class="text-2xl font-bold text-center mb-2">注册</h1>
+              <p class="text-sm text-gray-500 text-center mb-6">MinerU Gateway</p>
 
-        <form onSubmit={handleSubmit} class="flex flex-col gap-4">
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">邮箱</span>
-            <input
-              type="email"
-              required
-              autocomplete="email"
-              value={email()}
-              onInput={(e) => setEmail(e.currentTarget.value)}
-              class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </label>
+              <form onSubmit={handleSubmit} class="flex flex-col gap-4">
+                <label class="flex flex-col gap-1">
+                  <span class="text-sm font-medium text-gray-700">邮箱</span>
+                  <input
+                    type="email"
+                    required
+                    autocomplete="email"
+                    value={email()}
+                    onInput={(e) => setEmail(e.currentTarget.value)}
+                    class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </label>
 
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">显示名称(可选)</span>
-            <input
-              type="text"
-              autocomplete="nickname"
-              value={displayName()}
-              onInput={(e) => setDisplayName(e.currentTarget.value)}
-              class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-sm font-medium text-gray-700">显示名称(可选)</span>
+                  <input
+                    type="text"
+                    autocomplete="nickname"
+                    value={displayName()}
+                    onInput={(e) => setDisplayName(e.currentTarget.value)}
+                    class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </label>
 
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">密码</span>
-            <input
-              type="password"
-              required
-              autocomplete="new-password"
-              value={password()}
-              onInput={(e) => setPassword(e.currentTarget.value)}
-              class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-sm font-medium text-gray-700">密码</span>
+                  <input
+                    type="password"
+                    required
+                    autocomplete="new-password"
+                    value={password()}
+                    onInput={(e) => setPassword(e.currentTarget.value)}
+                    class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </label>
 
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">确认密码</span>
-            <input
-              type="password"
-              required
-              autocomplete="new-password"
-              value={confirm()}
-              onInput={(e) => setConfirm(e.currentTarget.value)}
-              class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-sm font-medium text-gray-700">确认密码</span>
+                  <input
+                    type="password"
+                    required
+                    autocomplete="new-password"
+                    value={confirm()}
+                    onInput={(e) => setConfirm(e.currentTarget.value)}
+                    class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </label>
 
-          <Show when={error()}>
-            <p class="text-sm text-red-600">{error()}</p>
-          </Show>
+                <Show when={error()}>
+                  <p class="text-sm text-red-600">{error()}</p>
+                </Show>
 
-          <button
-            type="submit"
-            disabled={isSubmitting()}
-            class="bg-blue-600 text-white rounded px-4 py-2 font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSubmitting() ? '注册中…' : '注册'}
-          </button>
-        </form>
+                <button
+                  type="submit"
+                  disabled={isSubmitting()}
+                  class="bg-blue-600 text-white rounded px-4 py-2 font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSubmitting() ? '注册中…' : '注册'}
+                </button>
+              </form>
 
-        <p class="text-sm text-gray-500 text-center mt-4">
-          已有账号?{' '}
-          <Link to={ROUTES.login} class="text-blue-600 hover:underline">
-            登录
-          </Link>
-        </p>
+              <p class="text-sm text-gray-500 text-center mt-4">
+                已有账号?{' '}
+                <Link to={ROUTES.login} class="text-blue-600 hover:underline">
+                  登录
+                </Link>
+              </p>
+            </>
+          }
+        >
+          {(email) => (
+            <div class="text-center">
+              <h1 class="text-2xl font-bold mb-2">注册成功</h1>
+              <p class="text-sm text-gray-600 mb-6">
+                验证邮件已发送至 <span class="font-medium">{email()}</span>，请查收并点击验证链接完成邮箱验证，然后登录。
+              </p>
+              <button
+                type="button"
+                onClick={() => navigate({ to: ROUTES.login })}
+                class="bg-blue-600 text-white rounded px-4 py-2 font-medium hover:bg-blue-700"
+              >
+                去登录
+              </button>
+            </div>
+          )}
+        </Show>
       </div>
     </div>
   );
