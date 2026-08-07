@@ -1,5 +1,9 @@
+import { errAsync } from 'neverthrow';
+import type { ResultAsync } from 'neverthrow';
 import { fetchAndValidate, validateRequest } from '@/core/validation';
 import { request } from '@/core/http-client';
+import type { RawResponse } from '@/core/http-client';
+import type { ApiError, HttpError } from '@/core/error-model';
 import { ErrorDetailSchema } from '@/api/schemas/shared';
 import {
   ApiKeyCreatedResponseSchema,
@@ -21,6 +25,9 @@ import {
   type UserCreateRequest,
   type UserUpdateRequest,
   type MyApiKeyCreateRequest,
+  type UserRead,
+  type VerifyEmailRequest,
+  type VerifyEmailTokenRequest,
 } from '@/api/schemas/auth';
 
 // ===== Admin API Keys =====
@@ -174,4 +181,27 @@ export function getOAuthProviders() {
   return fetchAndValidate('auth/oauth/providers', {
     success: OAuthProvidersResponseSchema,
   });
+}
+
+// ===== Email verification =====
+
+// Stubs - implementation lands in the next commit (tests in
+// tests/api/email-verify.test.ts pin the behavior).
+
+export function requestVerifyToken(
+  _body: VerifyEmailRequest,
+): ResultAsync<RawResponse, ApiError<HttpError<number, unknown>>> {
+  return errAsync({
+    _type: 'UnexpectedError',
+    error: new Error('requestVerifyToken not implemented'),
+  } as ApiError<HttpError<number, unknown>>);
+}
+
+export function verifyEmail(
+  _body: VerifyEmailTokenRequest,
+): ResultAsync<UserRead, ApiError<HttpError<number, unknown>>> {
+  return errAsync({
+    _type: 'UnexpectedError',
+    error: new Error('verifyEmail not implemented'),
+  } as ApiError<HttpError<number, unknown>>);
 }

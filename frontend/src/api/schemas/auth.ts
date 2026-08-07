@@ -193,6 +193,22 @@ export const LogoutResponseSchema = defineResponseSchema(
   {} as { message: string },
 );
 
+// ===== Email verification =====
+
+export const VerifyEmailRequestSchema = defineRequestSchema(
+  {
+    email: 'string',
+  },
+  {} as { email: string },
+);
+
+export const VerifyEmailTokenRequestSchema = defineRequestSchema(
+  {
+    token: 'string',
+  },
+  {} as { token: string },
+);
+
 // ===== OAuth =====
 
 export const OAuthProvidersResponseSchema = defineResponseSchema(
@@ -230,5 +246,8 @@ export type UserCreateRequest = {
   displayName: string | null;
 };
 export type UserUpdateRequest = { password: string | null; displayName: string | null };
+
+export type VerifyEmailRequest = { email: string };
+export type VerifyEmailTokenRequest = { token: string };
 
 export type OAuthProvidersResponse = typeof OAuthProvidersResponseSchema.infer;

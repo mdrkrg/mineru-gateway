@@ -17,6 +17,8 @@ export {
   createMyApiKey,
   revokeMyApiKey,
   getOAuthProviders,
+  requestVerifyToken,
+  verifyEmail,
 } from '@/api/functions/auth';
 
 export {
