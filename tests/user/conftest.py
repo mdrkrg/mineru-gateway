@@ -226,6 +226,18 @@ def redirect_settings(smtp_settings) -> Settings:
 
 
 @pytest.fixture
+def redirect_query_settings(smtp_settings) -> Settings:
+    """Spec Section 4.3: redirect URL that already contains a query string."""
+    return smtp_settings.model_copy(
+        update={
+            "oauth_frontend_redirect_url": (
+                "https://frontend.example.com/callback?from=email"
+            )
+        }
+    )
+
+
+@pytest.fixture
 def gated_smtp_settings(smtp_settings) -> Settings:
     """Spec Section 8.6/8.7: SMTP configured + verification gate enabled."""
     return smtp_settings.model_copy(update={"allow_unverified_accounts": False})
@@ -294,6 +306,24 @@ async def redirect_app(redirect_settings, upstream_client, email_sender):
 @pytest.fixture
 async def redirect_client(redirect_app):
     transport = httpx.ASGITransport(app=redirect_app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as c:
+        yield c
+
+
+@pytest.fixture
+async def redirect_query_app(redirect_query_settings, upstream_client, email_sender):
+    application = create_app(
+        settings=redirect_query_settings, upstream_client=upstream_client
+    )
+    async with LifespanManager(application):
+        yield application
+
+
+@pytest.fixture
+async def redirect_query_client(redirect_query_app):
+    transport = httpx.ASGITransport(app=redirect_query_app)
     async with httpx.AsyncClient(
         transport=transport, base_url="http://testserver"
     ) as c:

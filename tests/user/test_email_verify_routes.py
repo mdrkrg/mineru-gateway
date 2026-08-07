@@ -117,6 +117,22 @@ async def test_verify_get_valid_token_redirects_302_true(redirect_client, email_
     )
 
 
+async def test_verify_get_valid_token_redirects_302_true_with_query_string(
+    redirect_query_client, email_sender
+):
+    """Section 4.3 / 8.5: valid token + redirect URL that already carries a
+    query string -> 302, fragment appended after the query string."""
+    await _register(redirect_query_client)
+    resp = await redirect_query_client.get(
+        f"/auth/verify?token={email_sender.last()['token']}"
+    )
+    assert resp.status_code == 302
+    assert (
+        resp.headers["location"]
+        == "https://frontend.example.com/callback?from=email#verified=true"
+    )
+
+
 async def test_verify_get_invalid_token_no_redirect_returns_400(smtp_client):
     """Section 8.5: invalid token, no redirect URL -> 400."""
     resp = await smtp_client.get("/auth/verify?token=garbage-token")
@@ -131,6 +147,19 @@ async def test_verify_get_invalid_token_redirects_302_false(redirect_client):
     assert (
         resp.headers["location"]
         == "https://frontend.example.com/callback#verified=false"
+    )
+
+
+async def test_verify_get_invalid_token_redirects_302_false_with_query_string(
+    redirect_query_client,
+):
+    """Section 4.3 / 8.5: invalid token + redirect URL with a query string ->
+    302, fragment appended after the query string."""
+    resp = await redirect_query_client.get("/auth/verify?token=garbage-token")
+    assert resp.status_code == 302
+    assert (
+        resp.headers["location"]
+        == "https://frontend.example.com/callback?from=email#verified=false"
     )
 
 
