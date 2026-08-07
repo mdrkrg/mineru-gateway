@@ -111,6 +111,7 @@ def test_startup_rejected_without_smtp_when_gate_closed(tmp_path):
             jwt_secret="test-jwt-secret-at-least-32-characters",
             create_tables=True,
             enable_background=False,
+            allow_unverified_accounts=False,
         )
         create_app(settings=settings)
 
@@ -126,6 +127,7 @@ def test_startup_ok_with_smtp_when_gate_closed(tmp_path):
         jwt_secret="test-jwt-secret-at-least-32-characters",
         create_tables=True,
         enable_background=False,
+        allow_unverified_accounts=False,
         smtp_host="smtp.example.com",
         smtp_from="sender@example.com",
     )
