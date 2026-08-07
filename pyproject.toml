@@ -10,6 +10,7 @@ dependencies = [
     "aiosqlite>=0.22.1",
     "alembic>=1.18.5",
     "fastapi>=0.139.0",
+    "fastapi-mail>=1.6.5",
     "fastapi-users[oauth,sqlalchemy]>=15.0.5",
     "httpx>=0.28.1",
     "pydantic-settings>=2.14.2",
