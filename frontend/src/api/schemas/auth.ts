@@ -202,13 +202,6 @@ export const VerifyEmailRequestSchema = defineRequestSchema(
   {} as { email: string },
 );
 
-export const VerifyEmailTokenRequestSchema = defineRequestSchema(
-  {
-    token: 'string',
-  },
-  {} as { token: string },
-);
-
 // ===== OAuth =====
 
 export const OAuthProvidersResponseSchema = defineResponseSchema(
@@ -248,6 +241,5 @@ export type UserCreateRequest = {
 export type UserUpdateRequest = { password: string | null; displayName: string | null };
 
 export type VerifyEmailRequest = { email: string };
-export type VerifyEmailTokenRequest = { token: string };
 
 export type OAuthProvidersResponse = typeof OAuthProvidersResponseSchema.infer;
