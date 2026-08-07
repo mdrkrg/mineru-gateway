@@ -33,7 +33,6 @@ function AdminUsersContent() {
   const [password, setPassword] = createSignal('');
   const [displayName, setDisplayName] = createSignal('');
   const [isSuperuser, setIsSuperuser] = createSignal(false);
-  const [isVerified, setIsVerified] = createSignal(true);
   const [isCreating, setIsCreating] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [created, setCreated] = createSignal<UserRead | null>(null);
@@ -54,7 +53,7 @@ function AdminUsersContent() {
         displayName: displayName().trim() || null,
         isActive: null,
         isSuperuser: isSuperuser(),
-        isVerified: isVerified(),
+        isVerified: null,
       },
       token,
     );
@@ -127,14 +126,6 @@ function AdminUsersContent() {
             />
           </label>
           <div class="flex gap-6">
-            <label class="flex items-center gap-1.5 text-sm">
-              <input
-                type="checkbox"
-                checked={isVerified()}
-                onChange={(e) => setIsVerified(e.currentTarget.checked)}
-              />
-              标记为已验证
-            </label>
             <label class="flex items-center gap-1.5 text-sm">
               <input
                 type="checkbox"
