@@ -180,6 +180,20 @@ def create_app(
         app.include_router(user_router)
         app.include_router(api_keys_me_router)
         app.include_router(oauth_router)
+        # Spec: email-verification.md Section 1/6.1 - verify routes are only
+        # registered when SMTP is configured (unset -> 404, matching the
+        # USER_AUTH_ENABLED=false pattern).
+        if settings.smtp_host:
+            from fastapi_users.router.verify import get_verify_router
+
+            from .auth.manager import get_user_manager
+            from .auth.schemas import UserRead
+            from .auth.verify_routes import router as verify_router
+
+            app.include_router(
+                get_verify_router(get_user_manager, UserRead), prefix="/auth"
+            )
+            app.include_router(verify_router)
 
     return app
 
