@@ -35,6 +35,27 @@ async def get_user_manager_dep(
     return UserManager(user_db, settings)
 
 
+async def _send_verification_email_after_create(
+    user: User,
+    user_manager: UserManager,
+    settings: Settings,
+    request: Request,
+) -> None:
+    """Spec: email-verification.md Section 4.4 - auto-send the verification
+    email after register / admin create when SMTP is configured.
+
+    Deliberately not hooked into on_after_register: the OIDC callback also
+    fires on_after_register and must never auto-send. Send failures are
+    swallowed by on_after_request_verify, so the create result is unaffected.
+    """
+    if settings.smtp_host is None:
+        return
+    try:
+        await user_manager.request_verify(user, request)
+    except exceptions.UserAlreadyVerified, exceptions.UserInactive:
+        pass
+
+
 @router.post("/jwt/login", response_model=TokenPair)
 async def login(
     body: LoginRequest,
@@ -106,6 +127,7 @@ async def register(
         raise HTTPException(status_code=400, detail="Password does not meet rules")
     except exceptions.UserAlreadyExists:
         raise HTTPException(status_code=400, detail="Email already registered")
+    await _send_verification_email_after_create(user, user_manager, settings, request)
     return UserRead.model_validate(user)
 
 
@@ -119,6 +141,7 @@ async def admin_create_user(
     body: UserCreate,
     request: Request,
     user_manager: Annotated[UserManager, Depends(get_user_manager_dep)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> UserRead:
     """Section 4.2: admin creates user (X-Admin-Token, not gated by OPEN_REGISTRATION)."""
     try:
@@ -127,4 +150,5 @@ async def admin_create_user(
         raise HTTPException(status_code=400, detail="Password does not meet rules")
     except exceptions.UserAlreadyExists:
         raise HTTPException(status_code=400, detail="Email already registered")
+    await _send_verification_email_after_create(user, user_manager, settings, request)
     return UserRead.model_validate(user)
