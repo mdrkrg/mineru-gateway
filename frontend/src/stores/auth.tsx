@@ -16,6 +16,7 @@ export interface AuthStore {
   loginWithTokens: (accessToken: string, refreshToken: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 // TODO: Migrate token management to BFF
@@ -159,6 +160,23 @@ export function createAuthStore(): AuthStore {
     setIsLoading(false);
   }
 
+  async function refreshUser() {
+    setError(null);
+
+    const result = await getCurrentUser();
+    if (result.isErr()) {
+      if (isHttpError(result.error) && result.error.status === 401) {
+        setUser(null);
+        setAccessToken(null);
+        setRefreshToken(null);
+        clearTokens();
+      }
+      setError(errorMessage(result.error));
+      return;
+    }
+    setUser(result.value);
+  }
+
   return {
     user,
     accessToken,
@@ -171,5 +189,6 @@ export function createAuthStore(): AuthStore {
     loginWithTokens,
     logout,
     refresh,
+    refreshUser,
   };
 }
