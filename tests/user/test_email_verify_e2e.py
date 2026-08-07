@@ -47,6 +47,9 @@ async def test_e2e_register_auto_verify_then_create_key(
     login = await gated_smtp_client.post("/auth/jwt/login", json=payload)
     assert login.status_code == 200
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    me = await gated_smtp_client.get("/users/me", headers=headers)
+    assert me.status_code == 200
+    assert me.json()["is_verified"] is True
     created = await gated_smtp_client.post(
         "/me/api-keys", headers=headers, json={"label": "e2e-key"}
     )
