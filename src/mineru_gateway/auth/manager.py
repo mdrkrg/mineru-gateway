@@ -15,6 +15,7 @@ from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin, exceptions
 from fastapi_users.db import SQLAlchemyUserDatabase
 
 from ..config import Settings
+from ..email import service as email_service
 from ..models import User
 from .backend import create_auth_backend
 from .dependencies import get_settings_dep, get_user_db
@@ -30,6 +31,12 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     def __init__(self, user_db: SQLAlchemyUserDatabase, settings: Settings) -> None:
         super().__init__(user_db)
         self.settings = settings
+        # Spec: email-verification.md Section 5.3 - verification tokens are
+        # signed with the JWT secret and expire per VERIFY_EMAIL_TOKEN_LIFETIME.
+        self.verification_token_secret = settings.jwt_secret
+        self.verification_token_lifetime_seconds = (
+            settings.verify_email_token_lifetime_seconds
+        )
 
     async def validate_password(self, password: str, user) -> None:
         """Section 7.4 / 5.2: password >= 8 chars, must not contain email."""
@@ -56,6 +63,24 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     ) -> None:
         """Section 5.2: log 'User {id} logged in'."""
         logger.info("User %s logged in", user.id)
+
+    async def on_after_request_verify(
+        self, user: User, token: str, request: Request | None = None
+    ) -> None:
+        """Spec: email-verification.md Section 5.2 - send the verification
+        email with the freshly minted token. Send failures are logged and
+        never raised, so register / admin create / request-verify-token
+        results are unaffected (Section 4.4)."""
+        try:
+            await email_service.send_verification_email(
+                user.email, token, self.settings
+            )
+        except Exception:
+            logger.exception("Failed to send verification email to %s", user.email)
+
+    async def on_after_verify(self, user: User, request: Request | None = None) -> None:
+        """Spec: email-verification.md Section 5.2 - log 'User {id} verified'."""
+        logger.info("User %s verified", user.id)
 
 
 async def get_user_manager(
