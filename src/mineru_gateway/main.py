@@ -59,6 +59,20 @@ def create_app(
             "GATEWAY_USER_AUTH_ENABLED is true"
         )
 
+    # Spec: email-verification.md Section 3.1: with user auth enabled and the
+    # verification gate closed, SMTP must be configured or unverified users
+    # have no verification path and are locked out of protected features.
+    if (
+        settings.user_auth_enabled
+        and not settings.allow_unverified_accounts
+        and settings.smtp_host is None
+    ):
+        raise ValueError(
+            "GATEWAY_USER_AUTH_ENABLED=true with "
+            "GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false requires GATEWAY_SMTP_HOST; "
+            "configure SMTP or set GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=true"
+        )
+
     configure_logging(level=settings.log_level, json_logs=settings.json_logs)
 
     @asynccontextmanager

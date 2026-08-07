@@ -8,7 +8,13 @@ from functools import lru_cache
 from urllib.parse import urlparse
 
 
-from pydantic import BaseModel, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    EmailStr,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -147,6 +153,21 @@ class Settings(BaseSettings):
     oauth_redirect_base_url: str = ""
     oauth_frontend_redirect_url: str = ""
 
+    # --- Email verification (spec: email-verification.md Section 3.1) ---
+    # Unset smtp_host means the email verification feature is off: verify
+    # routes are not registered and nothing is gated.
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from: EmailStr | None = None
+    smtp_from_name: str = "mineru-gateway"
+    smtp_starttls: bool = True
+    smtp_ssl_tls: bool = False
+    smtp_timeout: int = 10
+    verify_email_token_lifetime_seconds: int = 3600
+    verify_email_base_url: str = ""
+
     # --- CORS ---
     cors_allow_origins: list[str] = ["*"]
     cors_allow_methods: list[str] = ["*"]
@@ -192,6 +213,22 @@ class Settings(BaseSettings):
                 f"{[n for n in names if names.count(n) > 1]}"
             )
         return v
+
+    @model_validator(mode="after")
+    def _validate_smtp(self) -> "Settings":
+        """Spec: email-verification.md Section 3.1 validation rules."""
+        if self.smtp_starttls and self.smtp_ssl_tls:
+            raise ValueError(
+                "GATEWAY_SMTP_STARTTLS and GATEWAY_SMTP_SSL_TLS are mutually "
+                "exclusive; enable at most one of them"
+            )
+        if self.smtp_host and not self.smtp_from and not self.smtp_username:
+            raise ValueError(
+                "GATEWAY_SMTP_HOST requires GATEWAY_SMTP_FROM or "
+                "GATEWAY_SMTP_USERNAME so the sender address is known; "
+                "otherwise verification emails would silently never be sent"
+            )
+        return self
 
 
 @lru_cache

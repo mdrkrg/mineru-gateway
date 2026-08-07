@@ -605,6 +605,9 @@ async def test_providers_multiple_providers(upstream_client):
         jwt_secret="a" * 32,
         open_registration=True,
         create_tables=True,
+        # Gate open: no SMTP configured, so no verification path exists
+        # (spec: email-verification.md Section 3.1 startup validation).
+        allow_unverified_accounts=True,
         oauth_redirect_base_url="http://testserver",
         oidc_providers=[
             OIDCProviderConfig(
@@ -654,6 +657,9 @@ async def test_providers_empty_when_no_providers_configured(upstream_client):
         open_registration=True,
         oidc_providers=[],
         create_tables=True,
+        # Gate open: no SMTP configured, so no verification path exists
+        # (spec: email-verification.md Section 3.1 startup validation).
+        allow_unverified_accounts=True,
     )
     app = create_app(settings=settings_empty, upstream_client=upstream_client)
     async with LifespanManager(app):

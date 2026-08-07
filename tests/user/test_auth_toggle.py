@@ -309,6 +309,9 @@ def test_jwt_secret_long_enough_starts_successfully(tmp_path):
         jwt_secret="a" * 32,  # exactly 32 chars
         create_tables=True,
         enable_background=False,
+        # Gate open: no SMTP configured, so no verification path exists
+        # (spec: email-verification.md Section 3.1 startup validation).
+        allow_unverified_accounts=True,
     )
     app = create_app(settings=settings)
     assert app is not None
