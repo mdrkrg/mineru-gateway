@@ -118,20 +118,33 @@ def main() -> None:
         "--port-gateway", type=int, default=None, help="gateway port (auto)"
     )
     parser.add_argument(
+        "--port-smtp", type=int, default=None, help="smtp capture smtp port (auto)"
+    )
+    parser.add_argument(
+        "--port-smtp-control",
+        type=int,
+        default=None,
+        help="smtp capture control port (auto)",
+    )
+    parser.add_argument(
         "--port-frontend", type=int, default=5173, help="frontend dev server port"
     )
     args = parser.parse_args()
 
     mock_port = args.port_mock or _free_port("mock")
     gateway_port = args.port_gateway or _free_port("gateway")
+    smtp_port = args.port_smtp or _free_port("smtp")
+    smtp_control_port = args.port_smtp_control or _free_port("smtp-control")
     mock_url = f"http://127.0.0.1:{mock_port}"
     gateway_url = f"http://127.0.0.1:{gateway_port}"
+    smtp_capture_url = f"http://127.0.0.1:{smtp_control_port}"
 
     root = Path(__file__).resolve().parents[2]
     mock_server = root / "tests" / "e2e" / "mock_server.py"
+    smtp_capture_server = root / "tests" / "e2e" / "smtp_capture_server.py"
 
     # 1. Mock upstream
-    print(f"mock upstream  → {mock_url}")
+    print(f"mock upstream   → {mock_url}")
     _start(
         ["uv", "run", "python", str(mock_server), "--port", str(mock_port)],
         stdout=None,
@@ -139,8 +152,26 @@ def main() -> None:
     )
     _wait_ready(f"{mock_url}/health")
 
-    # 2. Gateway
-    print(f"gateway        → {gateway_url}  (→ mock)")
+    # 2. SMTP capture
+    print(f"smtp capture    → smtp 127.0.0.1:{smtp_port}, control {smtp_capture_url}")
+    _start(
+        [
+            "uv",
+            "run",
+            "python",
+            str(smtp_capture_server),
+            "--smtp-port",
+            str(smtp_port),
+            "--control-port",
+            str(smtp_control_port),
+        ],
+        stdout=None,
+        stderr=None,
+    )
+    _wait_ready(f"{smtp_capture_url}/health")
+
+    # 3. Gateway
+    print(f"gateway         → {gateway_url}  (→ mock)")
     _start(
         [
             "uv",
@@ -162,6 +193,12 @@ def main() -> None:
             "GATEWAY_CREATE_TABLES": "true",
             "GATEWAY_ENABLE_BACKGROUND": "false",
             "GATEWAY_JSON_LOGS": "false",
+            "GATEWAY_SMTP_HOST": "127.0.0.1",
+            "GATEWAY_SMTP_PORT": str(smtp_port),
+            "GATEWAY_SMTP_FROM": "e2e@example.com",
+            "GATEWAY_SMTP_STARTTLS": "false",
+            "GATEWAY_SMTP_SSL_TLS": "false",
+            "GATEWAY_GATEWAY_URL": gateway_url,
         },
         stdout=None,
         stderr=None,
@@ -188,9 +225,12 @@ def main() -> None:
     print()
     print("────────────────────────────────────────────")
     print("  mock upstream   ", mock_url)
+    print("  smtp capture    ", smtp_capture_url)
     print("  gateway         ", gateway_url)
     print("  mock control    ", f"{mock_url}/_mock/configure")
     print("  mock health     ", f"{mock_url}/health")
+    print("  smtp health     ", f"{smtp_capture_url}/health")
+    print("  smtp inbox      ", f"{smtp_capture_url}/emails")
     print("  gateway health  ", f"{gateway_url}/health")
     if args.frontend:
         print("  frontend        ", f"http://localhost:{args.port_frontend}")

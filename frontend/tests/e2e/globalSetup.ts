@@ -9,6 +9,7 @@ const TMP_DIR = resolve(__dirname, '..', '..', '.e2e-tmp');
 const URLS_FILE = resolve(TMP_DIR, 'urls.json');
 
 let mockProc: ChildProcess | null = null;
+let smtpProc: ChildProcess | null = null;
 let gatewayProc: ChildProcess | null = null;
 
 function freePort(): Promise<number> {
@@ -62,8 +63,11 @@ export async function setup(): Promise<void> {
 
   const mockPort = await freePort();
   const gatewayPort = await freePort();
+  const smtpPort = await freePort();
+  const smtpControlPort = await freePort();
   const mockUrl = `http://127.0.0.1:${mockPort}`;
   const gatewayUrl = `http://127.0.0.1:${gatewayPort}`;
+  const smtpCaptureUrl = `http://127.0.0.1:${smtpControlPort}`;
 
   mockProc = await spawnProc('uv', [
     'run', 'python',
@@ -72,6 +76,16 @@ export async function setup(): Promise<void> {
     '--host', '127.0.0.1',
   ], {});
   await waitReady(`${mockUrl}/health`);
+
+  smtpProc = await spawnProc('uv', [
+    'run', 'python',
+    resolve(ROOT, 'tests', 'e2e', 'smtp_capture_server.py'),
+    '--smtp-port', String(smtpPort),
+    '--control-port', String(smtpControlPort),
+    '--smtp-host', '127.0.0.1',
+    '--control-host', '127.0.0.1',
+  ], {});
+  await waitReady(`${smtpCaptureUrl}/health`);
 
   gatewayProc = await spawnProc('uv', [
     'run', 'uvicorn',
@@ -85,6 +99,13 @@ export async function setup(): Promise<void> {
     GATEWAY_USER_AUTH_ENABLED: 'true',
     GATEWAY_JWT_SECRET: 'e2e-jwt-secret-at-least-32-chars!!',
     GATEWAY_OPEN_REGISTRATION: 'true',
+    GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS: 'true',
+    GATEWAY_SMTP_HOST: '127.0.0.1',
+    GATEWAY_SMTP_PORT: String(smtpPort),
+    GATEWAY_SMTP_FROM: 'e2e@example.com',
+    GATEWAY_SMTP_STARTTLS: 'false',
+    GATEWAY_SMTP_SSL_TLS: 'false',
+    GATEWAY_GATEWAY_URL: gatewayUrl,
     GATEWAY_OIDC_PROVIDERS: '[{"name":"keycloak","openid_configuration_endpoint":"https://e2e.example.com/.well-known/openid-configuration","client_id":"e2e-client","client_secret":"e2e-secret"}]',
     GATEWAY_CORS_ALLOW_ORIGINS: '["http://localhost:5173"]',
     GATEWAY_CORS_ALLOW_CREDENTIALS: 'true',
@@ -97,11 +118,19 @@ export async function setup(): Promise<void> {
   });
   await waitReady(`${gatewayUrl}/health`);
 
-  writeFileSync(URLS_FILE, JSON.stringify({ mockUrl, gatewayUrl, mockPort, gatewayPort }));
+  writeFileSync(URLS_FILE, JSON.stringify({
+    mockUrl,
+    gatewayUrl,
+    smtpCaptureUrl,
+    mockPort,
+    gatewayPort,
+    smtpPort,
+    smtpControlPort,
+  }));
 }
 
 export async function teardown(): Promise<void> {
-  for (const proc of [mockProc, gatewayProc]) {
+  for (const proc of [mockProc, smtpProc, gatewayProc]) {
     if (proc && proc.exitCode === null) {
       proc.kill('SIGTERM');
       await new Promise<void>((resolve) => {

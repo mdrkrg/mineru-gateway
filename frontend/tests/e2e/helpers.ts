@@ -4,7 +4,15 @@ import type { ParseRequestFields } from '../../src/api/schemas/mineru-options';
 
 const URLS_FILE = resolve(__dirname, '..', '..', '.e2e-tmp', 'urls.json');
 
-export function loadE2EUrls(): { mockUrl: string; gatewayUrl: string; mockPort: number; gatewayPort: number } {
+export function loadE2EUrls(): {
+  mockUrl: string;
+  gatewayUrl: string;
+  smtpCaptureUrl: string;
+  mockPort: number;
+  gatewayPort: number;
+  smtpPort: number;
+  smtpControlPort: number;
+} {
   return JSON.parse(readFileSync(URLS_FILE, 'utf-8'));
 }
 
