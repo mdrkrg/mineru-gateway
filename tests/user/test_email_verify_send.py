@@ -8,24 +8,8 @@ Spec: email-verification.md
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
-from urllib.parse import parse_qs, urlparse
 
-import httpx
 import pytest
-
-
-async def _oauth_flow(client) -> httpx.Response:
-    """Run authorize + callback for the mock keycloak provider (Section 4.5).
-
-    Returns the callback response.
-    """
-    auth_resp = await client.get("/auth/oauth/keycloak/authorize")
-    assert auth_resp.status_code == 302, auth_resp.text
-    location = auth_resp.headers.get("location", "")
-    state = parse_qs(urlparse(location).query).get("state", [""])[0]
-    return await client.get(
-        f"/auth/oauth/keycloak/callback?code=test-code&state={state}"
-    )
 
 
 # ===== Section 8.2: register / admin create keep is_verified=false =====
@@ -167,13 +151,18 @@ async def test_register_send_failure_does_not_break_registration(
     ],
 )
 async def test_oidc_callback_never_sends_verification_email(
-    smtp_oidc_client, mock_oauth_client, email_sender, profile, expected_verified
+    smtp_oidc_client,
+    mock_oauth_client,
+    email_sender,
+    oauth_flow,
+    profile,
+    expected_verified,
 ):
     """Section 8.2 / 4.4: OIDC-created users never get an automatic email,
     whether the provider reports the email unverified, omits the claim, or
     reports it verified."""
     mock_oauth_client.get_profile = AsyncMock(return_value=profile)
-    resp = await _oauth_flow(smtp_oidc_client)
+    resp = await oauth_flow(smtp_oidc_client)
     assert resp.status_code == 200, resp.text
     assert email_sender.sent == []
 
