@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 from urllib.parse import parse_qs, urlparse
@@ -35,38 +36,26 @@ def settings_closed_registration(settings) -> Settings:
 @pytest.fixture
 async def no_auth_app(settings_no_user_auth, upstream_client):
     """Section 6.3: app with user_auth_enabled=false."""
-    application = create_app(
-        settings=settings_no_user_auth, upstream_client=upstream_client
-    )
-    async with LifespanManager(application):
+    async with _build_app(settings_no_user_auth, upstream_client) as application:
         yield application
 
 
 @pytest.fixture
 async def no_auth_client(no_auth_app):
-    transport = httpx.ASGITransport(app=no_auth_app)
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as c:
+    async with _client_for(no_auth_app) as c:
         yield c
 
 
 @pytest.fixture
 async def closed_reg_app(settings_closed_registration, upstream_client):
     """Section 4.2: app with open_registration=false."""
-    application = create_app(
-        settings=settings_closed_registration, upstream_client=upstream_client
-    )
-    async with LifespanManager(application):
+    async with _build_app(settings_closed_registration, upstream_client) as application:
         yield application
 
 
 @pytest.fixture
 async def closed_reg_client(closed_reg_app):
-    transport = httpx.ASGITransport(app=closed_reg_app)
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as c:
+    async with _client_for(closed_reg_app) as c:
         yield c
 
 
@@ -285,80 +274,26 @@ def gated_smtp_oidc_settings(smtp_oidc_settings) -> Settings:
     return smtp_oidc_settings.model_copy(update={"allow_unverified_accounts": False})
 
 
-@pytest.fixture
-async def smtp_app(smtp_settings, upstream_client, email_sender):
-    application = create_app(settings=smtp_settings, upstream_client=upstream_client)
+# ===== Helper context managers for DRY fixture creation =====
+
+
+@asynccontextmanager
+async def _build_app(settings, upstream_client):
+    application = create_app(settings=settings, upstream_client=upstream_client)
     async with LifespanManager(application):
         yield application
 
 
-@pytest.fixture
-async def smtp_client(smtp_app):
-    transport = httpx.ASGITransport(app=smtp_app)
+@asynccontextmanager
+async def _client_for(app):
+    transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(
         transport=transport, base_url="http://testserver"
     ) as c:
         yield c
 
 
-@pytest.fixture
-async def redirect_app(redirect_settings, upstream_client, email_sender):
-    application = create_app(
-        settings=redirect_settings, upstream_client=upstream_client
-    )
-    async with LifespanManager(application):
-        yield application
-
-
-@pytest.fixture
-async def redirect_client(redirect_app):
-    transport = httpx.ASGITransport(app=redirect_app)
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as c:
-        yield c
-
-
-@pytest.fixture
-async def redirect_query_app(redirect_query_settings, upstream_client, email_sender):
-    application = create_app(
-        settings=redirect_query_settings, upstream_client=upstream_client
-    )
-    async with LifespanManager(application):
-        yield application
-
-
-@pytest.fixture
-async def redirect_query_client(redirect_query_app):
-    transport = httpx.ASGITransport(app=redirect_query_app)
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as c:
-        yield c
-
-
-@pytest.fixture
-async def gated_smtp_app(gated_smtp_settings, upstream_client, email_sender):
-    application = create_app(
-        settings=gated_smtp_settings, upstream_client=upstream_client
-    )
-    async with LifespanManager(application):
-        yield application
-
-
-@pytest.fixture
-async def gated_smtp_client(gated_smtp_app):
-    transport = httpx.ASGITransport(app=gated_smtp_app)
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as c:
-        yield c
-
-
-@pytest.fixture
-async def smtp_oidc_app(
-    smtp_oidc_settings, upstream_client, monkeypatch, mock_oauth_client, email_sender
-):
+def _patch_oauth(monkeypatch, mock_oauth_client):
     from mineru_gateway.auth.oauth import base
 
     monkeypatch.setattr(
@@ -366,19 +301,68 @@ async def smtp_oidc_app(
         "get_oauth_client",
         lambda name: mock_oauth_client if name == "keycloak" else None,
     )
-    application = create_app(
-        settings=smtp_oidc_settings, upstream_client=upstream_client
-    )
-    async with LifespanManager(application):
-        yield application
+
+
+@pytest.fixture
+async def smtp_app(smtp_settings, upstream_client, email_sender):
+    async with _build_app(smtp_settings, upstream_client) as app:
+        yield app
+
+
+@pytest.fixture
+async def smtp_client(smtp_app):
+    async with _client_for(smtp_app) as c:
+        yield c
+
+
+@pytest.fixture
+async def redirect_app(redirect_settings, upstream_client, email_sender):
+    async with _build_app(redirect_settings, upstream_client) as app:
+        yield app
+
+
+@pytest.fixture
+async def redirect_client(redirect_app):
+    async with _client_for(redirect_app) as c:
+        yield c
+
+
+@pytest.fixture
+async def redirect_query_app(redirect_query_settings, upstream_client, email_sender):
+    async with _build_app(redirect_query_settings, upstream_client) as app:
+        yield app
+
+
+@pytest.fixture
+async def redirect_query_client(redirect_query_app):
+    async with _client_for(redirect_query_app) as c:
+        yield c
+
+
+@pytest.fixture
+async def gated_smtp_app(gated_smtp_settings, upstream_client, email_sender):
+    async with _build_app(gated_smtp_settings, upstream_client) as app:
+        yield app
+
+
+@pytest.fixture
+async def gated_smtp_client(gated_smtp_app):
+    async with _client_for(gated_smtp_app) as c:
+        yield c
+
+
+@pytest.fixture
+async def smtp_oidc_app(
+    smtp_oidc_settings, upstream_client, monkeypatch, mock_oauth_client, email_sender
+):
+    _patch_oauth(monkeypatch, mock_oauth_client)
+    async with _build_app(smtp_oidc_settings, upstream_client) as app:
+        yield app
 
 
 @pytest.fixture
 async def smtp_oidc_client(smtp_oidc_app):
-    transport = httpx.ASGITransport(app=smtp_oidc_app)
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as c:
+    async with _client_for(smtp_oidc_app) as c:
         yield c
 
 
@@ -390,24 +374,12 @@ async def gated_smtp_oidc_app(
     mock_oauth_client,
     email_sender,
 ):
-    from mineru_gateway.auth.oauth import base
-
-    monkeypatch.setattr(
-        base,
-        "get_oauth_client",
-        lambda name: mock_oauth_client if name == "keycloak" else None,
-    )
-    application = create_app(
-        settings=gated_smtp_oidc_settings, upstream_client=upstream_client
-    )
-    async with LifespanManager(application):
-        yield application
+    _patch_oauth(monkeypatch, mock_oauth_client)
+    async with _build_app(gated_smtp_oidc_settings, upstream_client) as app:
+        yield app
 
 
 @pytest.fixture
 async def gated_smtp_oidc_client(gated_smtp_oidc_app):
-    transport = httpx.ASGITransport(app=gated_smtp_oidc_app)
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as c:
+    async with _client_for(gated_smtp_oidc_app) as c:
         yield c
