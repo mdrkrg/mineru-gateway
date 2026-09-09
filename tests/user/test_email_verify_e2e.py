@@ -8,20 +8,6 @@ Spec: email-verification.md
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
-from urllib.parse import parse_qs, urlparse
-
-import httpx
-
-
-async def _oauth_flow(client) -> httpx.Response:
-    """Run authorize + callback for the mock keycloak provider (Section 4.5)."""
-    auth_resp = await client.get("/auth/oauth/keycloak/authorize")
-    assert auth_resp.status_code == 302, auth_resp.text
-    location = auth_resp.headers.get("location", "")
-    state = parse_qs(urlparse(location).query).get("state", [""])[0]
-    return await client.get(
-        f"/auth/oauth/keycloak/callback?code=test-code&state={state}"
-    )
 
 
 async def test_e2e_register_auto_verify_then_create_key(
@@ -94,7 +80,7 @@ async def test_e2e_403_then_request_verify_then_create_key(
 
 
 async def test_e2e_oidc_unverified_verify_then_create_key(
-    gated_smtp_oidc_client, mock_oauth_client, email_sender
+    gated_smtp_oidc_client, mock_oauth_client, email_sender, oauth_flow
 ):
     """Section 8.7: OIDC email_verified=false -> unverified user -> 403 ->
     request-verify-token -> verify -> key create succeeds."""
@@ -106,7 +92,7 @@ async def test_e2e_oidc_unverified_verify_then_create_key(
             "email_verified": False,
         }
     )
-    cb = await _oauth_flow(gated_smtp_oidc_client)
+    cb = await oauth_flow(gated_smtp_oidc_client)
     assert cb.status_code == 200, cb.text
     assert email_sender.sent == []
     headers = {"Authorization": f"Bearer {cb.json()['access_token']}"}
