@@ -13,6 +13,7 @@ import mimetypes
 import re
 import uuid
 import zipfile
+from urllib.parse import quote
 from datetime import date
 from typing import Any
 
@@ -155,6 +156,14 @@ async def get_task_result(
     headers = {
         k: v for k, v in upstream_resp.headers.items() if k.lower() not in excluded
     }
+    # UX: name the download after the user's original file instead of the
+    # upstream task UUID. Only download-like responses are rewritten; JSON
+    # results and tasks without file_names pass through unchanged.
+    disposition = _build_download_disposition(task, upstream_resp.headers)
+    if disposition:
+        for k in [k for k in headers if k.lower() == "content-disposition"]:
+            del headers[k]
+        headers["Content-Disposition"] = disposition
     return Response(
         content=upstream_resp.content,
         status_code=upstream_resp.status_code,
@@ -296,6 +305,68 @@ async def result_zip(
     )
 
 
+_DOWNLOAD_MIME_PREFIXES = ("application/zip", "application/octet-stream")
+_PASSTHROUGH_MIME_PREFIXES = ("application/json", "text/")
+_UNSAFE_FILENAME_CHARS = re.compile(r'[\x00-\x1f\x7f"\\/:*?<>|]')
+_STEM_MAX_LENGTH = 100
+
+
+def _build_download_disposition(task: Any, upstream_headers: Any) -> str | None:
+    """Content-Disposition named after the user's original file, or None.
+
+    Mirrors the batch-endpoints.md entry naming (file_names[0] first),
+    adapted for a single attachment download. Returns None to keep the
+    upstream header as-is when the response is not a download or the task
+    has no file metadata.
+    """
+    content_type = (upstream_headers.get("content-type") or "").lower()
+    disposition = upstream_headers.get("content-disposition") or ""
+    bare_type = content_type.split(";")[0].strip()
+
+    if bare_type.startswith(_PASSTHROUGH_MIME_PREFIXES):
+        return None
+    is_download = bool(disposition) or bare_type.startswith(_DOWNLOAD_MIME_PREFIXES)
+    if not is_download or not task.file_names:
+        return None
+
+    stem = _sanitize_stem(task.file_names[0])
+    if not stem:
+        return None
+    filename = f"{stem}{_download_extension(disposition, content_type)}"
+
+    try:
+        filename.encode("ascii")
+        return f'attachment; filename="{filename}"'
+    except UnicodeEncodeError:
+        # RFC 6266/5987: percent-encoded ASCII fallback + UTF-8 form for
+        # non-ASCII names (frontend prefers filename* when present).
+        encoded = quote(filename, safe="")
+        return f"attachment; filename=\"{encoded}\"; filename*=UTF-8''{encoded}"
+
+
+def _strip_extension(name: str) -> str:
+    """Drop the extension ('doc.pdf' -> 'doc'); dotfiles ('.pdf') keep their name."""
+    dot = name.rfind(".")
+    return name[:dot] if dot > 0 else name
+
+
+def _sanitize_stem(name: str) -> str:
+    """basename -> extensionless stem, safe for headers and local filesystems."""
+    base = _strip_extension(name.replace("\\", "/").split("/")[-1])
+    stem = _UNSAFE_FILENAME_CHARS.sub("_", base).strip().strip(".")
+    return stem[:_STEM_MAX_LENGTH]
+
+
+def _download_extension(disposition: str, content_type: str) -> str:
+    """Extension from the upstream filename when present, else Content-Type."""
+    upstream_name = _extract_cd_filename(disposition)
+    if upstream_name:
+        _, ext = _split_ext(upstream_name)
+        if 0 < len(ext) <= 8:
+            return ext
+    return _guess_extension(content_type)
+
+
 def _extract_cd_filename(content_disposition: str) -> str | None:
     """Extract filename from Content-Disposition header value."""
     if not content_disposition:
@@ -319,10 +390,7 @@ def _guess_extension(content_type: str | None) -> str:
 def _fallback_entry_name(task: Any) -> str:
     """Build entry name for skipped tasks (rules 6b/6c/6d with .bin fallback)."""
     if task.file_names and len(task.file_names) > 0:
-        base = task.file_names[0]
-        dot = base.rfind(".")
-        if dot > 0:
-            base = base[:dot]
+        base = _strip_extension(task.file_names[0])
         return f"{base}/result.bin"
     return f"{task.id}/result.bin"
 
@@ -345,10 +413,7 @@ def _build_result_entry_name(task: Any, upstream_resp: Any) -> str:
     ext = _guess_extension(upstream_resp.headers.get("content-type"))
 
     if task.file_names and len(task.file_names) > 0:
-        base = task.file_names[0]
-        dot = base.rfind(".")
-        if dot > 0:
-            base = base[:dot]
+        base = _strip_extension(task.file_names[0])
         return f"{base}/result{ext}"
 
     return f"{task.id}/result{ext}"
