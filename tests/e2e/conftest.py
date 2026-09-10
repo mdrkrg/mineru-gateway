@@ -17,6 +17,7 @@ import os
 import signal
 import socket
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -209,8 +210,8 @@ def _start_gateway(
     stderr_pipe = subprocess.PIPE
     proc = subprocess.Popen(
         [
-            "uv",
-            "run",
+            sys.executable,
+            "-m",
             "uvicorn",
             "mineru_gateway.main:create_app",
             "--factory",
@@ -219,6 +220,9 @@ def _start_gateway(
             "--port",
             str(port),
         ],
+        # Private cwd (the test's tmp dir): the gateway must never pick up
+        # a developer's local .env from the repository root.
+        cwd=str(Path(db_path).parent),
         env={**parent_env, **env},
         stdout=subprocess.DEVNULL,
         stderr=stderr_pipe,
