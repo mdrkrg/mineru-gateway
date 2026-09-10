@@ -1,5 +1,6 @@
 import { Show, createSignal } from 'solid-js';
 import { Link, createFileRoute, useNavigate } from '@tanstack/solid-router';
+import { t } from '@/i18n';
 import { register } from '@/api/functions/auth';
 import { errorMessage } from '@/utils/api-error';
 import { ROUTES } from '@/utils/constants';
@@ -23,7 +24,7 @@ function RegisterPage() {
     setError(null);
 
     if (password() !== confirm()) {
-      setError('两次输入的密码不一致');
+      setError(t('register.errPasswordMismatch'));
       return;
     }
 
@@ -53,12 +54,12 @@ function RegisterPage() {
           when={registeredEmail()}
           fallback={
             <>
-              <h1 class="text-2xl font-bold text-center mb-2">注册</h1>
+              <h1 class="text-2xl font-bold text-center mb-2">{t('register.title')}</h1>
               <p class="text-sm text-gray-500 text-center mb-6">MinerU Gateway</p>
 
               <form onSubmit={handleSubmit} class="flex flex-col gap-4">
                 <label class="flex flex-col gap-1">
-                  <span class="text-sm font-medium text-gray-700">邮箱</span>
+                  <span class="text-sm font-medium text-gray-700">{t('register.email')}</span>
                   <input
                     type="email"
                     required
@@ -70,7 +71,7 @@ function RegisterPage() {
                 </label>
 
                 <label class="flex flex-col gap-1">
-                  <span class="text-sm font-medium text-gray-700">显示名称(可选)</span>
+                  <span class="text-sm font-medium text-gray-700">{t('register.displayName')}</span>
                   <input
                     type="text"
                     autocomplete="nickname"
@@ -81,7 +82,7 @@ function RegisterPage() {
                 </label>
 
                 <label class="flex flex-col gap-1">
-                  <span class="text-sm font-medium text-gray-700">密码</span>
+                  <span class="text-sm font-medium text-gray-700">{t('register.password')}</span>
                   <input
                     type="password"
                     required
@@ -93,7 +94,7 @@ function RegisterPage() {
                 </label>
 
                 <label class="flex flex-col gap-1">
-                  <span class="text-sm font-medium text-gray-700">确认密码</span>
+                  <span class="text-sm font-medium text-gray-700">{t('register.confirmPassword')}</span>
                   <input
                     type="password"
                     required
@@ -113,14 +114,14 @@ function RegisterPage() {
                   disabled={isSubmitting()}
                   class="bg-blue-600 text-white rounded px-4 py-2 font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isSubmitting() ? '注册中…' : '注册'}
+                  {isSubmitting() ? t('register.submitting') : t('register.submit')}
                 </button>
               </form>
 
               <p class="text-sm text-gray-500 text-center mt-4">
-                已有账号?{' '}
+                {t('register.hasAccount')}{' '}
                 <Link to={ROUTES.login} class="text-blue-600 hover:underline">
-                  登录
+                  {t('register.toLogin')}
                 </Link>
               </p>
             </>
@@ -128,16 +129,18 @@ function RegisterPage() {
         >
           {(email) => (
             <div class="text-center">
-              <h1 class="text-2xl font-bold mb-2">注册成功</h1>
+              <h1 class="text-2xl font-bold mb-2">{t('register.successTitle')}</h1>
               <p class="text-sm text-gray-600 mb-6">
-                验证邮件已发送至 <span class="font-medium">{email()}</span>，请查收并点击验证链接完成邮箱验证，然后登录。
+                {t('register.successPrefix')}
+                <span class="font-medium">{email()}</span>
+                {t('register.successSuffix')}
               </p>
               <button
                 type="button"
                 onClick={() => navigate({ to: ROUTES.login })}
                 class="bg-blue-600 text-white rounded px-4 py-2 font-medium hover:bg-blue-700"
               >
-                去登录
+                {t('register.goLogin')}
               </button>
             </div>
           )}
