@@ -1,5 +1,6 @@
 import { Show, createSignal, onMount, For } from 'solid-js';
 import { Link, createFileRoute, useNavigate } from '@tanstack/solid-router';
+import { t } from '@/i18n';
 import { useAuth } from '@/stores/auth-context';
 import { getOAuthProviders } from '@/api/functions/auth';
 import { ROUTES } from '@/utils/constants';
@@ -44,12 +45,12 @@ function LoginPage() {
   return (
     <div class="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div class="w-full max-w-sm bg-white rounded-lg shadow p-8">
-        <h1 class="text-2xl font-bold text-center mb-2">登录</h1>
+        <h1 class="text-2xl font-bold text-center mb-2">{t('login.title')}</h1>
         <p class="text-sm text-gray-500 text-center mb-6">MinerU Gateway</p>
 
         <form onSubmit={handleSubmit} class="flex flex-col gap-4">
           <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">邮箱</span>
+            <span class="text-sm font-medium text-gray-700">{t('login.email')}</span>
             <input
               type="email"
               required
@@ -61,7 +62,7 @@ function LoginPage() {
           </label>
 
           <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">密码</span>
+            <span class="text-sm font-medium text-gray-700">{t('login.password')}</span>
             <input
               type="password"
               required
@@ -81,7 +82,7 @@ function LoginPage() {
             disabled={auth.isLoading()}
             class="bg-blue-600 text-white rounded px-4 py-2 font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {auth.isLoading() ? '登录中…' : '登录'}
+            {auth.isLoading() ? t('login.submitting') : t('login.submit')}
           </button>
         </form>
 
@@ -89,7 +90,7 @@ function LoginPage() {
           <div class="mt-4">
             <div class="flex items-center gap-2 mb-3">
               <div class="flex-1 border-t border-gray-200" />
-              <span class="text-xs text-gray-400">第三方登录</span>
+              <span class="text-xs text-gray-400">{t('login.oauthDivider')}</span>
               <div class="flex-1 border-t border-gray-200" />
             </div>
             <div class="flex flex-col gap-2">
@@ -100,7 +101,7 @@ function LoginPage() {
                     onClick={() => handleOAuthLogin(p.name)}
                     class="w-full border border-gray-300 rounded px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                   >
-                    {p.name} 登录
+                    {t('login.oauthButton', { provider: p.name })}
                   </button>
                 )}
               </For>
@@ -109,9 +110,9 @@ function LoginPage() {
         </Show>
 
         <p class="text-sm text-gray-500 text-center mt-4">
-          还没有账号?{' '}
+          {t('login.noAccount')}{' '}
           <Link to={ROUTES.register} class="text-blue-600 hover:underline">
-            注册
+            {t('login.toRegister')}
           </Link>
         </p>
       </div>

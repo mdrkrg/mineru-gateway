@@ -1,5 +1,6 @@
 import { Show, createSignal, onMount } from 'solid-js';
 import { Link, createFileRoute, useNavigate } from '@tanstack/solid-router';
+import { t } from '@/i18n';
 import { useAuth } from '@/stores/auth-context';
 import { ROUTES } from '@/utils/constants';
 
@@ -41,7 +42,7 @@ function OAuthCallbackPage() {
     const refreshToken = params.get('refresh_token');
 
     if (!accessToken || !refreshToken) {
-      setError('登录回调缺少令牌参数,请重试');
+      setError(t('oauth.errMissingTokens'));
       return;
     }
 
@@ -49,7 +50,7 @@ function OAuthCallbackPage() {
     if (auth.isAuthenticated()) {
       navigate({ to: ROUTES.home });
     } else {
-      setError(auth.error() ?? '登录失败,请重试');
+      setError(auth.error() ?? t('oauth.errLoginFailed'));
     }
   });
 
@@ -64,40 +65,40 @@ function OAuthCallbackPage() {
               fallback={
                 <Show
                   when={error()}
-                  fallback={<p class="text-gray-600">正在完成登录…</p>}
+                  fallback={<p class="text-gray-600">{t('oauth.completing')}</p>}
                 >
-                  <h1 class="text-xl font-bold mb-2">登录失败</h1>
+                  <h1 class="text-xl font-bold mb-2">{t('oauth.failedTitle')}</h1>
                   <p class="text-sm text-red-600 mb-4">{error()}</p>
                   <Link to={ROUTES.login} class="text-blue-600 hover:underline">
-                    返回登录
+                    {t('oauth.backToLogin')}
                   </Link>
                 </Show>
               }
             >
-              <h1 class="text-xl font-bold mb-2">邮箱验证失败</h1>
+              <h1 class="text-xl font-bold mb-2">{t('oauth.verifyFailedTitle')}</h1>
               <p class="text-sm text-red-600 mb-4">
-                验证链接无效或已过期，请重新申请验证邮件。
+                {t('oauth.verifyFailedBody')}
               </p>
               <Link to={ROUTES.login} class="text-blue-600 hover:underline">
-                返回登录
+                {t('oauth.backToLogin')}
               </Link>
             </Show>
           }
         >
-          <h1 class="text-xl font-bold mb-2">邮箱验证成功</h1>
+          <h1 class="text-xl font-bold mb-2">{t('oauth.verifySuccessTitle')}</h1>
           <p class="text-sm text-gray-600 mb-4">
-            您的邮箱已通过验证，现在可以创建 API Key。
+            {t('oauth.verifySuccessBody')}
           </p>
           <Show
             when={auth.isAuthenticated()}
             fallback={
               <Link to={ROUTES.login} class="text-blue-600 hover:underline">
-                去登录
+                {t('oauth.goLogin')}
               </Link>
             }
           >
             <Link to={ROUTES.home} class="text-blue-600 hover:underline">
-              返回首页
+              {t('oauth.goHome')}
             </Link>
           </Show>
         </Show>
