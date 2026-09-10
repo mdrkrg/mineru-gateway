@@ -191,22 +191,27 @@ async def test_verify_get_expired_token_redirects_302_false(
     )
 
 
-async def test_verify_get_already_verified_user_no_redirect_returns_400(
+async def test_verify_get_already_verified_user_no_redirect_returns_200_userread(
     smtp_client, email_sender
 ):
-    """Section 8.5: user already verified, no redirect URL -> 400."""
-    await _register(smtp_client)
+    """Section 8.5: user already verified (e.g. a scanner prefetch consumed
+    the single-use token), no redirect URL -> idempotent 200 + UserRead."""
+    user = await _register(smtp_client)
     token = email_sender.last()["token"]
     first = await smtp_client.get(f"/auth/verify?token={token}")
     assert first.status_code == 200
     second = await smtp_client.get(f"/auth/verify?token={token}")
-    assert second.status_code == 400
+    assert second.status_code == 200
+    body = second.json()
+    assert body["email"] == user["email"]
+    assert body["is_verified"] is True
 
 
-async def test_verify_get_already_verified_user_redirects_302_false(
+async def test_verify_get_already_verified_user_redirects_302_true(
     redirect_client, email_sender
 ):
-    """Section 8.5: user already verified + redirect URL -> 302 #verified=false."""
+    """Section 8.5: user already verified + redirect URL -> idempotent 302
+    #verified=true."""
     await _register(redirect_client)
     token = email_sender.last()["token"]
     first = await redirect_client.get(f"/auth/verify?token={token}")
@@ -219,5 +224,5 @@ async def test_verify_get_already_verified_user_redirects_302_false(
     assert second.status_code == 302
     assert (
         second.headers["location"]
-        == "https://frontend.example.com/callback#verified=false"
+        == "https://frontend.example.com/callback#verified=true"
     )
