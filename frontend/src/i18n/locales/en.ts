@@ -78,6 +78,7 @@ export const en = {
   'nav.admin': 'Admin',
   'nav.taskDetail': 'Task Detail',
   'nav.logout': 'Log Out',
+  'nav.language': 'Language',
 
   // Task statuses (StatusBadge, filters, dashboard)
   'status.pending': 'Pending',

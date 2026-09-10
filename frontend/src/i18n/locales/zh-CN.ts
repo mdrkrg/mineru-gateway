@@ -81,6 +81,7 @@ export const zhCN: Dict = {
   'nav.admin': '管理',
   'nav.taskDetail': '任务详情',
   'nav.logout': '退出登录',
+  'nav.language': '语言',
 
   // Task statuses (StatusBadge, filters, dashboard)
   'status.pending': '排队中',
