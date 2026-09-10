@@ -11,26 +11,27 @@ import {
   Users,
 } from 'lucide-solid';
 import { useAuth } from '@/stores/auth-context';
+import { t, type DictKey } from '@/i18n';
 import { ROUTES } from '@/utils/constants';
 
 interface NavItem {
   to: string;
-  label: string;
+  labelKey: DictKey;
   icon: typeof LayoutDashboard;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: ROUTES.home, label: '仪表盘', icon: LayoutDashboard },
-  { to: ROUTES.tasks, label: '任务', icon: ListTodo },
-  { to: ROUTES.upload, label: '上传解析', icon: Upload },
-  { to: ROUTES.download, label: '结果下载', icon: Download },
-  { to: ROUTES.apiKeys, label: 'API Keys', icon: KeyRound },
-  { to: ROUTES.profile, label: '个人资料', icon: User },
+  { to: ROUTES.home, labelKey: 'nav.dashboard', icon: LayoutDashboard },
+  { to: ROUTES.tasks, labelKey: 'nav.tasks', icon: ListTodo },
+  { to: ROUTES.upload, labelKey: 'nav.upload', icon: Upload },
+  { to: ROUTES.download, labelKey: 'nav.download', icon: Download },
+  { to: ROUTES.apiKeys, labelKey: 'nav.apiKeys', icon: KeyRound },
+  { to: ROUTES.profile, labelKey: 'nav.profile', icon: User },
 ];
 
 const ADMIN_ITEMS: NavItem[] = [
-  { to: ROUTES.adminKeys, label: 'Key 管理', icon: ShieldCheck },
-  { to: ROUTES.adminUsers, label: '用户管理', icon: Users },
+  { to: ROUTES.adminKeys, labelKey: 'nav.adminKeys', icon: ShieldCheck },
+  { to: ROUTES.adminUsers, labelKey: 'nav.adminUsers', icon: Users },
 ];
 
 function NavLink(props: { item: NavItem }) {
@@ -43,7 +44,7 @@ function NavLink(props: { item: NavItem }) {
       class="flex items-center gap-3 rounded px-3 py-2 text-sm font-medium transition-colors"
     >
       <props.item.icon class="w-4 h-4 shrink-0" />
-      {props.item.label}
+      {t(props.item.labelKey)}
     </Link>
   );
 }
@@ -63,7 +64,7 @@ export default function Sidebar() {
 
         <Show when={isAdmin()}>
           <div class="mt-4 px-3 pb-1 text-xs font-semibold text-gray-400 uppercase">
-            管理
+            {t('nav.admin')}
           </div>
           <For each={ADMIN_ITEMS}>{(item) => <NavLink item={item} />}</For>
         </Show>

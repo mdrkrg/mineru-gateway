@@ -1,5 +1,6 @@
 import { For } from 'solid-js';
 import { CircleAlert, CircleCheck, Info, X } from 'lucide-solid';
+import { t } from '@/i18n';
 import { useToast } from '@/stores/toast-context';
 import type { ToastVariant } from '@/stores/toast';
 
@@ -29,18 +30,18 @@ export default function ToastHost() {
       aria-live="polite"
     >
       <For each={toast.toasts()}>
-        {(t) => {
-          const Icon = VARIANT_ICON[t.variant];
+        {(toastItem) => {
+          const Icon = VARIANT_ICON[toastItem.variant];
           return (
             <div
-              class={`flex items-start gap-2 rounded-lg border px-4 py-3 text-sm shadow-lg ${VARIANT_CLS[t.variant]}`}
+              class={`flex items-start gap-2 rounded-lg border px-4 py-3 text-sm shadow-lg ${VARIANT_CLS[toastItem.variant]}`}
             >
               <Icon class="mt-0.5 h-4 w-4 shrink-0" />
-              <span class="flex-1 break-words">{t.message}</span>
+              <span class="flex-1 break-words">{toastItem.message}</span>
               <button
                 type="button"
-                onClick={() => toast.dismiss(t.id)}
-                aria-label="关闭提示"
+                onClick={() => toast.dismiss(toastItem.id)}
+                aria-label={t('toast.dismiss')}
                 class="text-gray-400 hover:text-gray-600"
               >
                 <X class="h-4 w-4" />

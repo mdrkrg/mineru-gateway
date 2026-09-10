@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-solid';
+import { t } from '@/i18n';
 
 interface PaginationProps {
   /** 1-based current page. */
@@ -24,10 +25,14 @@ export default function Pagination(props: PaginationProps) {
         onClick={() => props.onChange(props.page - 1)}
       >
         <ChevronLeft class="w-4 h-4" />
-        上一页
+        {t('pagination.prev')}
       </button>
       <span class="text-sm text-gray-600">
-        第 {props.page} / {totalPages()} 页 · 共 {props.total} 条
+        {t('pagination.info', {
+          page: props.page,
+          totalPages: totalPages(),
+          total: props.total,
+        })}
       </span>
       <button
         type="button"
@@ -35,7 +40,7 @@ export default function Pagination(props: PaginationProps) {
         disabled={props.page >= totalPages()}
         onClick={() => props.onChange(props.page + 1)}
       >
-        下一页
+        {t('pagination.next')}
         <ChevronRight class="w-4 h-4" />
       </button>
     </div>

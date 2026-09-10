@@ -1,5 +1,6 @@
 import { Show } from 'solid-js';
 import { AlertDialog } from '@kobalte/core/alert-dialog';
+import { t } from '@/i18n';
 import { useConfirm } from '@/stores/confirm-context';
 
 /**
@@ -33,7 +34,7 @@ export default function ConfirmDialogHost() {
                   onClick={() => confirm.resolve(false)}
                   class="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                 >
-                  {req().cancelText ?? '取消'}
+                  {req().cancelText ?? t('common.cancel')}
                 </button>
                 <button
                   type="button"
@@ -44,7 +45,7 @@ export default function ConfirmDialogHost() {
                       : 'rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700'
                   }
                 >
-                  {req().confirmText ?? '确定'}
+                  {req().confirmText ?? t('common.confirm')}
                 </button>
               </div>
             </AlertDialog.Content>
