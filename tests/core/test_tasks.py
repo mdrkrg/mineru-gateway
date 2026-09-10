@@ -11,8 +11,13 @@ import json
 import uuid
 import zipfile
 from datetime import date, datetime, timedelta, timezone
+from sqlalchemy import select
 
 from tests.mock_upstream import state as mock_state
+
+from mineru_gateway import models
+from mineru_gateway.models import ApiKey
+from mineru_gateway.tasks import service
 
 
 async def _submit(client, api_key, data=None):
@@ -382,6 +387,108 @@ async def _submit_and_set_status(
     async with db.session_factory() as session:
         task = await session.get(models.TaskRecord, uuid.UUID(task_id))
         return str(task_id), task.upstream_task_id
+
+
+# ===== GET /tasks/{id}/result - friendly download filename =====
+#
+# Download-like responses (attachment / zip / octet-stream) should get a
+# Content-Disposition named after file_names[0].
+# JSON/text results and tasks without file_names pass through unchanged.
+
+
+async def test_result_download_filename_from_original_file(client, api_key):
+    """doc.pdf + upstream uuid.zip -> attachment; filename="doc.zip"; body unchanged."""
+    tid, _ = await _submit_and_set_status(client, api_key, "completed")
+    mock_state.result_content_type = "application/zip"
+    mock_state.result_content_disposition = 'attachment; filename="0197ab-uuid.zip"'
+
+    resp = await client.get(f"/tasks/{tid}/result", headers={"X-API-Key": api_key})
+    assert resp.status_code == 200
+    assert resp.headers["content-disposition"] == 'attachment; filename="doc.zip"'
+    assert "result content" in resp.text
+
+
+async def test_result_download_filename_zip_content_type_without_cd(client, api_key):
+    """Upstream zip without Content-Disposition still gets the friendly name."""
+    tid, _ = await _submit_and_set_status(client, api_key, "completed")
+    mock_state.result_content_type = "application/zip"
+
+    resp = await client.get(f"/tasks/{tid}/result", headers={"X-API-Key": api_key})
+    assert resp.status_code == 200
+    assert resp.headers["content-disposition"] == 'attachment; filename="doc.zip"'
+
+
+async def test_result_download_filename_non_ascii_rfc5987(client, api_key):
+    """非 ASCII 文件名: filename*=UTF-8'' 编码 + percent-encoded ASCII 回退."""
+    tid, _ = await _submit_and_set_status(client, api_key, "completed")
+    db = client._transport.app.state.db
+
+    async with db.session_factory() as session:
+        task = await session.get(models.TaskRecord, uuid.UUID(tid))
+        task.file_names = ["论文草稿.pdf"]
+        await session.commit()
+
+    mock_state.result_content_type = "application/zip"
+    mock_state.result_content_disposition = 'attachment; filename="uuid.zip"'
+
+    resp = await client.get(f"/tasks/{tid}/result", headers={"X-API-Key": api_key})
+    cd = resp.headers["content-disposition"]
+    assert "filename*=UTF-8''" in cd
+    assert "%E8%AE%BA%E6%96%87%E8%8D%89%E7%A8%BF.zip" in cd
+    assert cd.isascii(), "header value must be ASCII-safe"
+
+
+async def test_result_download_filename_sanitized(client, api_key):
+    """路径分隔符/引号等不安全字符被清洗, 不破坏 header 与本地文件系统."""
+    tid, _ = await _submit_and_set_status(client, api_key, "completed")
+    db = client._transport.app.state.db
+
+    async with db.session_factory() as session:
+        task = await session.get(models.TaskRecord, uuid.UUID(tid))
+        task.file_names = ['../evil "name".pdf']
+        await session.commit()
+
+    mock_state.result_content_type = "application/zip"
+    mock_state.result_content_disposition = 'attachment; filename="uuid.zip"'
+
+    resp = await client.get(f"/tasks/{tid}/result", headers={"X-API-Key": api_key})
+    cd = resp.headers["content-disposition"]
+    assert 'filename="evil _name_.zip"' in cd
+
+
+async def test_result_download_no_filenames_keeps_upstream_disposition(client, api_key):
+    """无 file_names 的任务保持现状: 上游 Content-Disposition 原样透传."""
+    db = client._transport.app.state.db
+    async with db.session_factory() as session:
+        key = (await session.execute(select(ApiKey))).scalars().first()
+        task = await service.create(
+            session,
+            api_key_id=key.id,
+            status="completed",
+            upstream_url="http://mock-upstream",
+            upstream_task_id="upstream-no-files",
+            file_names=[],
+            file_count=0,
+        )
+        task_id = str(task.id)
+
+    mock_state.result_content_type = "application/zip"
+    mock_state.result_content_disposition = 'attachment; filename="uuid.zip"'
+
+    resp = await client.get(f"/tasks/{task_id}/result", headers={"X-API-Key": api_key})
+    assert resp.status_code == 200
+    assert resp.headers["content-disposition"] == 'attachment; filename="uuid.zip"'
+
+
+async def test_result_download_json_response_untouched(client, api_key):
+    """JSON 响应 (response_format_zip=false 场景) 不添加 Content-Disposition."""
+    tid, _ = await _submit_and_set_status(client, api_key, "completed")
+    mock_state.result_content_type = "application/json"
+    mock_state.result_content_disposition = None
+
+    resp = await client.get(f"/tasks/{tid}/result", headers={"X-API-Key": api_key})
+    assert resp.status_code == 200
+    assert "content-disposition" not in resp.headers
 
 
 # ===== POST /tasks/result-zip (spec: batch-endpoints.md §1) =====
