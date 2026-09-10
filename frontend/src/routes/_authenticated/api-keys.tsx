@@ -8,6 +8,7 @@ import {
 } from '@/api/functions/auth';
 import type { ApiKeyCreatedResponse, ApiKeyInfo } from '@/api/schemas/auth';
 import ApiKeyReveal from '@/components/ApiKeyReveal';
+import { t } from '@/i18n';
 import { isHttpError } from '@/core/error-model';
 import { useAuth } from '@/stores/auth-context';
 import { useApiKey } from '@/stores/api-key-context';
@@ -71,7 +72,7 @@ function ApiKeysPage() {
     if (result.isErr()) {
       const err = result.error;
       if (isHttpError(err) && err.status === 403) {
-        setError('邮箱未验证，无法创建 API Key。请先完成邮箱验证后重试。');
+        setError(t('apiKeys.errUnverified'));
       } else {
         setError(errorMessage(err));
       }
@@ -81,15 +82,15 @@ function ApiKeysPage() {
     setCreated(result.value);
     setLabel('');
     setExpiresAt('');
-    toast.show('API Key 创建成功', 'success');
+    toast.show(t('apiKeys.createdToast'), 'success');
     await loadKeys();
   }
 
   async function handleRevoke(key: ApiKeyInfo) {
     const confirmed = await confirm.ask({
-      title: '吊销 API Key',
-      description: `确定吊销 Key「${key.label || key.apiKeyPrefix}」吗？此操作不可撤销。`,
-      confirmText: '吊销',
+      title: t('keyTable.revokeTitle'),
+      description: t('keyTable.confirmRevoke', { name: key.label || key.apiKeyPrefix }),
+      confirmText: t('keyTable.revoke'),
       variant: 'danger',
     });
     if (!confirmed) return;
@@ -100,7 +101,7 @@ function ApiKeysPage() {
       setError(errorMessage(result.error));
       return;
     }
-    toast.show('API Key 已吊销', 'success');
+    toast.show(t('keyTable.revokedToast'), 'success');
     await loadKeys();
   }
 
@@ -129,20 +130,20 @@ function ApiKeysPage() {
 
       {/* Create form */}
       <section class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-4">创建新 Key</h2>
+        <h2 class="text-lg font-semibold mb-4">{t('apiKeys.createTitle')}</h2>
         <form onSubmit={handleCreate} class="flex flex-wrap items-end gap-4">
           <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">备注(可选)</span>
+            <span class="text-sm font-medium text-gray-700">{t('apiKeys.label')}</span>
             <input
               type="text"
               value={label()}
               onInput={(e) => setLabel(e.currentTarget.value)}
-              placeholder="例如:笔记本"
+              placeholder={t('apiKeys.labelPlaceholder')}
               class="border border-gray-300 rounded px-3 py-2 w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </label>
           <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">过期时间(可选)</span>
+            <span class="text-sm font-medium text-gray-700">{t('apiKeys.expiresAt')}</span>
             <input
               type="date"
               value={expiresAt()}
@@ -155,29 +156,29 @@ function ApiKeysPage() {
             disabled={isCreating()}
             class="bg-blue-600 text-white rounded px-4 py-2 font-medium hover:bg-blue-700 disabled:opacity-50"
           >
-            {isCreating() ? '创建中…' : '创建'}
+            {isCreating() ? t('apiKeys.creating') : t('apiKeys.create')}
           </button>
         </form>
       </section>
 
       {/* Key list */}
       <section class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-4">我的 Keys</h2>
-        <Show when={!isLoading()} fallback={<p class="text-gray-500">加载中…</p>}>
+        <h2 class="text-lg font-semibold mb-4">{t('apiKeys.listTitle')}</h2>
+        <Show when={!isLoading()} fallback={<p class="text-gray-500">{t('common.loading')}</p>}>
           <Show
             when={keys().length > 0}
-            fallback={<p class="text-gray-500">还没有 API Key,先创建一个吧。</p>}
+            fallback={<p class="text-gray-500">{t('apiKeys.empty')}</p>}
           >
             <table class="w-full text-sm">
               <thead>
                 <tr class="text-left text-gray-500 border-b">
-                  <th class="py-2 pr-4 font-medium">前缀</th>
-                  <th class="py-2 pr-4 font-medium">备注</th>
-                  <th class="py-2 pr-4 font-medium">创建时间</th>
-                  <th class="py-2 pr-4 font-medium">最近使用</th>
-                  <th class="py-2 pr-4 font-medium">过期时间</th>
-                  <th class="py-2 pr-4 font-medium">状态</th>
-                  <th class="py-2 font-medium">操作</th>
+                  <th class="py-2 pr-4 font-medium">{t('keyTable.prefix')}</th>
+                  <th class="py-2 pr-4 font-medium">{t('keyTable.label')}</th>
+                  <th class="py-2 pr-4 font-medium">{t('keyTable.createdAt')}</th>
+                  <th class="py-2 pr-4 font-medium">{t('keyTable.lastUsed')}</th>
+                  <th class="py-2 pr-4 font-medium">{t('keyTable.expiresAt')}</th>
+                  <th class="py-2 pr-4 font-medium">{t('keyTable.status')}</th>
+                  <th class="py-2 font-medium">{t('keyTable.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -188,7 +189,7 @@ function ApiKeysPage() {
                         <code class="text-xs">{key.apiKeyPrefix}…</code>
                         <Show when={isActivePrefix(key.apiKeyPrefix)}>
                           <span class="ml-2 text-xs bg-blue-100 text-blue-700 rounded px-1.5 py-0.5">
-                            当前使用
+                            {t('keyTable.inUse')}
                           </span>
                         </Show>
                       </td>
@@ -204,7 +205,7 @@ function ApiKeysPage() {
                               : 'text-xs bg-gray-100 text-gray-500 rounded px-1.5 py-0.5'
                           }
                         >
-                          {key.isActive ? '有效' : '已吊销'}
+                          {key.isActive ? t('keyTable.valid') : t('keyTable.revoked')}
                         </span>
                       </td>
                       <td class="py-2">
@@ -215,7 +216,7 @@ function ApiKeysPage() {
                             class="flex items-center gap-1 text-red-600 hover:underline text-sm"
                           >
                             <Trash2 class="w-3.5 h-3.5" />
-                            吊销
+                            {t('keyTable.revoke')}
                           </button>
                         </Show>
                       </td>
@@ -232,15 +233,14 @@ function ApiKeysPage() {
       <section class="bg-white rounded-lg shadow p-6">
         <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
           <KeyRound class="w-5 h-5" />
-          当前使用的 Key
+          {t('apiKeys.activeKeyTitle')}
         </h2>
         <p class="text-sm text-gray-500 mb-4">
-          任务相关接口(列表、上传、下载)通过 API Key 鉴权。创建 Key 后可一键在此浏览器使用,
-          或粘贴已有 Key。
+          {t('apiKeys.activeKeyDesc')}
         </p>
         <Show
           when={apiKeyStore.activeKey()}
-          fallback={<p class="text-sm text-amber-600 mb-4">尚未设置,任务页面将无法加载数据。</p>}
+          fallback={<p class="text-sm text-amber-600 mb-4">{t('apiKeys.notSet')}</p>}
         >
           <p class="text-sm mb-4">
             <code class="bg-gray-100 rounded px-2 py-1">
@@ -251,7 +251,7 @@ function ApiKeysPage() {
               onClick={() => apiKeyStore.clearActiveKey()}
               class="ml-3 text-red-600 hover:underline"
             >
-              清除
+              {t('common.clear')}
             </button>
           </p>
         </Show>
@@ -267,12 +267,12 @@ function ApiKeysPage() {
           class="flex items-end gap-2"
         >
           <label class="flex flex-col gap-1 flex-1">
-            <span class="text-sm font-medium text-gray-700">手动设置已有 Key</span>
+            <span class="text-sm font-medium text-gray-700">{t('apiKeys.manualTitle')}</span>
             <input
               type="password"
               value={pastedKey()}
               onInput={(e) => setPastedKey(e.currentTarget.value)}
-              placeholder="粘贴完整 API Key"
+              placeholder={t('apiKeys.pastePlaceholder')}
               class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </label>
@@ -280,7 +280,7 @@ function ApiKeysPage() {
             type="submit"
             class="border border-gray-300 rounded px-4 py-2 text-sm hover:bg-gray-50"
           >
-            设置
+            {t('apiKeys.set')}
           </button>
         </form>
       </section>

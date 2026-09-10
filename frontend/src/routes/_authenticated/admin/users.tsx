@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/solid-router';
 import { adminCreateUser } from '@/api/functions/auth';
 import type { UserRead } from '@/api/schemas/auth';
 import AdminTokenGate from '@/components/AdminTokenGate';
+import { t } from '@/i18n';
 import type { AuthStore } from '@/stores/auth';
 import { useAdminToken } from '@/stores/admin-token-context';
 import { useToast } from '@/stores/toast-context';
@@ -71,7 +72,7 @@ function AdminUsersContent() {
     setPassword('');
     setDisplayName('');
     setIsSuperuser(false);
-    toast.show('用户创建成功', 'success');
+    toast.show(t('adminUsers.createdTitle'), 'success');
   }
 
   return (
@@ -85,21 +86,21 @@ function AdminUsersContent() {
       <Show when={created()}>
         {(u) => (
           <div class="bg-green-50 border border-green-300 rounded-lg p-4">
-            <h3 class="font-semibold text-green-800 mb-1">用户创建成功</h3>
+            <h3 class="font-semibold text-green-800 mb-1">{t('adminUsers.createdTitle')}</h3>
             <p class="text-sm text-green-700">
               {u().email}
-              {u().displayName ? `(${u().displayName})` : ''}
-              {u().isSuperuser ? ' · 管理员' : ''}
+              {u().displayName ? t('adminUsers.nameSuffix', { name: u().displayName ?? '' }) : ''}
+              {u().isSuperuser ? t('adminUsers.superuserTag') : ''}
             </p>
           </div>
         )}
       </Show>
 
       <section class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-4">创建用户</h2>
+        <h2 class="text-lg font-semibold mb-4">{t('adminUsers.createTitle')}</h2>
         <form onSubmit={handleCreate} class="flex flex-col gap-4">
           <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">邮箱</span>
+            <span class="text-sm font-medium text-gray-700">{t('adminUsers.email')}</span>
             <input
               type="email"
               required
@@ -109,7 +110,7 @@ function AdminUsersContent() {
             />
           </label>
           <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">初始密码</span>
+            <span class="text-sm font-medium text-gray-700">{t('adminUsers.initialPassword')}</span>
             <input
               type="password"
               required
@@ -120,7 +121,7 @@ function AdminUsersContent() {
             />
           </label>
           <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">显示名称(可选)</span>
+            <span class="text-sm font-medium text-gray-700">{t('adminUsers.displayName')}</span>
             <input
               type="text"
               value={displayName()}
@@ -135,7 +136,7 @@ function AdminUsersContent() {
                 checked={isSuperuser()}
                 onChange={(e) => setIsSuperuser(e.currentTarget.checked)}
               />
-              管理员
+              {t('adminUsers.superuser')}
             </label>
           </div>
           <button
@@ -143,7 +144,7 @@ function AdminUsersContent() {
             disabled={isCreating()}
             class="self-start bg-blue-600 text-white rounded px-4 py-2 font-medium hover:bg-blue-700 disabled:opacity-50"
           >
-            {isCreating() ? '创建中…' : '创建用户'}
+            {isCreating() ? t('adminUsers.creating') : t('adminUsers.submit')}
           </button>
         </form>
       </section>
