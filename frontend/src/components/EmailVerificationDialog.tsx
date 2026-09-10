@@ -30,6 +30,9 @@ export default function EmailVerificationDialog() {
     const user = auth.user();
     if (user && !user.isVerified) {
       setOpen(true);
+    } else if (!user || user.isVerified) {
+      // Verified elsewhere (e.g. email link in another tab) or logged out.
+      setOpen(false);
     }
   });
 
