@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
@@ -13,6 +15,18 @@ from .mock_upstream import create_mock_upstream, state as mock_state
 
 ADMIN_TOKEN = "test-admin-token"
 TEST_JWT_SECRET = "test-jwt-secret-at-least-32-characters"
+
+# Test-process isolation: Settings must never pick up a local .env file
+# (config comes from explicit fixture kwargs only). Ambient GATEWAY_* env
+# vars are stripped by the autouse fixture below; the e2e subprocess
+# gateway applies the same scrub in tests/e2e/conftest.py.
+Settings.model_config["env_file"] = None
+
+
+@pytest.fixture(autouse=True)
+def _isolate_gateway_env(monkeypatch):
+    for key in [k for k in os.environ if k.startswith("GATEWAY_")]:
+        monkeypatch.delenv(key)
 
 
 @pytest.fixture(autouse=True)
