@@ -1,6 +1,8 @@
 import 'uno.css';
+import { createEffect, createRoot } from 'solid-js';
 import { render } from 'solid-js/web';
 import 'solid-devtools';
+import { locale } from '@/i18n';
 import { RouterProvider, createRouter } from '@tanstack/solid-router';
 import { routeTree } from '@/routeTree.gen';
 import { createAuthStore } from '@/stores/auth';
@@ -31,6 +33,15 @@ const router = createRouter({
   defaultStaleTime: 5000,
   scrollRestoration: true,
 });
+
+// Keep <html lang> in sync with the active locale. Set it before the first
+// render to avoid a flash of the wrong language, then track changes.
+document.documentElement.lang = locale();
+createRoot(() =>
+  createEffect(() => {
+    document.documentElement.lang = locale();
+  }),
+);
 
 const rootElement = document.getElementById('root')!;
 
