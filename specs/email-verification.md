@@ -108,9 +108,9 @@
 
 ### 4.3 邮件链接验证（`GET /auth/verify?token=`）
 
-- 本规约新增端点，验证语义与 §4.2（fastapi-users verify 流程）一致。
-- `GATEWAY_OAUTH_FRONTEND_REDIRECT_URL` **未配置** → 验证成功 200 + 验证后的用户信息（`UserRead`）；失败（token 无效/过期/不匹配或用户已验证）→ 400。
-- `GATEWAY_OAUTH_FRONTEND_REDIRECT_URL` **已配置** → 验证成功 302 重定向到 `{oauth_frontend_redirect_url}#verified=true`；失败 → 302 重定向到 `{oauth_frontend_redirect_url}#verified=false`。状态以 fragment 追加，与 OAuth 回调的 fragment 传递惯例一致（`specs/user-management-and-oauth.md` §4.5），不依赖目标 URL 是否已含查询串。
+- 本规约新增端点，验证语义与 §4.2（fastapi-users verify 流程）一致，但**已验证用户幂等成功**（与 §4.2 的差异点）：邮件客户端/企业网关会预取链接并消费单次 token，真实用户的后续点击触发 fastapi-users 的 `UserAlreadyVerified`，此时目标状态（`is_verified=true`）已达成，按成功处理而非失败。
+- `GATEWAY_OAUTH_FRONTEND_REDIRECT_URL` **未配置** → 验证成功（含已验证幂等）200 + 验证后的用户信息（`UserRead`）；失败（token 无效/过期/不匹配）→ 400。
+- `GATEWAY_OAUTH_FRONTEND_REDIRECT_URL` **已配置** → 验证成功（含已验证幂等）302 重定向到 `{oauth_frontend_redirect_url}#verified=true`；失败 → 302 重定向到 `{oauth_frontend_redirect_url}#verified=false`。状态以 fragment 追加，与 OAuth 回调的 fragment 传递惯例一致（`specs/user-management-and-oauth.md` §4.5），不依赖目标 URL 是否已含查询串。
 
 ### 4.4 验证邮件内容与发送时机
 
@@ -227,7 +227,8 @@ fastapi-users 提供的库接口，其 200/400 语义不单独测试；验证可
 
 - 有效 token、未配置 `GATEWAY_OAUTH_FRONTEND_REDIRECT_URL` → 200 + `UserRead`（`is_verified=true`）。
 - 有效 token、已配置 `GATEWAY_OAUTH_FRONTEND_REDIRECT_URL` → 302，Location 为 `{oauth_frontend_redirect_url}#verified=true`。
-- 无效/过期 token 或用户已验证：未配置 `GATEWAY_OAUTH_FRONTEND_REDIRECT_URL` → 400；已配置 → 302，Location 为 `{oauth_frontend_redirect_url}#verified=false`。
+- 已验证用户重复访问（token 仍有效，幂等成功）：未配置 `GATEWAY_OAUTH_FRONTEND_REDIRECT_URL` → 200 + `UserRead`（`is_verified=true`）；已配置 → 302，Location 为 `{oauth_frontend_redirect_url}#verified=true`。
+- 无效/过期 token：未配置 `GATEWAY_OAUTH_FRONTEND_REDIRECT_URL` → 400；已配置 → 302，Location 为 `{oauth_frontend_redirect_url}#verified=false`。
 
 ### 8.6 拦截 `POST /me/api-keys`
 
