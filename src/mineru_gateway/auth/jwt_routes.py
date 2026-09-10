@@ -56,6 +56,23 @@ async def _send_verification_email_after_create(
         pass
 
 
+async def _create_user(
+    body: UserCreate,
+    request: Request,
+    user_manager: UserManager,
+    settings: Settings,
+) -> UserRead:
+    """Section 4.2 + 4.4: shared tail of register / admin create."""
+    try:
+        user = await user_manager.create(body, safe=True, request=request)
+    except exceptions.InvalidPasswordException:
+        raise HTTPException(status_code=400, detail="Password does not meet rules")
+    except exceptions.UserAlreadyExists:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    await _send_verification_email_after_create(user, user_manager, settings, request)
+    return UserRead.model_validate(user)
+
+
 @router.post("/jwt/login", response_model=TokenPair)
 async def login(
     body: LoginRequest,
@@ -121,14 +138,7 @@ async def register(
     """Section 4.2: public registration, gated by OPEN_REGISTRATION."""
     if not settings.open_registration:
         raise HTTPException(status_code=403, detail="Registration is closed")
-    try:
-        user = await user_manager.create(body, safe=True, request=request)
-    except exceptions.InvalidPasswordException:
-        raise HTTPException(status_code=400, detail="Password does not meet rules")
-    except exceptions.UserAlreadyExists:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    await _send_verification_email_after_create(user, user_manager, settings, request)
-    return UserRead.model_validate(user)
+    return await _create_user(body, request, user_manager, settings)
 
 
 @router.post(
@@ -144,11 +154,4 @@ async def admin_create_user(
     settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> UserRead:
     """Section 4.2: admin creates user (X-Admin-Token, not gated by OPEN_REGISTRATION)."""
-    try:
-        user = await user_manager.create(body, safe=True, request=request)
-    except exceptions.InvalidPasswordException:
-        raise HTTPException(status_code=400, detail="Password does not meet rules")
-    except exceptions.UserAlreadyExists:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    await _send_verification_email_after_create(user, user_manager, settings, request)
-    return UserRead.model_validate(user)
+    return await _create_user(body, request, user_manager, settings)
