@@ -5,6 +5,7 @@ import { downloadResultZip, getTaskResult, listTasks } from '@/api/functions/tas
 import type { TaskListItem } from '@/api/schemas/tasks';
 import NoActiveKey from '@/components/NoActiveKey';
 import Pagination from '@/components/Pagination';
+import { t } from '@/i18n';
 import { useApiKey } from '@/stores/api-key-context';
 import { errorMessage } from '@/utils/api-error';
 import { isHttpError } from '@/core/error-model';
@@ -106,7 +107,9 @@ function ResultDownloadPage() {
           ?.map((item) => `…${item.taskId.slice(-8)}(${item.reason})`)
           .join(',');
         setError(
-          `部分任务不可下载:${failed ?? data?.detail ?? '未知原因'}。请取消勾选后重试。`,
+          t('download.notDownloadable', {
+            failed: failed ?? data?.detail ?? t('download.unknownReason'),
+          }),
         );
       } else {
         setError(errorMessage(err));
@@ -128,7 +131,7 @@ function ResultDownloadPage() {
 
       <Show when={apiKeyStore.activeKey()}>
         <p class="text-sm text-gray-500">
-          这里列出所有已完成的任务,可单个下载或勾选后打包下载 ZIP。
+          {t('download.description')}
         </p>
 
         <Show when={error()}>
@@ -145,22 +148,22 @@ function ResultDownloadPage() {
             class="flex items-center gap-1.5 bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Package class="w-4 h-4" />
-            打包下载({selected().size})
+            {t('download.pack', { count: selected().size })}
           </button>
           <button
             type="button"
             onClick={() => load()}
             class="border border-gray-300 rounded px-3 py-1.5 text-sm hover:bg-gray-50"
           >
-            刷新
+            {t('common.refresh')}
           </button>
         </div>
 
         <div class="bg-white rounded-lg shadow overflow-x-auto">
-          <Show when={!isLoading()} fallback={<p class="p-6 text-gray-500">加载中…</p>}>
+          <Show when={!isLoading()} fallback={<p class="p-6 text-gray-500">{t('common.loading')}</p>}>
             <Show
               when={items().length > 0}
-              fallback={<p class="p-6 text-gray-500">还没有已完成的任务。</p>}
+              fallback={<p class="p-6 text-gray-500">{t('download.empty')}</p>}
             >
               <table class="w-full text-sm">
                 <thead>
@@ -172,10 +175,10 @@ function ResultDownloadPage() {
                         onChange={(e) => toggleSelectAll(e.currentTarget.checked)}
                       />
                     </th>
-                    <th class="py-2 pr-4 font-medium">任务 ID</th>
-                    <th class="py-2 pr-4 font-medium">文件</th>
-                    <th class="py-2 pr-4 font-medium">完成时间</th>
-                    <th class="py-2 pr-4 font-medium">操作</th>
+                    <th class="py-2 pr-4 font-medium">{t('download.thTaskId')}</th>
+                    <th class="py-2 pr-4 font-medium">{t('download.thFiles')}</th>
+                    <th class="py-2 pr-4 font-medium">{t('download.thCompletedAt')}</th>
+                    <th class="py-2 pr-4 font-medium">{t('download.thActions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -211,7 +214,7 @@ function ResultDownloadPage() {
                             class="flex items-center gap-1 text-blue-600 hover:underline text-sm disabled:opacity-40"
                           >
                             <Download class="w-3.5 h-3.5" />
-                            下载
+                            {t('download.one')}
                           </button>
                         </td>
                       </tr>

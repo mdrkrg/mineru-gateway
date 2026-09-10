@@ -14,9 +14,11 @@ import {
   type MineruParseMethod,
 } from '@/api/schemas/mineru-options';
 import NoActiveKey from '@/components/NoActiveKey';
+import { t } from '@/i18n';
+import { mineruLanguageCoverage, mineruLanguageLabel } from '@/i18n/labels';
 import { useApiKey } from '@/stores/api-key-context';
 import { errorMessage } from '@/utils/api-error';
-import { MINERU_LANGUAGE_COVERAGE, MINERU_LANGUAGE_LABELS, ROUTES } from '@/utils/constants';
+import { ROUTES } from '@/utils/constants';
 import { formatFileSize } from '@/utils/format';
 
 export const Route = createFileRoute('/_authenticated/upload')({
@@ -34,15 +36,15 @@ function LanguageCodeTable() {
       <table class="w-full">
         <thead>
           <tr class="text-gray-400">
-            <th class="text-left pr-2 py-0.5">选项</th>
-            <th class="text-left py-0.5">覆盖语言</th>
+            <th class="text-left pr-2 py-0.5">{t('upload.langTableOption')}</th>
+            <th class="text-left py-0.5">{t('upload.langTableCoverage')}</th>
           </tr>
         </thead>
         <tbody>
           {MINERU_LANGUAGES.map((lang) => (
             <tr>
-              <td class="pr-2 py-0.5 whitespace-nowrap align-top">{MINERU_LANGUAGE_LABELS[lang]}</td>
-              <td class="py-0.5">{MINERU_LANGUAGE_COVERAGE[lang]}</td>
+              <td class="pr-2 py-0.5 whitespace-nowrap align-top">{mineruLanguageLabel(lang)}</td>
+              <td class="py-0.5">{mineruLanguageCoverage(lang)}</td>
             </tr>
           ))}
         </tbody>
@@ -90,11 +92,11 @@ function UploadPage() {
     const key = apiKeyStore.activeKey();
     if (!key) return;
     if (files().length === 0) {
-      setError('请先选择要解析的文件');
+      setError(t('upload.errNoFile'));
       return;
     }
     if (needsServerUrl(backend()) && !serverUrl().trim()) {
-      setError('当前后端需要填写 Server URL');
+      setError(t('upload.errServerUrlRequired'));
       return;
     }
 
@@ -138,15 +140,16 @@ function UploadPage() {
         <Show when={submitted()}>
           {(s) => (
             <div class="bg-green-50 border border-green-300 rounded-lg p-4">
-              <h3 class="font-semibold text-green-800 mb-1">任务已提交</h3>
+              <h3 class="font-semibold text-green-800 mb-1">{t('upload.submitted')}</h3>
               <p class="text-sm text-green-700 mb-2">
-                任务 ID:<code>{s().taskId}</code>({s().fileNames.length} 个文件)
+                {t('upload.taskIdLabel')}<code>{s().taskId}</code>
+                {t('upload.fileCount', { count: s().fileNames.length })}
               </p>
               <Link
                 to={ROUTES.taskDetail(s().taskId)}
                 class="text-blue-600 hover:underline text-sm"
               >
-                查看任务详情 →
+                {t('upload.viewDetail')}
               </Link>
             </div>
           )}
@@ -161,10 +164,10 @@ function UploadPage() {
         <form onSubmit={handleSubmit} class="flex flex-col gap-4">
           {/* File picker */}
           <section class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-lg font-semibold mb-3">文件</h2>
+            <h2 class="text-lg font-semibold mb-3">{t('upload.fileSection')}</h2>
             <label class="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-8 cursor-pointer hover:border-blue-400">
               <FileUp class="w-8 h-8 text-gray-400 mb-2" />
-              <span class="text-sm text-gray-500">点击选择文件(可多选)</span>
+              <span class="text-sm text-gray-500">{t('upload.filePicker')}</span>
               <input
                 type="file"
                 multiple
@@ -197,11 +200,11 @@ function UploadPage() {
 
           {/* Parse options */}
           <section class="bg-white rounded-lg shadow p-6 flex flex-col gap-4">
-            <h2 class="text-lg font-semibold">解析选项</h2>
+            <h2 class="text-lg font-semibold">{t('upload.optionsSection')}</h2>
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <label class="flex flex-col gap-1">
-                <span class="text-sm font-medium text-gray-700">后端</span>
+                <span class="text-sm font-medium text-gray-700">{t('upload.backend')}</span>
                 <select
                   value={backend()}
                   onChange={(e) => setBackend(e.currentTarget.value as MineruBackend)}
@@ -213,7 +216,7 @@ function UploadPage() {
                 </select>
               </label>
               <label class="flex flex-col gap-1">
-                <span class="text-sm font-medium text-gray-700">解析方式</span>
+                <span class="text-sm font-medium text-gray-700">{t('upload.parseMethod')}</span>
                 <select
                   value={parseMethod()}
                   onChange={(e) => setParseMethod(e.currentTarget.value as MineruParseMethod)}
@@ -225,7 +228,7 @@ function UploadPage() {
                 </select>
               </label>
               <label class="flex flex-col gap-1">
-                <span class="text-sm font-medium text-gray-700">Effort</span>
+                <span class="text-sm font-medium text-gray-700">{t('upload.effort')}</span>
                 <select
                   value={effort()}
                   onChange={(e) => setEffort(e.currentTarget.value as MineruEffort)}
@@ -240,7 +243,7 @@ function UploadPage() {
 
             <Show when={needsServerUrl(backend())}>
               <label class="flex flex-col gap-1">
-                <span class="text-sm font-medium text-gray-700">Server URL</span>
+                <span class="text-sm font-medium text-gray-700">{t('upload.serverUrl')}</span>
                 <input
                   type="url"
                   required
@@ -254,7 +257,7 @@ function UploadPage() {
 
             <div>
               <div class="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
-                语言(可多选)
+                {t('upload.language')}
                 <div class="relative inline-flex group cursor-help">
                   <CircleQuestionMark class="w-4 h-4 text-gray-400" />
                   <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-10">
@@ -271,7 +274,7 @@ function UploadPage() {
                         checked={langList().has(lang)}
                         onChange={(e) => toggleLang(lang, e.currentTarget.checked)}
                       />
-                      {MINERU_LANGUAGE_LABELS[lang]}
+                      {mineruLanguageLabel(lang)}
                     </label>
                   )}
                 </For>
@@ -285,7 +288,7 @@ function UploadPage() {
                   checked={formulaEnable()}
                   onChange={(e) => setFormulaEnable(e.currentTarget.checked)}
                 />
-                公式识别
+                {t('upload.formula')}
               </label>
               <label class="flex items-center gap-1.5 text-sm">
                 <input
@@ -293,7 +296,7 @@ function UploadPage() {
                   checked={tableEnable()}
                   onChange={(e) => setTableEnable(e.currentTarget.checked)}
                 />
-                表格识别
+                {t('upload.table')}
               </label>
               <label class="flex items-center gap-1.5 text-sm">
                 <input
@@ -301,7 +304,7 @@ function UploadPage() {
                   checked={imageAnalysis()}
                   onChange={(e) => setImageAnalysis(e.currentTarget.checked)}
                 />
-                图像分析
+                {t('upload.imageAnalysis')}
               </label>
               <label class="flex items-center gap-1.5 text-sm">
                 <input
@@ -309,7 +312,7 @@ function UploadPage() {
                   checked={responseZip()}
                   onChange={(e) => setResponseZip(e.currentTarget.checked)}
                 />
-                Zip 格式下载
+                {t('upload.zipDownload')}
               </label>
             </div>
           </section>
@@ -319,7 +322,9 @@ function UploadPage() {
             disabled={isSubmitting() || files().length === 0}
             class="self-start bg-blue-600 text-white rounded px-6 py-2 font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSubmitting() ? '提交中…' : `提交任务(${files().length} 个文件)`}
+            {isSubmitting()
+              ? t('upload.submitting')
+              : t('upload.submit', { count: files().length })}
           </button>
         </form>
       </Show>
