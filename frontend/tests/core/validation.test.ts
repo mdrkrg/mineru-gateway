@@ -80,6 +80,8 @@ const RequestSchema = defineRequestSchema(
   { taskIds: 'string[]' },
   {} as { task_ids: string[] },
 );
+type RequestBody = (typeof RequestSchema)['inferIn'];
+const bad = (b: unknown) => b as unknown as RequestBody;
 
 // Plain arktype schema (no morph) for basic validate tests
 const PlainSchema = type({ foo: 'string', count: 'number' });
@@ -392,7 +394,7 @@ describe('validation: validateRequest', () => {
 
   it('returns err(ValidationError) for invalid body (invariant 13)', () => {
     const validator = validateRequest(RequestSchema);
-    const result = validator({ taskIds: 'not-an-array' });
+    const result = validator(bad({ taskIds: 'not-an-array' }));
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
       expect(result.error._type).toBe('ValidationError');
@@ -403,7 +405,7 @@ describe('validation: validateRequest', () => {
 
   it('returns err(ValidationError) for missing field', () => {
     const validator = validateRequest(RequestSchema);
-    const result = validator({});
+    const result = validator({} as RequestBody);
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
       expect(result.error._type).toBe('ValidationError');
@@ -413,7 +415,7 @@ describe('validation: validateRequest', () => {
   // Spec: validation.md line 228 - summary format for request body mismatch
   it('ValidationError summary contains "Request body schema mismatch" prefix', () => {
     const validator = validateRequest(RequestSchema);
-    const result = validator({ taskIds: 123 });
+    const result = validator(bad({ taskIds: 123 }));
     expect(result.isErr()).toBe(true);
     if (result.isErr()) {
       const summary = (result.error as { summary: string }).summary;
@@ -427,7 +429,7 @@ describe('validation: validateRequest', () => {
   // before request() when validateRequest returns err.
   it('does not call ky (validateRequest is a pure composable)', () => {
     const validator = validateRequest(RequestSchema);
-    const result = validator({ taskIds: 123 });
+    const result = validator(bad({ taskIds: 123 }));
     expect(result.isErr()).toBe(true);
     // ky mock should not have been called by validateRequest itself
     expect(m).not.toHaveBeenCalled();

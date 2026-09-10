@@ -175,8 +175,8 @@ export function validateFailure<
  */
 export function validateRequest<S extends Type>(
   schema: S,
-): (body: unknown) => Result<S['infer'], ApiError<never>> {
-  return (body: unknown) => {
+): (body: S['inferIn']) => Result<S['infer'], ApiError<never>> {
+  return (body: S['inferIn']) => {
     const result = validate(schema, body);
     if (result.isErr()) {
       return err({

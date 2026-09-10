@@ -217,12 +217,12 @@ function fetchBinaryAndValidate<
 ```ts
 function validateRequest<S extends Type>(
   schema: S,
-): (body: unknown) => Result<S['infer'], ApiError<never>>
+): (body: S['inferIn']) => Result<S['infer'], ApiError<never>>
 ```
 
 断言：
 
-- 输入待发送 body（camelCase domain type）。
+- 输入待发送 body（camelCase domain type），类型由 `S['inferIn']` 静态约束。
 - 调用 `validate(schema, body)`：schema 的 morph（`defineRequestSchema` 内部的 `.pipe((x) => snakeCase(x, Infinity))`）将 camelCase 键转为 snake_case（wire format）。
   - 成功 → `ok(validated)`，类型 `S['infer']`（snake_case wire format），调用方将其作为 `options.json` 发送。
    - 失败 → `err({ _type: 'ValidationError', status: null, summary: 'Request body schema mismatch: ...', issues: <ArkErrors> })`。`status: null` 因出站校验不携带 HTTP 状态码。
