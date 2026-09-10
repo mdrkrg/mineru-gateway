@@ -163,26 +163,30 @@ describe('conventions: naming conversion invariants (type-level)', () => {
   });
 
   // Spec: conventions.md "Schema construction helper contract" lines 105-114
-  // defineResponseSchema(def, output): infer = O (camelCase), inferIn = O (camelCase)
-  // defineRequestSchema(def, output):  infer = O (snake_case wire), inferIn = O (snake_case)
-  //
-  // NOTE: inferIn currently equals infer (both are O) because the Type<O>
-  // cast loses the input morph info. Request input types are provided
-  // separately as explicit interfaces in the schema files (e.g. LoginRequest,
-  // UserCreateRequest). Tests below verify that those explicit types are
-  // structurally correct.
+  // defineResponseSchema(def, output): infer = O (camelCase domain),
+  //                                    inferIn = snake_case wire format (from def)
+  // defineRequestSchema(def, output):  infer = O (snake_case wire),
+  //                                    inferIn = camelCase domain type (from def)
 
-  it('request input types are camelCase (explicit interfaces)', () => {
-    type CheckLogin = { email: string; password: string } extends { email: string; password: string } ? true : false;
-    const _c1: CheckLogin = true;
-    expect(_c1).toBe(true);
+  it('defineResponseSchema inferIn is the snake_case wire input type', () => {
+    const schema = defineResponseSchema(
+      { task_id: 'string', file_names: 'string[]' },
+      {} as { taskId: string; fileNames: string[] },
+    );
+    type InferredIn = (typeof schema)['inferIn'];
+    type Check = IsExact<InferredIn, { task_id: string; file_names: string[] }>;
+    const _c: Check = true;
+    expect(_c).toBe(true);
+  });
 
-    type CheckRegister = { email: string; password: string; isActive: boolean | null } extends { email: string; password: string } ? true : false;
-    const _c2: CheckRegister = true;
-    expect(_c2).toBe(true);
-
-    type CheckRefresh = { refreshToken: string } extends { refreshToken: string } ? true : false;
-    const _c3: CheckRefresh = true;
-    expect(_c3).toBe(true);
+  it('defineRequestSchema inferIn is the camelCase domain input type', () => {
+    const schema = defineRequestSchema(
+      { taskIds: 'string[]' },
+      {} as { task_ids: string[] },
+    );
+    type InferredIn = (typeof schema)['inferIn'];
+    type Check = IsExact<InferredIn, { taskIds: string[] }>;
+    const _c: Check = true;
+    expect(_c).toBe(true);
   });
 });

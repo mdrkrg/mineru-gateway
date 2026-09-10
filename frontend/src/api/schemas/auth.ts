@@ -217,29 +217,22 @@ export const OAuthProvidersResponseSchema = defineResponseSchema(
 
 // ===== Type exports =====
 
-export type ApiKeyCreateRequest = { label: string | null; expiresAt: string | null };
+export type ApiKeyCreateRequest = typeof ApiKeyCreateRequestSchema.inferIn;
 export type ApiKeyCreatedResponse = typeof ApiKeyCreatedResponseSchema.infer;
 export type ApiKeyInfo = typeof ApiKeyInfoSchema.infer;
 export type ApiKeyListResponse = typeof ApiKeyListResponseSchema.infer;
 
-export type MyApiKeyCreateRequest = { label: string | null; expiresAt: string | null };
+export type MyApiKeyCreateRequest = typeof MyApiKeyCreateRequestSchema.inferIn;
 
-export type LoginRequest = { email: string; password: string };
+export type LoginRequest = typeof LoginRequestSchema.inferIn;
 export type TokenPairResponse = typeof TokenPairResponseSchema.infer;
 export type AccessTokenResponse = typeof AccessTokenResponseSchema.infer;
-export type RefreshTokenRequest = { refreshToken: string };
+export type RefreshTokenRequest = typeof RefreshTokenRequestSchema.inferIn;
 
 export type UserRead = typeof UserReadSchema.infer;
-export type UserCreateRequest = {
-  email: string;
-  password: string;
-  isActive: boolean | null;
-  isSuperuser: boolean | null;
-  isVerified: boolean | null;
-  displayName: string | null;
-};
-export type UserUpdateRequest = { password: string | null; displayName: string | null };
+export type UserCreateRequest = typeof UserCreateRequestSchema.inferIn;
+export type UserUpdateRequest = typeof UserUpdateRequestSchema.inferIn;
 
-export type VerifyEmailRequest = { email: string };
+export type VerifyEmailRequest = typeof VerifyEmailRequestSchema.inferIn;
 
 export type OAuthProvidersResponse = typeof OAuthProvidersResponseSchema.infer;
