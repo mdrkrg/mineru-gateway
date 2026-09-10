@@ -161,6 +161,10 @@ test(auth): cover anonymous passthrough toggle
 - `asyncio_mode = "auto"` - test functions are `async def` without decorators.
 - The app is built per-test via the `app` fixture, which injects the mock
   upstream. Prefer extending `tests/mock_upstream.py` over mocking `httpx` directly.
+- Tests are hermetic w.r.t. configuration: dotenv loading is disabled for the
+  test process and ambient `GATEWAY_*` env vars are stripped (`tests/conftest.py`;
+  e2e subprocess gateways apply the same scrub). Pass config via explicit
+  `Settings(...)` kwargs in fixtures - never depend on `.env`.
 - Run the whole suite before finishing: `uv run pytest`.
 
 ## Configuration reference
