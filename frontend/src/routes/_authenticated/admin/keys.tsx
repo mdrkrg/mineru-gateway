@@ -9,6 +9,7 @@ import {
 import type { ApiKeyCreatedResponse, ApiKeyInfo } from '@/api/schemas/auth';
 import AdminTokenGate from '@/components/AdminTokenGate';
 import ApiKeyReveal from '@/components/ApiKeyReveal';
+import { t } from '@/i18n';
 import type { AuthStore } from '@/stores/auth';
 import { useAdminToken } from '@/stores/admin-token-context';
 import { requireSuperuser } from '@/stores/guard';
@@ -90,7 +91,7 @@ function AdminKeysContent() {
   async function handleRevoke(key: ApiKeyInfo) {
     const token = adminToken.token();
     if (!token) return;
-    if (!window.confirm(`确定吊销 Key「${key.label || key.apiKeyPrefix}」吗?此操作不可撤销。`)) {
+    if (!window.confirm(t('keyTable.confirmRevoke', { name: key.label || key.apiKeyPrefix }))) {
       return;
     }
 
@@ -116,10 +117,10 @@ function AdminKeysContent() {
       </Show>
 
       <section class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-4">签发新 Key</h2>
+        <h2 class="text-lg font-semibold mb-4">{t('adminKeys.issueTitle')}</h2>
         <form onSubmit={handleCreate} class="flex flex-wrap items-end gap-4">
           <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">备注(可选)</span>
+            <span class="text-sm font-medium text-gray-700">{t('adminKeys.label')}</span>
             <input
               type="text"
               value={label()}
@@ -128,7 +129,7 @@ function AdminKeysContent() {
             />
           </label>
           <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">过期时间(可选)</span>
+            <span class="text-sm font-medium text-gray-700">{t('adminKeys.expiresAt')}</span>
             <input
               type="date"
               value={expiresAt()}
@@ -141,28 +142,28 @@ function AdminKeysContent() {
             disabled={isCreating()}
             class="bg-blue-600 text-white rounded px-4 py-2 font-medium hover:bg-blue-700 disabled:opacity-50"
           >
-            {isCreating() ? '签发中…' : '签发'}
+            {isCreating() ? t('adminKeys.issuing') : t('adminKeys.issue')}
           </button>
         </form>
       </section>
 
       <section class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-4">全部 Keys</h2>
-        <Show when={!isLoading()} fallback={<p class="text-gray-500">加载中…</p>}>
+        <h2 class="text-lg font-semibold mb-4">{t('adminKeys.listTitle')}</h2>
+        <Show when={!isLoading()} fallback={<p class="text-gray-500">{t('common.loading')}</p>}>
           <Show
             when={keys().length > 0}
-            fallback={<p class="text-gray-500">还没有任何 API Key。</p>}
+            fallback={<p class="text-gray-500">{t('adminKeys.empty')}</p>}
           >
             <table class="w-full text-sm">
               <thead>
                 <tr class="text-left text-gray-500 border-b">
-                  <th class="py-2 pr-4 font-medium">前缀</th>
-                  <th class="py-2 pr-4 font-medium">备注</th>
-                  <th class="py-2 pr-4 font-medium">创建时间</th>
-                  <th class="py-2 pr-4 font-medium">最近使用</th>
-                  <th class="py-2 pr-4 font-medium">过期时间</th>
-                  <th class="py-2 pr-4 font-medium">状态</th>
-                  <th class="py-2 font-medium">操作</th>
+                  <th class="py-2 pr-4 font-medium">{t('keyTable.prefix')}</th>
+                  <th class="py-2 pr-4 font-medium">{t('keyTable.label')}</th>
+                  <th class="py-2 pr-4 font-medium">{t('keyTable.createdAt')}</th>
+                  <th class="py-2 pr-4 font-medium">{t('keyTable.lastUsed')}</th>
+                  <th class="py-2 pr-4 font-medium">{t('keyTable.expiresAt')}</th>
+                  <th class="py-2 pr-4 font-medium">{t('keyTable.status')}</th>
+                  <th class="py-2 font-medium">{t('keyTable.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -184,7 +185,7 @@ function AdminKeysContent() {
                               : 'text-xs bg-gray-100 text-gray-500 rounded px-1.5 py-0.5'
                           }
                         >
-                          {key.isActive ? '有效' : '已吊销'}
+                          {key.isActive ? t('keyTable.valid') : t('keyTable.revoked')}
                         </span>
                       </td>
                       <td class="py-2">
@@ -195,7 +196,7 @@ function AdminKeysContent() {
                             class="flex items-center gap-1 text-red-600 hover:underline text-sm"
                           >
                             <Trash2 class="w-3.5 h-3.5" />
-                            吊销
+                            {t('keyTable.revoke')}
                           </button>
                         </Show>
                       </td>
