@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   EMPTY_PLACEHOLDER,
   formatDateTime,
@@ -6,6 +6,11 @@ import {
   formatFileSize,
   formatMilliseconds,
 } from '../../src/utils/format';
+import { setLocale } from '../../src/i18n/locale';
+
+// Duration units are locale-dependent; pin zh-CN so assertions are
+// deterministic regardless of the environment's navigator language.
+beforeAll(() => setLocale('zh-CN'));
 
 describe('formatDateTime', () => {
   it('returns placeholder for null/undefined/empty input', () => {

@@ -1,7 +1,10 @@
 /**
  * Display formatting helpers: dates, file sizes, durations.
  * All functions are pure and never throw on bad input.
+ *
+ * Duration units are localized via the i18n dictionary.
  */
+import { t } from '@/i18n';
 
 /** Placeholder shown when a value is missing. */
 export const EMPTY_PLACEHOLDER = '—';
@@ -45,9 +48,9 @@ function composeDuration(totalSeconds: number): string {
   const seconds = totalSeconds % 60;
 
   const parts: string[] = [];
-  if (hours > 0) parts.push(`${hours}小时`);
-  if (minutes > 0) parts.push(`${minutes}分`);
-  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}秒`);
+  if (hours > 0) parts.push(t('format.hourShort', { n: hours }));
+  if (minutes > 0) parts.push(t('format.minuteShort', { n: minutes }));
+  if (seconds > 0 || parts.length === 0) parts.push(t('format.secondShort', { n: seconds }));
   return parts.join(' ');
 }
 
