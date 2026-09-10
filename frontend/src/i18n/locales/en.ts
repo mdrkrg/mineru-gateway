@@ -82,14 +82,14 @@ export const en = {
   // Task statuses (StatusBadge, filters, dashboard)
   'status.pending': 'Pending',
   'status.processing': 'Processing',
-  'status.retryPending': 'Retry Pending',
+  'status.retry_pending': 'Retry Pending',
   'status.completed': 'Completed',
   'status.failed': 'Failed',
   'status.cancelled': 'Cancelled',
 
   // MinerU language options (upload page)
   'mineruLang.label.ch': 'Chinese',
-  'mineruLang.label.chServer': 'Chinese (server)',
+  'mineruLang.label.ch_server': 'Chinese (server)',
   'mineruLang.label.korean': 'Korean',
   'mineruLang.label.ta': 'Tamil',
   'mineruLang.label.te': 'Telugu',
@@ -97,11 +97,11 @@ export const en = {
   'mineruLang.label.th': 'Thai',
   'mineruLang.label.el': 'Greek',
   'mineruLang.label.arabic': 'Arabic script',
-  'mineruLang.label.eastSlavic': 'East Slavic',
+  'mineruLang.label.east_slavic': 'East Slavic',
   'mineruLang.label.cyrillic': 'Cyrillic script',
   'mineruLang.label.devanagari': 'Devanagari script',
   'mineruLang.coverage.ch': 'Chinese, English, Japanese, Traditional Chinese, Latin',
-  'mineruLang.coverage.chServer':
+  'mineruLang.coverage.ch_server':
     'Chinese, English, Japanese, Traditional Chinese, Latin (higher accuracy / more resources)',
   'mineruLang.coverage.korean': 'Korean, English',
   'mineruLang.coverage.ta': 'Tamil, English',
@@ -111,7 +111,7 @@ export const en = {
   'mineruLang.coverage.el': 'Greek, English',
   'mineruLang.coverage.arabic':
     'Arabic, Persian, Uyghur, Urdu, Pashto, Kurdish, Sindhi, Balochi, English',
-  'mineruLang.coverage.eastSlavic': 'Russian, Belarusian, Ukrainian, English',
+  'mineruLang.coverage.east_slavic': 'Russian, Belarusian, Ukrainian, English',
   'mineruLang.coverage.cyrillic':
     'Russian, Belarusian, Ukrainian, Serbian, Bulgarian, Mongolian, Kazakh, Kyrgyz, Tajik and 30+ other Cyrillic-script languages, English',
   'mineruLang.coverage.devanagari':

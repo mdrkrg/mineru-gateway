@@ -6,42 +6,43 @@ import {
   isValidationError,
 } from '@/core/error-model';
 import type { ApiErrorBase, HttpError } from '@/core/error-model';
+import { t, type DictKey } from '@/i18n';
 import { formatFileSize } from './format';
 
 /**
- * Known backend `detail` strings mapped to actionable Chinese messages.
- * Backend details are stable, human-readable English from the gateway routes
- * but not end-user friendly.
+ * Known backend `detail` strings mapped to dictionary keys. Backend details
+ * are stable, human-readable English from the gateway routes but not
+ * end-user friendly.
  */
-const DETAIL_MESSAGES: Record<string, string> = {
-  'Invalid credentials': '邮箱或密码错误',
-  'Invalid refresh token': '登录状态已失效，请重新登录',
-  'Not authenticated': '登录状态已失效，请重新登录',
-  'API key required': '请先在 API Keys 页面设置 API Key',
-  'Invalid API key': 'API Key 无效或已被吊销，请在 API Keys 页面重新设置',
-  'Invalid or missing admin token': '管理令牌无效，请重新输入',
-  'Email not verified': '邮箱尚未验证，请先完成邮箱验证',
-  'Password does not meet rules': '密码不符合要求（至少 8 位）',
-  'Email already registered': '该邮箱已注册，请直接登录',
-  'Registration is closed': '当前已关闭注册',
-  'Key not found': 'API Key 不存在或已被吊销',
-  'Task not found': '任务不存在或已被清理',
+const DETAIL_KEYS: Record<string, DictKey> = {
+  'Invalid credentials': 'errors.detail.invalidCredentials',
+  'Invalid refresh token': 'errors.detail.invalidRefreshToken',
+  'Not authenticated': 'errors.detail.notAuthenticated',
+  'API key required': 'errors.detail.apiKeyRequired',
+  'Invalid API key': 'errors.detail.invalidApiKey',
+  'Invalid or missing admin token': 'errors.detail.invalidAdminToken',
+  'Email not verified': 'errors.detail.emailNotVerified',
+  'Password does not meet rules': 'errors.detail.passwordRules',
+  'Email already registered': 'errors.detail.emailAlreadyRegistered',
+  'Registration is closed': 'errors.detail.registrationClosed',
+  'Key not found': 'errors.detail.keyNotFound',
+  'Task not found': 'errors.detail.taskNotFound',
 };
 
 /** Generic fallbacks keyed by HTTP status. */
-const STATUS_MESSAGES: Record<number, string> = {
-  400: '请求参数有误，请检查后重试',
-  401: '登录状态已失效，请重新登录',
-  403: '没有权限执行该操作',
-  404: '请求的资源不存在或已被清理',
-  409: '操作与当前状态冲突，请刷新后重试',
-  413: '上传内容超过大小上限',
-  422: '提交的内容未通过校验，请检查后重试',
-  429: '操作过于频繁，请稍后重试',
-  500: '服务器内部错误，请稍后重试',
-  502: '上游服务暂时不可用，请稍后重试',
-  503: '服务繁忙，请稍后重试',
-  504: '上游服务响应超时，请稍后重试',
+const STATUS_KEYS: Record<number, DictKey> = {
+  400: 'errors.status.400',
+  401: 'errors.status.401',
+  403: 'errors.status.403',
+  404: 'errors.status.404',
+  409: 'errors.status.409',
+  413: 'errors.status.413',
+  422: 'errors.status.422',
+  429: 'errors.status.429',
+  500: 'errors.status.500',
+  502: 'errors.status.502',
+  503: 'errors.status.503',
+  504: 'errors.status.504',
 };
 
 /** Extracts a non-empty string `detail` from an arbitrary error body. */
@@ -68,16 +69,19 @@ function uploadLimitFromDetail(detail: string | null): string | null {
 /** Maps a status code (with optional body) to a user-facing message. */
 function messageForStatus(status: number, data?: unknown): string {
   const detail = detailOf(data);
-  if (detail && DETAIL_MESSAGES[detail]) return DETAIL_MESSAGES[detail];
+  const detailKey = detail ? DETAIL_KEYS[detail] : undefined;
+  if (detailKey) return t(detailKey);
   if (status === 413) {
     const limit = uploadLimitFromDetail(detail);
-    if (limit) return `上传内容超过大小上限（${limit}）`;
+    if (limit) return t('errors.uploadLimitWithSize', { limit });
   }
-  return STATUS_MESSAGES[status] ?? `请求失败（HTTP ${status}）`;
+  const statusKey = STATUS_KEYS[status];
+  if (statusKey) return t(statusKey);
+  return t('errors.requestFailed', { status });
 }
 
 /**
- * Maps an API error to a human-readable Chinese message for display.
+ * Maps an API error to a human-readable message for display.
  * Shared by the auth store and form pages (register, etc.).
  *
  * Prefers a known backend `detail` when available, then falls back to a
@@ -86,9 +90,9 @@ function messageForStatus(status: number, data?: unknown): string {
  */
 export function errorMessage(error: ApiErrorBase | HttpError<number, unknown>): string {
   if (isHttpError(error)) return messageForStatus(error.status, error.data);
-  if (isNetworkError(error)) return '网络连接失败，请检查网络后重试';
-  if (isValidationError(error)) return '响应数据格式异常，请稍后重试';
+  if (isNetworkError(error)) return t('errors.network');
+  if (isValidationError(error)) return t('errors.validation');
   if (isUnhandledStatusError(error)) return messageForStatus(error.status, error.data);
-  if (isUnexpectedError(error)) return '发生未知错误，请重试';
-  return '发生未知错误，请重试';
+  if (isUnexpectedError(error)) return t('errors.unexpected');
+  return t('errors.unexpected');
 }
