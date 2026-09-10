@@ -24,9 +24,12 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import signal
 import socket
 import subprocess
+import sys
+import tempfile
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -74,6 +77,7 @@ def _wait_ready(url: str, timeout: float = 20) -> None:
 # ---------------------------------------------------------------------------
 
 _child_procs: list[subprocess.Popen] = []
+_temp_dirs: list[Path] = []
 
 
 def _start(args: Sequence[str], **popen_kw) -> subprocess.Popen:
@@ -94,6 +98,8 @@ def _shutdown(sig, _frame) -> None:
         except subprocess.TimeoutExpired:
             p.kill()
             p.wait()
+    for d in _temp_dirs:
+        shutil.rmtree(d, ignore_errors=True)
     raise SystemExit(0)
 
 
@@ -170,12 +176,14 @@ def main() -> None:
     )
     _wait_ready(f"{smtp_capture_url}/health")
 
-    # 3. Gateway
+    # 3. Gateway (private cwd so a developer's local .env is never loaded)
     print(f"gateway         → {gateway_url}  (→ mock)")
+    gateway_cwd = Path(tempfile.mkdtemp(prefix="gateway-mock-"))
+    _temp_dirs.append(gateway_cwd)
     _start(
         [
-            "uv",
-            "run",
+            sys.executable,
+            "-m",
             "uvicorn",
             "mineru_gateway.main:create_app",
             "--factory",
@@ -184,6 +192,7 @@ def main() -> None:
             "--port",
             str(gateway_port),
         ],
+        cwd=str(gateway_cwd),
         env={
             **os.environ,
             "GATEWAY_UPSTREAM_URL": mock_url,
