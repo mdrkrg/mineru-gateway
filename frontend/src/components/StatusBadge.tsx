@@ -1,5 +1,6 @@
 import type { TaskStatus } from '@/api/schemas/tasks';
-import { TASK_STATUS_LABELS } from '@/utils/constants';
+import { taskStatusLabel } from '@/i18n/labels';
+import { TASK_STATUSES } from '@/utils/constants';
 
 const COLORS: Record<TaskStatus, string> = {
   pending: 'bg-yellow-100 text-yellow-700',
@@ -15,7 +16,8 @@ const FALLBACK = 'bg-gray-100 text-gray-600';
 /** Colored pill showing a task status label. Tolerates unknown statuses. */
 export default function StatusBadge(props: { status: string }) {
   const color = () => COLORS[props.status as TaskStatus] ?? FALLBACK;
-  const label = () => TASK_STATUS_LABELS[props.status as TaskStatus] ?? props.status;
+  const isKnown = () => (TASK_STATUSES as readonly string[]).includes(props.status);
+  const label = () => (isKnown() ? taskStatusLabel(props.status as TaskStatus) : props.status);
   return (
     <span class={`inline-block text-xs rounded px-1.5 py-0.5 whitespace-nowrap ${color()}`}>
       {label()}

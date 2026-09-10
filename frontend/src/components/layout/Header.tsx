@@ -1,30 +1,31 @@
 import { Show } from 'solid-js';
 import { useLocation, useNavigate } from '@tanstack/solid-router';
 import { LogOut } from 'lucide-solid';
+import { t, type DictKey } from '@/i18n';
 import { useAuth } from '@/stores/auth-context';
 import { ROUTES } from '@/utils/constants';
 
-/** Exact and prefix path → page title mappings for the header breadcrumb. */
-const EXACT_TITLES: Record<string, string> = {
-  [ROUTES.home]: '仪表盘',
-  [ROUTES.tasks]: '任务',
-  [ROUTES.upload]: '上传解析',
-  [ROUTES.download]: '结果下载',
-  [ROUTES.apiKeys]: 'API Keys',
-  [ROUTES.profile]: '个人资料',
-  [ROUTES.adminKeys]: 'Key 管理',
-  [ROUTES.adminUsers]: '用户管理',
+/** Exact and prefix path → page title key mappings for the header breadcrumb. */
+const EXACT_TITLES: Record<string, DictKey> = {
+  [ROUTES.home]: 'nav.dashboard',
+  [ROUTES.tasks]: 'nav.tasks',
+  [ROUTES.upload]: 'nav.upload',
+  [ROUTES.download]: 'nav.download',
+  [ROUTES.apiKeys]: 'nav.apiKeys',
+  [ROUTES.profile]: 'nav.profile',
+  [ROUTES.adminKeys]: 'nav.adminKeys',
+  [ROUTES.adminUsers]: 'nav.adminUsers',
 };
 
-const PREFIX_TITLES: [string, string][] = [
-  [`${ROUTES.tasks}/`, '任务详情'],
+const PREFIX_TITLES: [string, DictKey][] = [
+  [`${ROUTES.tasks}/`, 'nav.taskDetail'],
 ];
 
 function pageTitle(pathname: string): string {
   const exact = EXACT_TITLES[pathname];
-  if (exact) return exact;
-  for (const [prefix, title] of PREFIX_TITLES) {
-    if (pathname.startsWith(prefix)) return title;
+  if (exact) return t(exact);
+  for (const [prefix, key] of PREFIX_TITLES) {
+    if (pathname.startsWith(prefix)) return t(key);
   }
   return '';
 }
@@ -57,7 +58,7 @@ export default function Header() {
           class="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50"
         >
           <LogOut class="w-4 h-4" />
-          退出登录
+          {t('nav.logout')}
         </button>
       </div>
     </header>

@@ -1,6 +1,7 @@
 import { Show, createSignal } from 'solid-js';
 import type { JSX } from 'solid-js';
 import { ShieldCheck } from 'lucide-solid';
+import { t } from '@/i18n';
 import { useAdminToken } from '@/stores/admin-token-context';
 
 /**
@@ -19,10 +20,10 @@ export default function AdminTokenGate(props: { children: JSX.Element }) {
         <div class="bg-white rounded-lg shadow p-6 max-w-md">
           <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
             <ShieldCheck class="w-5 h-5" />
-            需要管理令牌
+            {t('adminGate.title')}
           </h2>
           <p class="text-sm text-gray-500 mb-4">
-            管理接口使用网关管理令牌(GATEWAY_ADMIN_TOKEN)鉴权,仅保存在当前标签页中。
+            {t('adminGate.description')}
           </p>
           <form
             onSubmit={(e) => {
@@ -36,7 +37,7 @@ export default function AdminTokenGate(props: { children: JSX.Element }) {
             class="flex items-end gap-2"
           >
             <label class="flex flex-col gap-1 flex-1">
-              <span class="text-sm font-medium text-gray-700">管理令牌</span>
+              <span class="text-sm font-medium text-gray-700">{t('adminGate.tokenLabel')}</span>
               <input
                 type="password"
                 value={input()}
@@ -48,7 +49,7 @@ export default function AdminTokenGate(props: { children: JSX.Element }) {
               type="submit"
               class="bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-blue-700"
             >
-              确定
+              {t('adminGate.submit')}
             </button>
           </form>
         </div>
@@ -56,13 +57,13 @@ export default function AdminTokenGate(props: { children: JSX.Element }) {
     >
       <div class="flex flex-col gap-4">
         <p class="text-xs text-gray-400">
-          管理令牌已设置(仅当前标签页)
+          {t('adminGate.setNotice')}
           <button
             type="button"
             onClick={() => store.clearToken()}
             class="ml-2 text-red-500 hover:underline"
           >
-            清除
+            {t('common.clear')}
           </button>
         </p>
         {props.children}
