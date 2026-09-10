@@ -5,6 +5,7 @@ import { cancelTask, getTaskDetail, getTaskResult } from '@/api/functions/tasks'
 import type { TaskDetail } from '@/api/schemas/tasks';
 import NoActiveKey from '@/components/NoActiveKey';
 import StatusBadge from '@/components/StatusBadge';
+import { t } from '@/i18n';
 import { useApiKey } from '@/stores/api-key-context';
 import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
@@ -76,23 +77,23 @@ function TaskDetailPage() {
 
   async function handleCancel() {
     const key = apiKeyStore.activeKey();
-    const t = task();
-    if (!key || !t) return;
+    const cur = task();
+    if (!key || !cur) return;
     const confirmed = await confirm.ask({
-      title: '取消任务',
-      description: '确定取消该任务吗？',
-      confirmText: '取消任务',
+      title: t('tasks.confirmCancelTitle'),
+      description: t('taskDetail.confirmCancel'),
+      confirmText: t('taskDetail.cancel'),
       variant: 'danger',
     });
     if (!confirmed) return;
 
     setIsActing(true);
     setError(null);
-    const result = await cancelTask(t.taskId, key);
+    const result = await cancelTask(cur.taskId, key);
     if (result.isErr()) {
       setError(errorMessage(result.error));
     } else {
-      toast.show('任务已取消', 'success');
+      toast.show(t('tasks.cancelledToast'), 'success');
     }
     await load();
     setIsActing(false);
@@ -100,12 +101,12 @@ function TaskDetailPage() {
 
   async function handleDownload() {
     const key = apiKeyStore.activeKey();
-    const t = task();
-    if (!key || !t) return;
+    const cur = task();
+    if (!key || !cur) return;
 
     setIsActing(true);
     setError(null);
-    const result = await getTaskResult(t.taskId, key);
+    const result = await getTaskResult(cur.taskId, key);
     if (result.isErr()) {
       setError(errorMessage(result.error));
     } else {
@@ -113,7 +114,7 @@ function TaskDetailPage() {
       const filename =
         filenameFromContentDisposition(
           result.value.headers.get('Content-Disposition'),
-        ) ?? `${t.taskId}${extensionFromContentType(contentType)}`;
+        ) ?? `${cur.taskId}${extensionFromContentType(contentType)}`;
       saveBlob(result.value.blob, filename);
     }
     setIsActing(false);
@@ -126,7 +127,7 @@ function TaskDetailPage() {
         class="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900"
       >
         <ArrowLeft class="w-4 h-4" />
-        返回任务列表
+        {t('taskDetail.back')}
       </Link>
 
       <Show when={!apiKeyStore.activeKey()}>
@@ -134,7 +135,7 @@ function TaskDetailPage() {
       </Show>
 
       <Show when={apiKeyStore.activeKey()}>
-        <Show when={!isLoading()} fallback={<p class="text-gray-500">加载中…</p>}>
+        <Show when={!isLoading()} fallback={<p class="text-gray-500">{t('common.loading')}</p>}>
           <Show when={error()}>
             <p class="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
               {error()}
@@ -142,69 +143,69 @@ function TaskDetailPage() {
           </Show>
 
           <Show when={task()}>
-            {(t) => (
+            {(task) => (
               <>
                 <div class="bg-white rounded-lg shadow p-6">
                   <div class="flex items-center justify-between mb-4">
                     <h2 class="text-lg font-semibold flex items-center gap-3">
-                      任务 <code class="text-sm">{t().taskId}</code>
+                      {t('taskDetail.title')} <code class="text-sm">{task().taskId}</code>
                     </h2>
-                    <StatusBadge status={t().status} />
+                    <StatusBadge status={task().status} />
                   </div>
 
                   <dl class="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    <Field label="后端">{t().backend}</Field>
-                    <Field label="文件数">{t().fileCount}</Field>
-                    <Field label="重试次数">{t().retryCount}</Field>
-                    <Field label="创建时间">{formatDateTime(t().createdAt)}</Field>
-                    <Field label="开始时间">{formatDateTime(t().startedAt)}</Field>
-                    <Field label="完成时间">{formatDateTime(t().completedAt)}</Field>
-                    <Field label="耗时">
+                    <Field label={t('taskDetail.backend')}>{task().backend}</Field>
+                    <Field label={t('taskDetail.fileCount')}>{task().fileCount}</Field>
+                    <Field label={t('taskDetail.retries')}>{task().retryCount}</Field>
+                    <Field label={t('taskDetail.createdAt')}>{formatDateTime(task().createdAt)}</Field>
+                    <Field label={t('taskDetail.startedAt')}>{formatDateTime(task().startedAt)}</Field>
+                    <Field label={t('taskDetail.completedAt')}>{formatDateTime(task().completedAt)}</Field>
+                    <Field label={t('taskDetail.elapsed')}>
                       {(() => {
-                        const started = t().startedAt;
-                        return started ? formatDuration(started, t().completedAt) : '—';
+                        const started = task().startedAt;
+                        return started ? formatDuration(started, task().completedAt) : '—';
                       })()}
                     </Field>
-                    <Show when={t().queuedAhead !== null}>
-                      <Field label="排队前方任务数">{t().queuedAhead}</Field>
+                    <Show when={task().queuedAhead !== null}>
+                      <Field label={t('taskDetail.queuedAhead')}>{task().queuedAhead}</Field>
                     </Show>
                   </dl>
 
                   <div class="mt-4">
-                    <p class="text-xs text-gray-500 mb-1">文件列表</p>
+                    <p class="text-xs text-gray-500 mb-1">{t('taskDetail.fileList')}</p>
                     <ul class="text-sm list-disc list-inside">
-                      <For each={t().fileNames}>{(name) => <li>{name}</li>}</For>
+                      <For each={task().fileNames}>{(name) => <li>{name}</li>}</For>
                     </ul>
                   </div>
 
-                  <Show when={t().error}>
+                  <Show when={task().error}>
                     <div class="mt-4">
-                      <p class="text-xs text-gray-500 mb-1">错误信息</p>
+                      <p class="text-xs text-gray-500 mb-1">{t('taskDetail.error')}</p>
                       <pre class="text-sm text-red-600 bg-red-50 rounded p-3 whitespace-pre-wrap">
-                        {t().error}
+                        {task().error}
                       </pre>
                     </div>
                   </Show>
                 </div>
 
-                <Show when={t().status === 'failed' && t().hasResult}>
+                <Show when={task().status === 'failed' && task().hasResult}>
                   <p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-                    任务失败，可尝试下载部分结果。
+                    {t('taskDetail.partialResultHint')}
                   </p>
                 </Show>
 
                 <div class="flex gap-3">
-                  <Show when={isActiveTaskStatus(t().status)}>
+                  <Show when={isActiveTaskStatus(task().status)}>
                     <button
                       type="button"
                       disabled={isActing()}
                       onClick={handleCancel}
                       class="border border-red-300 text-red-600 rounded px-4 py-2 text-sm hover:bg-red-50 disabled:opacity-40"
                     >
-                      取消任务
+                      {t('taskDetail.cancel')}
                     </button>
                   </Show>
-                  <Show when={t().hasResult}>
+                  <Show when={task().hasResult}>
                     <button
                       type="button"
                       disabled={isActing()}
@@ -212,7 +213,7 @@ function TaskDetailPage() {
                       class="flex items-center gap-1.5 bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-40"
                     >
                       <Download class="w-4 h-4" />
-                      下载结果
+                      {t('taskDetail.download')}
                     </button>
                   </Show>
                 </div>

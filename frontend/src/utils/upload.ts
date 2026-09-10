@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { formatFileSize } from './format';
 
 /** Result of a client-side upload-size pre-check. */
@@ -30,7 +31,10 @@ export function validateUploadSize(
     return {
       ok: false,
       totalBytes,
-      message: `以下文件超过单次上传上限 ${formatFileSize(maxBytes)}：${names}`,
+      message: t('errors.uploadOversizedFiles', {
+        limit: formatFileSize(maxBytes),
+        names,
+      }),
     };
   }
 
@@ -38,9 +42,10 @@ export function validateUploadSize(
     return {
       ok: false,
       totalBytes,
-      message:
-        `所选文件共 ${formatFileSize(totalBytes)}，` +
-        `超过单次上传上限 ${formatFileSize(maxBytes)}。`,
+      message: t('errors.uploadOversizedTotal', {
+        size: formatFileSize(totalBytes),
+        limit: formatFileSize(maxBytes),
+      }),
     };
   }
 

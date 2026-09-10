@@ -5,6 +5,8 @@ import type { TaskListItem } from '@/api/schemas/tasks';
 import NoActiveKey from '@/components/NoActiveKey';
 import Pagination from '@/components/Pagination';
 import StatusBadge from '@/components/StatusBadge';
+import { t } from '@/i18n';
+import { taskStatusLabel } from '@/i18n/labels';
 import { useApiKey } from '@/stores/api-key-context';
 import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
@@ -13,7 +15,6 @@ import {
   ROUTES,
   TASK_POLL_INTERVAL_MS,
   TASK_STATUSES,
-  TASK_STATUS_LABELS,
   isActiveTaskStatus,
 } from '@/utils/constants';
 import { formatDateTime } from '@/utils/format';
@@ -117,9 +118,9 @@ function TaskListPage() {
     const key = apiKeyStore.activeKey();
     if (!key) return;
     const confirmed = await confirm.ask({
-      title: '取消任务',
-      description: `确定取消任务 …${task.taskId.slice(-8)} 吗？`,
-      confirmText: '取消任务',
+      title: t('tasks.confirmCancelTitle'),
+      description: t('tasks.confirmCancel', { shortId: task.taskId.slice(-8) }),
+      confirmText: t('taskDetail.cancel'),
       variant: 'danger',
     });
     if (!confirmed) return;
@@ -130,7 +131,7 @@ function TaskListPage() {
     if (result.isErr()) {
       setError(errorMessage(result.error));
     } else {
-      toast.show('任务已取消', 'success');
+      toast.show(t('tasks.cancelledToast'), 'success');
     }
     await load();
     setIsActing(false);
@@ -142,9 +143,9 @@ function TaskListPage() {
     const ids = [...selected()];
     if (ids.length === 0) return;
     const confirmed = await confirm.ask({
-      title: '批量取消任务',
-      description: `确定批量取消选中的 ${ids.length} 个任务吗？`,
-      confirmText: '批量取消',
+      title: t('tasks.confirmBatchCancelTitle'),
+      description: t('tasks.confirmBatchCancel', { count: ids.length }),
+      confirmText: t('tasks.confirmBatchCancelText'),
       variant: 'danger',
     });
     if (!confirmed) return;
@@ -157,11 +158,17 @@ function TaskListPage() {
     } else {
       if (result.value.errors.length > 0) {
         setError(
-          `已取消 ${result.value.cancelledCount} 个,${result.value.errors.length} 个失败`,
+          t('tasks.batchResult', {
+            cancelled: result.value.cancelledCount,
+            failed: result.value.errors.length,
+          }),
         );
       }
       if (result.value.cancelledCount > 0) {
-        toast.show(`已取消 ${result.value.cancelledCount} 个任务`, 'success');
+        toast.show(
+          t('tasks.batchCancelToast', { count: result.value.cancelledCount }),
+          'success',
+        );
       }
     }
     await load();
@@ -184,25 +191,25 @@ function TaskListPage() {
           class="bg-white rounded-lg shadow p-4 flex flex-wrap items-end gap-3"
         >
           <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">状态</span>
+            <span class="text-sm font-medium text-gray-700">{t('tasks.filterStatus')}</span>
             <select
               value={statusFilter()}
               onChange={(e) => setStatusFilter(e.currentTarget.value)}
               class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">全部</option>
+              <option value="">{t('tasks.filterAll')}</option>
               <For each={TASK_STATUSES}>
-                {(s) => <option value={s}>{TASK_STATUS_LABELS[s]}</option>}
+                {(s) => <option value={s}>{taskStatusLabel(s)}</option>}
               </For>
             </select>
           </label>
           <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">文件名</span>
+            <span class="text-sm font-medium text-gray-700">{t('tasks.filterFileName')}</span>
             <input
               type="text"
               value={fileNameFilter()}
               onInput={(e) => setFileNameFilter(e.currentTarget.value)}
-              placeholder="按文件名搜索"
+              placeholder={t('tasks.searchPlaceholder')}
               class="border border-gray-300 rounded px-3 py-2 w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </label>
@@ -210,7 +217,7 @@ function TaskListPage() {
             type="submit"
             class="bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-blue-700"
           >
-            查询
+            {t('tasks.search')}
           </button>
         </form>
 
@@ -228,26 +235,26 @@ function TaskListPage() {
             onClick={handleBatchCancel}
             class="border border-red-300 text-red-600 rounded px-3 py-1.5 text-sm hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            批量取消({selected().size})
+            {t('tasks.batchCancel', { count: selected().size })}
           </button>
           <button
             type="button"
             onClick={() => load()}
             class="border border-gray-300 rounded px-3 py-1.5 text-sm hover:bg-gray-50"
           >
-            刷新
+            {t('common.refresh')}
           </button>
           <Show when={hasActiveTasks()}>
-            <span class="text-xs text-gray-500">进行中的任务会自动刷新</span>
+            <span class="text-xs text-gray-500">{t('tasks.autoRefreshHint')}</span>
           </Show>
         </div>
 
         {/* Table */}
         <div class="bg-white rounded-lg shadow overflow-x-auto">
-          <Show when={!isLoading()} fallback={<p class="p-6 text-gray-500">加载中…</p>}>
+          <Show when={!isLoading()} fallback={<p class="p-6 text-gray-500">{t('common.loading')}</p>}>
             <Show
               when={items().length > 0}
-              fallback={<p class="p-6 text-gray-500">没有符合条件的任务。</p>}
+              fallback={<p class="p-6 text-gray-500">{t('tasks.empty')}</p>}
             >
               <table class="w-full text-sm">
                 <thead>
@@ -260,13 +267,13 @@ function TaskListPage() {
                         disabled={selectableCount() === 0}
                       />
                     </th>
-                    <th class="py-2 pr-4 font-medium">任务 ID</th>
-                    <th class="py-2 pr-4 font-medium">状态</th>
-                    <th class="py-2 pr-4 font-medium">后端</th>
-                    <th class="py-2 pr-4 font-medium">文件</th>
-                    <th class="py-2 pr-4 font-medium">创建时间</th>
-                    <th class="py-2 pr-4 font-medium">重试</th>
-                    <th class="py-2 pr-4 font-medium">操作</th>
+                    <th class="py-2 pr-4 font-medium">{t('tasks.thTaskId')}</th>
+                    <th class="py-2 pr-4 font-medium">{t('tasks.thStatus')}</th>
+                    <th class="py-2 pr-4 font-medium">{t('tasks.thBackend')}</th>
+                    <th class="py-2 pr-4 font-medium">{t('tasks.thFiles')}</th>
+                    <th class="py-2 pr-4 font-medium">{t('tasks.thCreatedAt')}</th>
+                    <th class="py-2 pr-4 font-medium">{t('tasks.thRetries')}</th>
+                    <th class="py-2 pr-4 font-medium">{t('tasks.thActions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -308,7 +315,7 @@ function TaskListPage() {
                               onClick={() => handleCancel(task)}
                               class="text-red-600 hover:underline text-sm disabled:opacity-40"
                             >
-                              取消
+                              {t('tasks.cancel')}
                             </button>
                           </Show>
                         </td>
