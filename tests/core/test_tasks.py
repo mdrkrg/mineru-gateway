@@ -368,6 +368,23 @@ async def test_get_result_409_for_pending_task_with_upstream_id(
         f"/tasks/{task_id}/result", headers={"X-API-Key": api_key}
     )
     assert result_resp.status_code == 409
+    assert "status=pending" in result_resp.json()["detail"]
+
+
+async def test_get_result_409_for_failed_task_without_upstream_id(client, api_key):
+    """§3.7: Terminal task without upstream_task_id -> 409 naming the status."""
+    tid, _ = await _submit_and_set_status(client, api_key, "completed")
+    db = client._transport.app.state.db
+    async with db.session_factory() as session:
+        task = await session.get(models.TaskRecord, uuid.UUID(tid))
+        task.status = "failed"
+        task.upstream_task_id = None
+        task.error_message = "boom"
+        await session.commit()
+
+    resp = await client.get(f"/tasks/{tid}/result", headers={"X-API-Key": api_key})
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "Task has no upstream result (status=failed)"
 
 
 async def _submit_and_set_status(

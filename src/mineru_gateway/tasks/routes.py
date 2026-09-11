@@ -146,10 +146,16 @@ async def get_task_result(
     task = await service.get_owned(session, task_id, key.id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    if not task.upstream_task_id:
-        raise HTTPException(status_code=409, detail="Task has no upstream result yet")
     if task.status not in ("completed", "failed", "cancelled"):
-        raise HTTPException(status_code=409, detail="Task result not yet available")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Task result not yet available (status={task.status})",
+        )
+    if not task.upstream_task_id:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Task has no upstream result (status={task.status})",
+        )
 
     upstream_resp = await upstream.get_task_result(task.upstream_task_id)
     excluded = {"content-length", "content-encoding", "transfer-encoding", "connection"}
