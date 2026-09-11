@@ -663,6 +663,50 @@ async def test_result_zip_entry_naming_with_filename(client, api_key):
         assert manifest["included"][0]["entry"] == "thesis/result.zip"
 
 
+async def test_result_zip_entry_name_sanitized_against_traversal(client, api_key):
+    """§1.4 6b + safe naming: file_names are basenamed/sanitized; no ../ in entries."""
+    tid, _ = await _submit_and_set_status(client, api_key, "completed")
+    db = client._transport.app.state.db
+    async with db.session_factory() as session:
+        task = await session.get(models.TaskRecord, uuid.UUID(tid))
+        task.file_names = ['../../evil "x".pdf']
+        await session.commit()
+
+    mock_state.result_content_type = "application/zip"
+
+    resp = await client.post(
+        "/tasks/result-zip",
+        json={"task_ids": [tid]},
+        headers={"X-API-Key": api_key},
+    )
+    assert resp.status_code == 200
+
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        assert zf.namelist() == ["evil _x_/result.zip", "_manifest.json"]
+
+
+async def test_result_zip_entry_name_falls_back_when_stem_empty(client, api_key):
+    """§1.4 6b->6c: file_names that sanitize to empty fall back to task_id entry."""
+    tid, _ = await _submit_and_set_status(client, api_key, "completed")
+    db = client._transport.app.state.db
+    async with db.session_factory() as session:
+        task = await session.get(models.TaskRecord, uuid.UUID(tid))
+        task.file_names = [".."]
+        await session.commit()
+
+    mock_state.result_content_type = "application/zip"
+
+    resp = await client.post(
+        "/tasks/result-zip",
+        json={"task_ids": [tid]},
+        headers={"X-API-Key": api_key},
+    )
+    assert resp.status_code == 200
+
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        assert f"{tid}/result.zip" in zf.namelist()
+
+
 async def test_result_zip_entry_naming_fallback_to_task_id(client, api_key):
     """§1.4 Z8: file_names=[], no Content-Disposition -> entry named <task_id>/result.zip."""
     tid, utid = await _submit_and_set_status(client, api_key, "completed")

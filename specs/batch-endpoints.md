@@ -48,7 +48,7 @@ Content-Type: application/json
    d. 全部 task 完成后，追加写入 `_manifest.json` 作为 zip 的最后一个 entry（见下方结构），然后关闭 zip 流
 6. **zip entry 命名**（按优先级回退）：
     a. 优先从上游 `Content-Disposition` 头提取文件名
-    b. 若无，且 `task.file_names` 非空：用 `task.file_names[0]`（如 `paper-001.pdf`）构建目录名，`<文件名（去扩展名）>/result.<上游 Content-Type 扩展名>`
+    b. 若无，且 `task.file_names` 非空：用 `task.file_names[0]`（如 `paper-001.pdf`）构建目录名，`<文件名（去扩展名）>/result.<上游 Content-Type 扩展名>`（先取 basename 并清洗不安全字符，与单任务下载命名一致；清洗后为空则回退到规则 c）
     c. 若无 `Content-Disposition` 且 `file_names` 为空：回退为 `<task_id>/result.<上游 Content-Type 扩展名>`
     d. 若无法确定扩展名：使用 `result.bin`
     e. 若按上述规则产生的 entry 名与已写入 zip 的 entry 重名，追加 `-<task_id 后8位>` 以去重，避免 zip 内数据被静默覆盖

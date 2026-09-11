@@ -390,8 +390,9 @@ def _guess_extension(content_type: str | None) -> str:
 def _fallback_entry_name(task: Any) -> str:
     """Build entry name for skipped tasks (rules 6b/6c/6d with .bin fallback)."""
     if task.file_names and len(task.file_names) > 0:
-        base = _strip_extension(task.file_names[0])
-        return f"{base}/result.bin"
+        base = _sanitize_stem(task.file_names[0])
+        if base:
+            return f"{base}/result.bin"
     return f"{task.id}/result.bin"
 
 
@@ -400,7 +401,7 @@ def _build_result_entry_name(task: Any, upstream_resp: Any) -> str:
 
     Priority (spec step 6):
     a. Content-Disposition filename from upstream
-    b. file_names[0] without ext /result.<extension>
+    b. sanitized file_names[0] stem /result.<extension>
     c. task_id / result.<extension>
     d. .bin fallback
     """
@@ -413,8 +414,9 @@ def _build_result_entry_name(task: Any, upstream_resp: Any) -> str:
     ext = _guess_extension(upstream_resp.headers.get("content-type"))
 
     if task.file_names and len(task.file_names) > 0:
-        base = _strip_extension(task.file_names[0])
-        return f"{base}/result{ext}"
+        base = _sanitize_stem(task.file_names[0])
+        if base:
+            return f"{base}/result{ext}"
 
     return f"{task.id}/result{ext}"
 
