@@ -9,8 +9,10 @@ plus cancel and concurrency cap flows.
 from __future__ import annotations
 
 import asyncio
+import io
 import os
 import signal
+import zipfile
 
 import httpx
 import pytest
@@ -94,6 +96,77 @@ async def test_full_lifecycle_real_http(mock_control, mock_upstream_url, tmp_pat
             result = await c.get(f"/tasks/{task_id}/result", headers=headers)
             assert result.status_code == 200
             assert "result content" in result.text
+    finally:
+        proc.send_signal(signal.SIGTERM)
+        proc.wait(timeout=5)
+
+
+@pytest.mark.e2e
+async def test_result_zip_real_http(mock_control, mock_upstream_url, tmp_path):
+    """POST /tasks/result-zip over real HTTP (batch-endpoints.md §1).
+
+    1. Background-enabled gateway; submit -> sync to completed.
+    2. Single completed task -> 200 application/zip with a _manifest.json.
+    3. Mixed with a still-active task -> 409, reason=not_completed.
+    """
+    db = str(tmp_path / "rzip.db")
+    cache = str(tmp_path / "rzip_cache")
+    os.makedirs(cache, exist_ok=True)
+    url, proc = _start_gateway(
+        mock_upstream_url,
+        db,
+        cache,
+        GATEWAY_ENABLE_BACKGROUND="true",
+        GATEWAY_STATUS_SYNC_INTERVAL="0.5",
+    )
+    try:
+        async with httpx.AsyncClient(base_url=url) as c:
+            key = (
+                await c.post(
+                    "/auth/keys",
+                    json={"label": "e2e-rzip"},
+                    headers={"X-Admin-Token": "e2e-admin-token"},
+                )
+            ).json()["api_key"]
+            h = {"X-API-Key": key}
+
+            # (1) Submit and let status sync reach a terminal state.
+            mock_control.set_task_status("processing")
+            first = await c.post("/tasks", headers=h, files=sample_files())
+            completed_id = first.json()["task_id"]
+            mock_control.set_task_status("completed")
+            for _ in range(30):
+                detail = await c.get(f"/tasks/{completed_id}", headers=h)
+                if detail.json()["status"] == "completed":
+                    break
+                await asyncio.sleep(0.5)
+            else:
+                pytest.fail("task did not reach completed status within timeout")
+
+            # (2) One completed task -> downloadable zip.
+            resp = await c.post(
+                "/tasks/result-zip", json={"task_ids": [completed_id]}, headers=h
+            )
+            assert resp.status_code == 200
+            assert resp.headers.get("content-type") == "application/zip"
+            with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+                assert "_manifest.json" in zf.namelist()
+
+            # (3) A non-terminal task in the batch -> 409 not_completed.
+            mock_control.set_task_status("processing")
+            second = await c.post("/tasks", headers=h, files=sample_files())
+            active_id = second.json()["task_id"]
+            resp = await c.post(
+                "/tasks/result-zip",
+                json={"task_ids": [completed_id, active_id]},
+                headers=h,
+            )
+            assert resp.status_code == 409
+            body = resp.json()
+            reasons = {i["task_id"]: i["reason"] for i in body["non_downloadable"]}
+            assert reasons.get(active_id) == "not_completed"
+            assert completed_id not in reasons
+
     finally:
         proc.send_signal(signal.SIGTERM)
         proc.wait(timeout=5)
