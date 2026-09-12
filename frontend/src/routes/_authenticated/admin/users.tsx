@@ -5,6 +5,7 @@ import type { UserRead } from '@/api/schemas/auth';
 import AdminTokenGate from '@/components/AdminTokenGate';
 import type { AuthStore } from '@/stores/auth';
 import { useAdminToken } from '@/stores/admin-token-context';
+import { useToast } from '@/stores/toast-context';
 import { requireSuperuser } from '@/stores/guard';
 import { errorMessage } from '@/utils/api-error';
 
@@ -28,6 +29,7 @@ function AdminUsersPage() {
 
 function AdminUsersContent() {
   const adminToken = useAdminToken();
+  const toast = useToast();
 
   const [email, setEmail] = createSignal('');
   const [password, setPassword] = createSignal('');
@@ -69,6 +71,7 @@ function AdminUsersContent() {
     setPassword('');
     setDisplayName('');
     setIsSuperuser(false);
+    toast.show('用户创建成功', 'success');
   }
 
   return (

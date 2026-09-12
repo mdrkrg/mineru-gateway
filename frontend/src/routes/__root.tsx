@@ -1,5 +1,6 @@
 import { Link, Outlet, createRootRoute } from '@tanstack/solid-router';
 import { TanStackRouterDevtools } from '@tanstack/solid-router-devtools';
+import ToastHost from '../components/ToastHost';
 import type { AuthStore } from '../stores/auth';
 
 export const Route = createRootRoute({
@@ -26,6 +27,7 @@ function RootComponent() {
   return (
     <>
       <Outlet />
+      <ToastHost />
       <TanStackRouterDevtools position="bottom-right" />
     </>
   );

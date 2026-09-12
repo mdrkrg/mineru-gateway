@@ -11,6 +11,7 @@ import AdminTokenGate from '@/components/AdminTokenGate';
 import ApiKeyReveal from '@/components/ApiKeyReveal';
 import type { AuthStore } from '@/stores/auth';
 import { useAdminToken } from '@/stores/admin-token-context';
+import { useToast } from '@/stores/toast-context';
 import { requireSuperuser } from '@/stores/guard';
 import { errorMessage } from '@/utils/api-error';
 import { formatDateTime } from '@/utils/format';
@@ -32,6 +33,7 @@ function AdminKeysPage() {
 
 function AdminKeysContent() {
   const adminToken = useAdminToken();
+  const toast = useToast();
 
   const [keys, setKeys] = createSignal<ApiKeyInfo[]>([]);
   const [isLoading, setIsLoading] = createSignal(true);
@@ -84,6 +86,7 @@ function AdminKeysContent() {
     setCreated(result.value);
     setLabel('');
     setExpiresAt('');
+    toast.show('API Key 签发成功', 'success');
     await loadKeys();
   }
 
@@ -100,6 +103,7 @@ function AdminKeysContent() {
       setError(errorMessage(result.error));
       return;
     }
+    toast.show('API Key 已吊销', 'success');
     await loadKeys();
   }
 

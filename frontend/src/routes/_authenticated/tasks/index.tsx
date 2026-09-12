@@ -6,6 +6,7 @@ import NoActiveKey from '@/components/NoActiveKey';
 import Pagination from '@/components/Pagination';
 import StatusBadge from '@/components/StatusBadge';
 import { useApiKey } from '@/stores/api-key-context';
+import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
 import {
   ACTIVE_TASK_STATUSES,
@@ -26,6 +27,7 @@ const isActive = (status: string) =>
 
 function TaskListPage() {
   const apiKeyStore = useApiKey();
+  const toast = useToast();
 
   const [items, setItems] = createSignal<TaskListItem[]>([]);
   const [total, setTotal] = createSignal(0);
@@ -94,7 +96,11 @@ function TaskListPage() {
     setIsActing(true);
     setError(null);
     const result = await cancelTask(task.taskId, key);
-    if (result.isErr()) setError(errorMessage(result.error));
+    if (result.isErr()) {
+      setError(errorMessage(result.error));
+    } else {
+      toast.show('任务已取消', 'success');
+    }
     await load();
     setIsActing(false);
   }
@@ -111,10 +117,13 @@ function TaskListPage() {
     const result = await batchCancelTasks(ids, key);
     if (result.isErr()) {
       setError(errorMessage(result.error));
-    } else if (result.value.errors.length > 0) {
-      setError(
-        `已取消 ${result.value.cancelledCount} 个,${result.value.errors.length} 个失败`,
-      );
+    } else {
+      if (result.value.errors.length > 0) {
+        setError(
+          `已取消 ${result.value.cancelledCount} 个,${result.value.errors.length} 个失败`,
+        );
+      }
+      toast.show(`已取消 ${result.value.cancelledCount} 个任务`, 'success');
     }
     await load();
     setIsActing(false);

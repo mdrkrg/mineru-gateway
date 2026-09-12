@@ -6,6 +6,7 @@ import type { TaskDetail } from '@/api/schemas/tasks';
 import NoActiveKey from '@/components/NoActiveKey';
 import StatusBadge from '@/components/StatusBadge';
 import { useApiKey } from '@/stores/api-key-context';
+import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
 import { ACTIVE_TASK_STATUSES, ROUTES } from '@/utils/constants';
 import { filenameFromContentDisposition, saveBlob, extensionFromContentType } from '@/utils/download';
@@ -30,6 +31,7 @@ function Field(props: { label: string; children: import('solid-js').JSX.Element 
 function TaskDetailPage() {
   const params = Route.useParams();
   const apiKeyStore = useApiKey();
+  const toast = useToast();
 
   const [task, setTask] = createSignal<TaskDetail | null>(null);
   const [isLoading, setIsLoading] = createSignal(true);
@@ -64,7 +66,11 @@ function TaskDetailPage() {
     setIsActing(true);
     setError(null);
     const result = await cancelTask(t.taskId, key);
-    if (result.isErr()) setError(errorMessage(result.error));
+    if (result.isErr()) {
+      setError(errorMessage(result.error));
+    } else {
+      toast.show('任务已取消', 'success');
+    }
     await load();
     setIsActing(false);
   }

@@ -10,6 +10,8 @@ import { createApiKeyStore } from '@/stores/api-key';
 import { ApiKeyProvider } from '@/stores/api-key-context';
 import { createAdminTokenStore } from '@/stores/admin-token';
 import { AdminTokenProvider } from '@/stores/admin-token-context';
+import { createToastStore } from '@/stores/toast';
+import { ToastProvider } from '@/stores/toast-context';
 
 const apiKeyStore = createApiKeyStore();
 const authStore = createAuthStore({
@@ -18,6 +20,7 @@ const authStore = createAuthStore({
   onSessionCleared: () => apiKeyStore.clearActiveKey(),
 });
 const adminTokenStore = createAdminTokenStore();
+const toastStore = createToastStore();
 
 registerAuthHooks(
   () => authStore.accessToken(),
@@ -50,7 +53,9 @@ if (!rootElement.innerHTML) {
       <AuthProvider store={authStore}>
         <ApiKeyProvider store={apiKeyStore}>
           <AdminTokenProvider store={adminTokenStore}>
-            <RouterProvider router={router} />
+            <ToastProvider store={toastStore}>
+              <RouterProvider router={router} />
+            </ToastProvider>
           </AdminTokenProvider>
         </ApiKeyProvider>
       </AuthProvider>

@@ -15,6 +15,7 @@ import {
 } from '@/api/schemas/mineru-options';
 import NoActiveKey from '@/components/NoActiveKey';
 import { useApiKey } from '@/stores/api-key-context';
+import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
 import { MINERU_LANGUAGE_COVERAGE, MINERU_LANGUAGE_LABELS, ROUTES } from '@/utils/constants';
 import { formatFileSize } from '@/utils/format';
@@ -55,6 +56,7 @@ function LanguageCodeTable() {
 
 function UploadPage() {
   const apiKeyStore = useApiKey();
+  const toast = useToast();
 
   const [files, setFiles] = createSignal<File[]>([]);
   const [isDragging, setIsDragging] = createSignal(false);
@@ -170,6 +172,7 @@ function UploadPage() {
     }
     setSubmitted(result.value);
     setFiles([]);
+    toast.show('任务已提交', 'success');
   }
 
   return (

@@ -11,6 +11,7 @@ import ApiKeyReveal from '@/components/ApiKeyReveal';
 import { isHttpError } from '@/core/error-model';
 import { useAuth } from '@/stores/auth-context';
 import { useApiKey } from '@/stores/api-key-context';
+import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
 import { formatDateTime } from '@/utils/format';
 
@@ -21,6 +22,7 @@ export const Route = createFileRoute('/_authenticated/api-keys')({
 function ApiKeysPage() {
   const auth = useAuth();
   const apiKeyStore = useApiKey();
+  const toast = useToast();
 
   const [keys, setKeys] = createSignal<ApiKeyInfo[]>([]);
   const [isLoading, setIsLoading] = createSignal(true);
@@ -77,6 +79,7 @@ function ApiKeysPage() {
     setCreated(result.value);
     setLabel('');
     setExpiresAt('');
+    toast.show('API Key 创建成功', 'success');
     await loadKeys();
   }
 
@@ -91,6 +94,7 @@ function ApiKeysPage() {
       setError(errorMessage(result.error));
       return;
     }
+    toast.show('API Key 已吊销', 'success');
     await loadKeys();
   }
 
