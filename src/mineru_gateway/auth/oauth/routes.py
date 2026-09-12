@@ -107,10 +107,12 @@ def _is_secure(settings: Settings) -> bool:
 
 
 def _sign_state(state: str, settings: Settings) -> str:
-    """Section 4.5/7.2: sign state with HMAC-SHA256 using jwt_secret.
+    """Section 4.5/7.2: sign the state payload with HMAC-SHA256.
 
-    Returns ``"{state}.{hmac_hexdigest}"`` so the cookie value is
-    tamper-proof while keeping the state itself readable.
+    Returns ``"{payload}.{hmac_hexdigest}"`` so the cookie value is
+    tamper-proof while keeping the payload readable. The payload is
+    provider-qualified (``"{provider}:{state}"``) so a state issued for one
+    provider cannot complete another provider's callback.
     """
     key = settings.jwt_secret.encode("utf-8")
     msg = state.encode("utf-8")
@@ -121,10 +123,11 @@ def _sign_state(state: str, settings: Settings) -> str:
 def _extract_state_from_cookie(
     cookie_value: str | None, settings: Settings
 ) -> str | None:
-    """Section 4.5/7.2: verify HMAC signature and return the state.
+    """Section 4.5/7.2: verify HMAC signature and return the payload.
 
-    Returns the original state if the signature is valid, or ``None``
-    if the cookie is missing, malformed, or the signature does not match.
+    Returns the signed payload (``"{provider}:{state}"``) if the signature
+    is valid, or ``None`` if the cookie is missing, malformed, or the
+    signature does not match.
     """
     if not cookie_value or "." not in cookie_value:
         return None
@@ -172,7 +175,7 @@ async def authorize(
 
     response.set_cookie(
         key=_COOKIE_NAME,
-        value=_sign_state(state, settings),
+        value=_sign_state(f"{provider}:{state}", settings),
         httponly=True,
         samesite="lax",
         secure=_is_secure(settings),
@@ -201,11 +204,14 @@ async def callback(
     mapping = prov_cfg.user_info_mapping if prov_cfg else {}
     email_fallback_domain = prov_cfg.email_fallback_domain if prov_cfg else None
 
-    # Step 1: Verify CSRF state (cookie is HMAC-signed)
-    cookie_state = _extract_state_from_cookie(
+    # Step 1: Verify CSRF state (cookie is HMAC-signed and provider-bound)
+    cookie_payload = _extract_state_from_cookie(
         request.cookies.get(_COOKIE_NAME), settings
     )
-    if not cookie_state or not secrets.compare_digest(cookie_state, state):
+    expected_payload = f"{provider}:{state}"
+    if not cookie_payload or not secrets.compare_digest(
+        cookie_payload, expected_payload
+    ):
         raise HTTPException(status_code=400, detail="State mismatch (CSRF)")
 
     redirect_uri = f"{_get_redirect_base_url(settings)}/auth/oauth/{provider}/callback"

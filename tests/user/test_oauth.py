@@ -707,3 +707,45 @@ async def test_authorize_normalises_trailing_slash_in_redirect_base(
                 params["redirect_uri"][0]
                 == "http://testserver/auth/oauth/keycloak/callback"
             )
+
+
+async def test_callback_rejects_state_issued_for_another_provider(
+    oauth_settings, upstream_client, monkeypatch, mock_oauth_client
+):
+    """Section 7.2: a state cookie from provider A must not complete B.
+
+    /authorize signs the provider into the state cookie so a state issued for
+    one provider cannot be replayed against another provider's callback.
+    """
+    from mineru_gateway.auth.oauth import base
+
+    other = OIDCProviderConfig(
+        name="github",
+        openid_configuration_endpoint=(
+            "https://github.example.com/.well-known/openid-configuration"
+        ),
+        client_id="github-client-id",
+        client_secret="github-client-secret",
+    )
+    monkeypatch.setattr(
+        base,
+        "get_oauth_client",
+        lambda name: mock_oauth_client if name in {"keycloak", "github"} else None,
+    )
+    settings = oauth_settings.model_copy(
+        update={"oidc_providers": [TEST_OIDC_PROVIDER, other]}
+    )
+    app = create_app(settings=settings, upstream_client=upstream_client)
+    async with LifespanManager(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as client:
+            auth = await client.get("/auth/oauth/keycloak/authorize")
+            assert auth.status_code == 302
+            state = parse_qs(urlparse(auth.headers["location"]).query)["state"][0]
+
+            resp = await client.get(
+                f"/auth/oauth/github/callback?code=test-code&state={state}"
+            )
+            assert resp.status_code == 400
