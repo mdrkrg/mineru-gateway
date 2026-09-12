@@ -11,8 +11,8 @@
  *   POST   /tasks/cancel     batch cancel
  *
  * The gateway runs with GATEWAY_ENABLE_BACKGROUND=false so submitted tasks
- * stay in "pending" status.  Result download and result-zip tests are
- * deferred because they require completed tasks from background status sync.
+ * stay in "pending" status.  Result download / result-zip needs background
+ * status sync, so it lives in result-download.test.ts with its own gateway.
  *
  * Each describe block that mutates mock state calls mock.reset() upfront
  * to handle state from previous test files.
@@ -167,6 +167,25 @@ describe('GET /tasks (list)', () => {
     expect(item.taskId).toBeTruthy();
     expect(item.status).toBe('pending');
     expect(item.fileNames.length).toBeGreaterThanOrEqual(1);
+    // No background sync -> pending tasks have no downloadable result.
+    expect(item.hasResult).toBe(false);
+  });
+
+  it('filters by has_result', async () => {
+    await mock.reset();
+    const submitResult = await submitTask({ apiKey, parseFields: samplePdfFormData() });
+    if (!submitResult.isOk()) throw new Error('submit failed');
+    const taskId = submitResult.value.taskId;
+
+    const withoutResult = await listTasks({ apiKey, hasResult: false });
+    expect(withoutResult.isOk()).toBe(true);
+    if (!withoutResult.isOk()) return;
+    expect(withoutResult.value.items.some((i) => i.taskId === taskId)).toBe(true);
+
+    const withResult = await listTasks({ apiKey, hasResult: true });
+    expect(withResult.isOk()).toBe(true);
+    if (!withResult.isOk()) return;
+    expect(withResult.value.items.some((i) => i.taskId === taskId)).toBe(false);
   });
 });
 
@@ -205,6 +224,7 @@ describe('GET /tasks/{id} (detail)', () => {
     expect(result.value.fileCount).toBeGreaterThanOrEqual(1);
     expect(result.value.backend).toBeTruthy();
     expect(result.value.retryCount).toBe(0);
+    expect(result.value.hasResult).toBe(false);
   });
 
   it('returns 404 for a non-existent task', async () => {
