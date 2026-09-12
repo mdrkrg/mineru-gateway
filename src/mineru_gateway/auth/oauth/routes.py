@@ -91,7 +91,13 @@ def _coerce_email_verified(value) -> bool | None:
 
 
 def _get_redirect_base_url(settings: Settings) -> str:
-    return settings.oauth_redirect_base_url or settings.gateway_url
+    """Public callback base URL, without a trailing slash.
+
+    A trailing slash in the configured base would produce
+    ``//auth/oauth/{provider}/callback`` callback URLs that no longer match
+    the redirect URI registered with the OIDC provider.
+    """
+    return (settings.oauth_redirect_base_url or settings.gateway_url).rstrip("/")
 
 
 def _is_secure(settings: Settings) -> bool:

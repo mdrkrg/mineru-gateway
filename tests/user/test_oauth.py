@@ -670,3 +670,40 @@ async def test_providers_empty_when_no_providers_configured(upstream_client):
             resp = await c.get("/auth/oauth/providers")
             assert resp.status_code == 200
             assert resp.json() == {"providers": []}
+
+
+# ===== Section 4.5: redirect_uri construction =====
+
+
+async def test_authorize_normalises_trailing_slash_in_redirect_base(
+    oauth_settings, upstream_client, monkeypatch, mock_oauth_client
+):
+    """Section 4.5: a trailing slash must not yield ``//auth/oauth/...``.
+
+    ``_get_redirect_base_url`` appends ``/auth/oauth/{provider}/callback``, so
+    a configured base ending in ``/`` would produce a double slash that no
+    longer matches the redirect URI registered with the OIDC provider.
+    """
+    from mineru_gateway.auth.oauth import base
+
+    monkeypatch.setattr(
+        base,
+        "get_oauth_client",
+        lambda name: mock_oauth_client if name == "keycloak" else None,
+    )
+    settings = oauth_settings.model_copy(
+        update={"oauth_redirect_base_url": "http://testserver/"}
+    )
+    app = create_app(settings=settings, upstream_client=upstream_client)
+    async with LifespanManager(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as client:
+            resp = await client.get("/auth/oauth/keycloak/authorize")
+            assert resp.status_code == 302
+            params = parse_qs(urlparse(resp.headers["location"]).query)
+            assert (
+                params["redirect_uri"][0]
+                == "http://testserver/auth/oauth/keycloak/callback"
+            )

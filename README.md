@@ -104,6 +104,15 @@ All settings use the `GATEWAY_` env prefix.
 | `GATEWAY_CORS_ALLOW_HEADERS` | `*` | Allowed request headers |
 | `GATEWAY_CORS_ALLOW_CREDENTIALS` | `false` | Allow credentials in cross-origin requests |
 | `GATEWAY_CORS_MAX_AGE` | `600` | Preflight response cache duration (s) |
+| `GATEWAY_USER_AUTH_ENABLED` | `false` | Register JWT/OAuth/user routes; when `false` they 404 |
+| `GATEWAY_JWT_SECRET` | `change-me` | JWT signing secret; **required (≥32 chars)** when user auth is on |
+| `GATEWAY_JWT_ACCESS_LIFETIME_SECONDS` | `900` | Access-token lifetime (s) |
+| `GATEWAY_JWT_REFRESH_LIFETIME_SECONDS` | `604800` | Refresh-token lifetime (s) |
+| `GATEWAY_OPEN_REGISTRATION` | `false` | Allow public email/password registration |
+| `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS` | `false` | Allow unverified users to create self-service API keys |
+| `GATEWAY_OIDC_PROVIDERS` | `[]` | JSON array of OIDC provider configs |
+| `GATEWAY_OAUTH_REDIRECT_BASE_URL` | `GATEWAY_GATEWAY_URL` | Public callback base; **must share the origin used for `/auth/oauth/.../authorize`** (state cookie is host-scoped), including any proxy path prefix |
+| `GATEWAY_OAUTH_FRONTEND_REDIRECT_URL` | `""` | SPA destination after login/verification; unset returns JSON |
 
 ## Development
 
