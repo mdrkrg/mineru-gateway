@@ -26,7 +26,7 @@ pnpm dev                           # start dev server
 pnpm build                         # production build
 pnpm test                          # run tests (single pass)
 pnpm test:watch                    # watch mode
-pnpm e2e                           # run e2e tests
+pnpm test:e2e                      # run e2e tests
 pnpm typecheck                     # tsc --noEmit
 pnpm test -- tests/core/validation.test.ts   # run a single test file
 ```
@@ -137,5 +137,5 @@ tests/e2e/          # e2e tests against running gateway + mock upstream
 - Tests verify spec invariants (`specs/core/*.md` each have an "不变量清单" section).
   When adding a new invariant to a spec, add a matching test.
 - E2E tests live in `tests/e2e/` and use `helpers.ts` (mock control API, PDF blob,
-  API key factory). Run with `pnpm e2e`.
+  API key factory). Run with `pnpm test:e2e`.
 - Run the full suite before finishing: `pnpm test`.
