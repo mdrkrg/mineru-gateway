@@ -387,6 +387,24 @@ async def test_get_result_409_for_failed_task_without_upstream_id(client, api_ke
     assert resp.json()["detail"] == "Task has no upstream result (status=failed)"
 
 
+async def test_get_result_409_for_cancelled_task(client, api_key):
+    """§3.7 + has_result contract: cancelled tasks have no result -> 409.
+
+    A cancelled task still carries an upstream_task_id (it was submitted
+    before cancellation), so the guard must be `task_has_result`, matching
+    the `has_result=false` advertised by list/detail.
+    """
+    tid, upstream_id = await _submit_and_set_status(client, api_key, "cancelled")
+    assert upstream_id is not None
+
+    detail = await client.get(f"/tasks/{tid}", headers={"X-API-Key": api_key})
+    assert detail.json()["has_result"] is False
+
+    resp = await client.get(f"/tasks/{tid}/result", headers={"X-API-Key": api_key})
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "Task has no upstream result (status=cancelled)"
+
+
 async def _submit_and_set_status(
     client, api_key, status: str
 ) -> tuple[str, str | None]:

@@ -155,7 +155,9 @@ async def get_task_result(
             status_code=409,
             detail=f"Task result not yet available (status={task.status})",
         )
-    if not task.upstream_task_id:
+    # Cancelled tasks, and terminal tasks without an upstream id,
+    # are not downloadable.
+    if not service.task_has_result(task):
         raise HTTPException(
             status_code=409,
             detail=f"Task has no upstream result (status={task.status})",
@@ -428,7 +430,9 @@ def _build_result_entry_name(task: Any, upstream_resp: Any) -> str:
         upstream_resp.headers.get("content-disposition", "")
     )
     if cd_filename:
-        return cd_filename
+        safe = _sanitize_entry_name(cd_filename)
+        if safe:
+            return safe
 
     ext = _guess_extension(upstream_resp.headers.get("content-type"))
 
