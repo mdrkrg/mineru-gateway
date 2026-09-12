@@ -8,9 +8,10 @@ import StatusBadge from '@/components/StatusBadge';
 import { useApiKey } from '@/stores/api-key-context';
 import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
-import { ACTIVE_TASK_STATUSES, ROUTES } from '@/utils/constants';
+import { ACTIVE_TASK_STATUSES, ROUTES, TASK_POLL_INTERVAL_MS } from '@/utils/constants';
 import { filenameFromContentDisposition, saveBlob, extensionFromContentType } from '@/utils/download';
 import { formatDateTime, formatDuration } from '@/utils/format';
+import { createPolling } from '@/utils/polling';
 
 export const Route = createFileRoute('/_authenticated/tasks/$id')({
   component: TaskDetailPage,
@@ -38,24 +39,41 @@ function TaskDetailPage() {
   const [error, setError] = createSignal<string | null>(null);
   const [isActing, setIsActing] = createSignal(false);
 
-  async function load() {
+  async function load(opts: { silent?: boolean } = {}) {
     const key = apiKeyStore.activeKey();
     if (!key) {
       setIsLoading(false);
+      polling.stop();
       return;
     }
-    setIsLoading(true);
-    setError(null);
+    if (!opts.silent) {
+      setIsLoading(true);
+      setError(null);
+    }
     const result = await getTaskDetail(params().id, key);
     if (result.isErr()) {
       setError(errorMessage(result.error));
     } else {
       setTask(result.value);
     }
-    setIsLoading(false);
+    if (!opts.silent) setIsLoading(false);
+    syncPolling();
   }
 
-  onMount(load);
+  // Poll while the task is in flight so the status advances without a manual
+  // refresh; stops once it reaches a terminal state.
+  const polling = createPolling(
+    () => (isActing() ? undefined : load({ silent: true })),
+    TASK_POLL_INTERVAL_MS,
+  );
+
+  function syncPolling() {
+    const status = task()?.status;
+    if (status && isActive(status)) polling.start();
+    else polling.stop();
+  }
+
+  onMount(() => load());
 
   async function handleCancel() {
     const key = apiKeyStore.activeKey();

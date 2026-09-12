@@ -47,6 +47,12 @@ export const ACTIVE_TASK_STATUSES: readonly TaskStatus[] = [
   'retry_pending',
 ];
 
+/** Polling interval (ms) for task list/detail views with in-flight tasks. */
+export const TASK_POLL_INTERVAL_MS = 4000;
+
+/** Polling interval (ms) for the dashboard statistics. */
+export const STATS_POLL_INTERVAL_MS = 30000;
+
 /** Chinese display labels for MinerU language codes（i18n will replace these）. */
 export const MINERU_LANGUAGE_LABELS: Record<MineruLanguage, string> = {
   ch: '中文',

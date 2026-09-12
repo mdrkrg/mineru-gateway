@@ -7,8 +7,9 @@ import NoActiveKey from '@/components/NoActiveKey';
 import { useApiKey } from '@/stores/api-key-context';
 import { useAuth } from '@/stores/auth-context';
 import { errorMessage } from '@/utils/api-error';
-import { ROUTES, TASK_STATUS_LABELS } from '@/utils/constants';
+import { ROUTES, STATS_POLL_INTERVAL_MS, TASK_STATUS_LABELS } from '@/utils/constants';
 import { formatFileSize, formatMilliseconds } from '@/utils/format';
+import { createPolling } from '@/utils/polling';
 import type { TaskStatus } from '@/api/schemas/tasks';
 
 export const Route = createFileRoute('/_authenticated/')({
@@ -29,11 +30,16 @@ function DashboardPage() {
   const [isLoading, setIsLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
 
-  onMount(async () => {
+  async function load(opts: { silent?: boolean } = {}) {
     const key = apiKeyStore.activeKey();
     if (!key) {
       setIsLoading(false);
+      polling.stop();
       return;
+    }
+    if (!opts.silent) {
+      setIsLoading(true);
+      setError(null);
     }
     const result = await getTaskStats(key);
     if (result.isErr()) {
@@ -41,8 +47,15 @@ function DashboardPage() {
     } else {
       setStats(result.value);
     }
-    setIsLoading(false);
-  });
+    if (!opts.silent) setIsLoading(false);
+    polling.start();
+  }
+
+  // Keep dashboard counts reasonably fresh without a manual reload; the
+  // poller stops when the active API key is cleared.
+  const polling = createPolling(() => load({ silent: true }), STATS_POLL_INTERVAL_MS);
+
+  onMount(() => load());
 
   const statusCards = (): StatCard[] => {
     const s = stats();

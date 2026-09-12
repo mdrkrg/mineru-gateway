@@ -11,10 +11,12 @@ import { errorMessage } from '@/utils/api-error';
 import {
   ACTIVE_TASK_STATUSES,
   ROUTES,
+  TASK_POLL_INTERVAL_MS,
   TASK_STATUSES,
   TASK_STATUS_LABELS,
 } from '@/utils/constants';
 import { formatDateTime } from '@/utils/format';
+import { createPolling } from '@/utils/polling';
 
 export const Route = createFileRoute('/_authenticated/tasks/')({
   component: TaskListPage,
@@ -34,24 +36,29 @@ function TaskListPage() {
   const [page, setPage] = createSignal(1);
   const [statusFilter, setStatusFilter] = createSignal('');
   const [fileNameFilter, setFileNameFilter] = createSignal('');
+  const [appliedFilters, setAppliedFilters] = createSignal({ status: '', fileName: '' });
   const [isLoading, setIsLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
   const [selected, setSelected] = createSignal<Set<string>>(new Set());
   const [isActing, setIsActing] = createSignal(false);
 
-  async function load(targetPage = page()) {
+  async function load(targetPage = page(), opts: { silent?: boolean } = {}) {
     const key = apiKeyStore.activeKey();
     if (!key) {
       setIsLoading(false);
+      polling.stop();
       return;
     }
-    setIsLoading(true);
-    setError(null);
+    if (!opts.silent) {
+      setIsLoading(true);
+      setError(null);
+    }
 
+    const filters = appliedFilters();
     const result = await listTasks({
       apiKey: key,
-      status: statusFilter() || undefined,
-      fileName: fileNameFilter().trim() || undefined,
+      status: filters.status || undefined,
+      fileName: filters.fileName.trim() || undefined,
       page: targetPage,
       pageSize: PAGE_SIZE,
     });
@@ -61,15 +68,31 @@ function TaskListPage() {
       setItems(result.value.items);
       setTotal(result.value.total);
       setPage(result.value.page);
-      setSelected(new Set<string>());
+      if (!opts.silent) setSelected(new Set<string>());
     }
-    setIsLoading(false);
+    if (!opts.silent) setIsLoading(false);
+    syncPolling();
+  }
+
+  const hasActiveTasks = () => items().some((task) => isActive(task.status));
+
+  // Refresh in-flight tasks silently so status advances without losing the
+  // current selection or flashing the loading state.
+  const polling = createPolling(
+    () => (isActing() ? undefined : load(page(), { silent: true })),
+    TASK_POLL_INTERVAL_MS,
+  );
+
+  function syncPolling() {
+    if (hasActiveTasks()) polling.start();
+    else polling.stop();
   }
 
   onMount(() => load(1));
 
   function applyFilters(e: SubmitEvent) {
     e.preventDefault();
+    setAppliedFilters({ status: statusFilter(), fileName: fileNameFilter() });
     load(1);
   }
 
@@ -197,6 +220,9 @@ function TaskListPage() {
           >
             刷新
           </button>
+          <Show when={hasActiveTasks()}>
+            <span class="text-xs text-gray-500">进行中的任务会自动刷新</span>
+          </Show>
         </div>
 
         {/* Table */}
