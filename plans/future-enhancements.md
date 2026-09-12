@@ -554,6 +554,28 @@ class RedisTokenBucket:
 
 ---
 
+### B13. OAuth PKCE（RFC 7636）🟡 P2
+
+**触发条件**：需要加强授权码拦截防护，或接入要求 PKCE 的 OIDC 提供商 / 公共客户端。
+
+**方案**：`/auth/oauth/{provider}/authorize` 生成 `code_verifier`，以 `S256` 计算 `code_challenge` 传给 `get_authorization_url`；verifier 存入签名 state cookie（或独立 cookie），回调时传给 `get_access_token(code, redirect_uri, code_verifier)`。注意 cookie 体积与各 provider 的兼容性。
+
+**现状**：`httpx-oauth` 的 `get_authorization_url` / `get_access_token` 已支持 `code_challenge` / `code_verifier` 参数，`ManualOIDCClient` 无需改动。
+
+---
+
+### B14. Refresh token 轮换 / 撤销 🟡 P2
+
+**触发条件**：需要「登出即失效」或缩短被盗 refresh token 的有效窗口。
+
+**现状**：`/auth/jwt/logout` 无状态（仅返回 200，无服务端黑名单）；refresh token 在 `GATEWAY_JWT_REFRESH_LIFETIME_SECONDS`（默认 7 天）内始终有效。
+
+**方案**：`/auth/jwt/refresh` 每次签发新的 access + refresh 对并使旧 refresh 失效（`jti` denylist 或 per-user `token_version`）；登出时递增 `token_version`。前端 auth store 需持久化轮换后的 refresh token。
+
+**影响**：需要 DB 迁移（如 `users.token_version`）或引入 jti 存储；前端 `refresh()` 需同时更新 refresh token。
+
+---
+
 ## C. 技术债务与质量改进
 
 | 项 | 说明 | 规模 |
