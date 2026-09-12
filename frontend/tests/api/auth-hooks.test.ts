@@ -111,19 +111,23 @@ describe('createAuthBeforeRequest', () => {
       expect(req.url).toBe('https://example.com/api/tasks');
     });
 
-    it('overwrites an existing Authorization header', () => {
-      const getToken = vi.fn(() => 'new-token');
+    it('preserves an explicitly provided Authorization header', () => {
+      // A caller-supplied Authorization header is an explicit per-request
+      // credential (e.g. loginWithTokens validating a freshly obtained OAuth
+      // token while a previous session's token is still in the store). The
+      // store token must not clobber it, or the request authenticates as the
+      // wrong user.
+      const getToken = vi.fn(() => 'stale-store-token');
       const hook = createAuthBeforeRequest(getToken);
 
       const result = hook({
         request: makeRequest({
-          headers: { Authorization: 'Bearer old-token' },
+          headers: { Authorization: 'Bearer explicit-new-token' },
         }),
       });
 
-      expect((result as Request).headers.get('Authorization')).toBe(
-        'Bearer new-token',
-      );
+      // No new Request is returned; the original (with the explicit header) is sent.
+      expect(result).toBeUndefined();
     });
   });
 

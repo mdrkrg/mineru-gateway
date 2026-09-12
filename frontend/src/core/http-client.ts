@@ -311,6 +311,11 @@ export function createAuthBeforeRequest(
     const token = getToken();
     if (!token) return;
     const headers = new Headers(state.request.headers);
+    // A caller-supplied Authorization header wins: it is an explicit,
+    // per-request credential (e.g. loginWithTokens validating a freshly
+    // obtained OAuth token while a previous session's token is still in the
+    // store). Overwriting it would authenticate the request as the wrong user.
+    if (headers.has('Authorization')) return;
     headers.set('Authorization', `Bearer ${token}`);
     return new Request(state.request, { headers });
   };
