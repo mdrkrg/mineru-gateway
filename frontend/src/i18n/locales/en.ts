@@ -16,6 +16,7 @@ export const en = {
   'common.close': 'Close',
   'common.cancel': 'Cancel',
   'common.confirm': 'Confirm',
+  'common.listSeparator': ', ',
 
   // Toast notifications (ToastHost / toast store)
   'toast.dismiss': 'Dismiss notification',

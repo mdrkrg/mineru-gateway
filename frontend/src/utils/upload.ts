@@ -27,7 +27,7 @@ export function validateUploadSize(
 
   const oversized = files.filter((file) => file.size > maxBytes);
   if (oversized.length > 0) {
-    const names = oversized.map((file) => file.name).join('、');
+    const names = oversized.map((file) => file.name).join(t('common.listSeparator'));
     return {
       ok: false,
       totalBytes,

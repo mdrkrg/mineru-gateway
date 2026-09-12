@@ -106,7 +106,7 @@ function ResultDownloadPage() {
           | undefined;
         const failed = data?.nonDownloadable
           ?.map((item) => `…${item.taskId.slice(-8)}(${item.reason})`)
-          .join('、');
+          .join(t('common.listSeparator'));
         setError(
           t('download.notDownloadable', {
             failed: failed ?? data?.detail ?? t('download.unknownReason'),

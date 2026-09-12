@@ -19,6 +19,7 @@ export const zhCN: Dict = {
   'common.close': '关闭',
   'common.cancel': '取消',
   'common.confirm': '确定',
+  'common.listSeparator': '、',
 
   // Toast notifications (ToastHost / toast store)
   'toast.dismiss': '关闭提示',

@@ -41,6 +41,17 @@ describe('validateUploadSize', () => {
     expect(result.message).toContain('超过单次上传上限');
   });
 
+  it('joins the offending names with the locale list separator', () => {
+    setLocale('en');
+    const result = validateUploadSize(
+      [file('big.pdf', 600 * MB), file('huge.pdf', 700 * MB)],
+      500 * MB,
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected failure');
+    expect(result.message).toContain('big.pdf, huge.pdf');
+  });
+
   it('reports the offending names only when files are individually oversized', () => {
     const result = validateUploadSize(
       [file('ok.pdf', 1 * MB), file('big.pdf', 600 * MB)],
