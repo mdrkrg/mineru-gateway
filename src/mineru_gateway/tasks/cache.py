@@ -30,10 +30,13 @@ class CacheWriter:
 
     spec: streaming-upload.md sec 2.1
 
-    Files are written chunk-by-chunk via *write_file_chunk*.  The first chunk
-    of a new (field, filename) pair creates a new blob; subsequent chunks for
-    the same pair append to the same blob.  *finish* finalises the directory
-    (writes form.json + files.json).  *cancel* removes the directory.
+    Files are written chunk-by-chunk via *write_file_chunk*.  Each multipart
+    file part gets its own blob: the first chunk of a part passes
+    ``new_part=True`` to allocate a new blob, and subsequent chunks of the same
+    part append to it.  This keeps two parts with the same (field, filename)
+    distinct instead of concatenating them into one blob.  *finish* finalises
+    the directory (writes form.json + files.json).  *cancel* removes the
+    directory.
 
     All I/O methods are async and use *aiofiles* to avoid blocking the
     event loop during upload streaming.
@@ -43,6 +46,8 @@ class CacheWriter:
         self._dir = os.path.join(base_dir, uuid.uuid4().hex)
         os.makedirs(self._dir, exist_ok=True)
         self._entries: list[dict] = []
+        # (field, filename) -> blob index of the part currently being written.
+        # Re-pointed on each new part so repeated names stay distinct.
         self._index: dict[tuple[str, str], int] = {}
         self._closed = False
 
@@ -50,12 +55,21 @@ class CacheWriter:
         return os.path.join(self._dir, f"blob-{idx}")
 
     async def write_file_chunk(
-        self, field: str, filename: str, content_type: str, data: bytes
+        self,
+        field: str,
+        filename: str,
+        content_type: str,
+        data: bytes,
+        new_part: bool = False,
     ) -> None:
         if self._closed:
             raise RuntimeError("CacheWriter is closed")
         key = (field, filename)
-        if key not in self._index:
+        # A multipart part boundary always starts a new blob, even when the
+        # (field, filename) repeats: two parts named "doc.pdf" are two files.
+        # Merging them would forward a single concatenated file upstream while
+        # file_count still reports two.
+        if new_part or key not in self._index:
             idx = len(self._entries)
             self._index[key] = idx
             self._entries.append(

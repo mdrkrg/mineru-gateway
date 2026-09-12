@@ -164,11 +164,11 @@ create_streaming_cache() → CacheWriter
 
 - 内部创建一个新的缓存目录（`<base_dir>/<uuid>/`）。
 - 文件按流中首次出现的顺序分配 blob 名称（`blob-0`、`blob-1`、…），与 multipart part 的出现顺序一致。
-- 同一 `(field, filename, content_type)` 组合的后续 chunk 追加到同一个 blob 文件，不会创建新文件。
+- 每个文件 part 对应一个独立 blob。同一 part 内的后续 chunk 追加到同一 blob；新的 part 总是分配新 blob，即使其 `(field, filename)` 与之前的 part 相同（同名文件是不同文件，不得合并）。
 
 | 操作 | 行为 |
 |------|------|
-| `write_file_chunk(field, filename, content_type, data: bytes)` | 将一段文件内容 chunk 追加到对应该 field + filename 的 blob 文件中。首次调用时为该文件创建新的 blob 文件；后续调用追加写入同一 blob。 |
+| `write_file_chunk(field, filename, content_type, data: bytes, new_part: bool = False)` | 将一个文件内容 chunk 写入对应 part 的 blob。`new_part=True`（multipart 每个文件 part 的首个 chunk）时总是创建新 blob；否则追加到该 `(field, filename)` 当前 part 的 blob。 |
 | `finish(form_fields: dict) → str` | 写入 `form.json`（form 字段）和 `files.json`（blob 清单，按 stream 中出现顺序排列），完成缓存目录的创建。返回 `cache_dir` 路径。调用后该目录可被 `restore()` 完整恢复。 |
 | `cancel()` | 移除整个缓存目录及其所有文件，无论写入进行到哪个阶段。用于上传中断、超限或异常时确保不残留部分文件。 |
 

@@ -136,22 +136,25 @@ async def _extract_multipart_streaming(
     file_names: list[str] = []
     total_bytes = 0
     file_bytes = 0
-    pending: list[tuple[str, str, str, bytes]] = []
+    # (field, filename, content_type, chunk, is_first_chunk_of_part)
+    pending: list[tuple[str, str, str, bytes, bool]] = []
 
     current_field: str | None = None
     current_filename: str | None = None
     current_content_type = "application/octet-stream"
     current_is_file = False
+    current_file_part_started = False
     current_form_buf = bytearray()
     header_field = ""
 
     def on_part_begin() -> None:
         nonlocal current_field, current_filename, current_content_type
-        nonlocal current_is_file, current_form_buf
+        nonlocal current_is_file, current_form_buf, current_file_part_started
         current_field = None
         current_filename = None
         current_content_type = "application/octet-stream"
         current_is_file = False
+        current_file_part_started = False
         current_form_buf = bytearray()
 
     def on_header_field(data: bytes, start: int, end: int) -> None:
@@ -174,7 +177,7 @@ async def _extract_multipart_streaming(
             current_content_type = value
 
     def on_part_data(data: bytes, start: int, end: int) -> None:
-        nonlocal total_bytes, file_bytes
+        nonlocal total_bytes, file_bytes, current_file_part_started
         chunk = data[start:end]
         chunk_len = len(chunk)
         total_bytes += chunk_len
@@ -192,8 +195,10 @@ async def _extract_multipart_streaming(
                     current_filename or "unnamed",
                     current_content_type,
                     chunk,
+                    not current_file_part_started,
                 )
             )
+            current_file_part_started = True
         else:
             current_form_buf.extend(chunk)
 

@@ -842,3 +842,43 @@ async def test_t18_interleaved_file_form_parts(tmp_path):
             task = await session.get(TaskRecord, task_id)
             assert task.file_count == 2
             assert task.parse_params.get("parse_method") == "auto"
+
+
+# ---------------------------------------------------------------------------
+# T19 -- Duplicate (field, filename) parts stay distinct (API contract)
+# spec: streaming-upload.md sec 1.1 (file_names order/content matches parts)
+# ---------------------------------------------------------------------------
+
+
+async def test_t19_duplicate_filename_parts_kept_distinct(tmp_path):
+    """Two parts with the same field + filename are two files, not one.
+
+    API contract (spec sec 1.1): the response `file_names` reflects every
+    multipart part in order. The streaming cache previously keyed blobs by
+    (field, filename), concatenating the two parts into one blob so only one
+    file reached upstream while `file_count` still reported two.
+    """
+    gen = _make_streaming_app(tmp_path, max_upload_size=100_000)
+    async for client, app, settings in gen:
+        key = (
+            await client.post(
+                "/auth/keys",
+                json={"label": "t19"},
+                headers={"X-Admin-Token": "test-admin-token"},
+            )
+        ).json()["api_key"]
+
+        files = [
+            ("files", ("dup.pdf", b"AAAA", "application/pdf")),
+            ("files", ("dup.pdf", b"BBBB", "application/pdf")),
+        ]
+        resp = await client.post("/tasks", headers={"X-API-Key": key}, files=files)
+        assert resp.status_code == 202
+        body = resp.json()
+        assert body["file_names"] == ["dup.pdf", "dup.pdf"]
+
+        detail = await client.get(
+            f"/tasks/{body['task_id']}", headers={"X-API-Key": key}
+        )
+        assert detail.status_code == 200
+        assert detail.json()["file_count"] == 2
