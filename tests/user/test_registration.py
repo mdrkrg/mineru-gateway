@@ -8,6 +8,8 @@ Spec: user-management-and-oauth.md
 
 from __future__ import annotations
 
+import pytest
+
 
 # ===== Section 4.2 / 9.1: POST /auth/register (public registration) =====
 
@@ -212,3 +214,23 @@ async def test_admin_create_user_password_contains_email_returns_400(
         },
     )
     assert resp.status_code == 400
+
+
+# ===== Section 4.2: admin create honours privileged flags =====
+
+
+@pytest.mark.parametrize("flag", ["is_superuser", "is_verified"])
+async def test_admin_create_user_honours_privileged_flag(client, admin_headers, flag):
+    """Section 4.2: POST /auth/users honours privileged flags (admin-token gated)."""
+    resp = await client.post(
+        "/auth/users",
+        headers=admin_headers,
+        json={
+            "email": f"{flag}@example.com",
+            "password": "secret123",
+            "display_name": flag,
+            flag: True,
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()[flag] is True

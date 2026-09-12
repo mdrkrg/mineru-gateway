@@ -61,10 +61,17 @@ async def _create_user(
     request: Request,
     user_manager: UserManager,
     settings: Settings,
+    *,
+    safe: bool = True,
 ) -> UserRead:
-    """Section 4.2 + 4.4: shared tail of register / admin create."""
+    """Section 4.2 + 4.4: shared tail of register / admin create.
+
+    ``safe=True`` (public registration) strips privileged flags. The
+    admin-token gated route passes ``safe=False`` so is_superuser /
+    is_active / is_verified are honoured.
+    """
     try:
-        user = await user_manager.create(body, safe=True, request=request)
+        user = await user_manager.create(body, safe=safe, request=request)
     except exceptions.InvalidPasswordException:
         raise HTTPException(status_code=400, detail="Password does not meet rules")
     except exceptions.UserAlreadyExists:
@@ -154,4 +161,4 @@ async def admin_create_user(
     settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> UserRead:
     """Section 4.2: admin creates user (X-Admin-Token, not gated by OPEN_REGISTRATION)."""
-    return await _create_user(body, request, user_manager, settings)
+    return await _create_user(body, request, user_manager, settings, safe=False)
