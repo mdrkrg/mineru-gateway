@@ -182,7 +182,8 @@ async def _extract_multipart_streaming(
         chunk_len = len(chunk)
         total_bytes += chunk_len
         if total_bytes > max_upload_size:
-            writer.cancel()
+            # Cancellation happens in the caller's except block: this callback
+            # is synchronous, so it cannot await the async cancel().
             raise HTTPException(
                 status_code=413,
                 detail=f"Upload exceeds max size ({max_upload_size} bytes)",
@@ -228,10 +229,10 @@ async def _extract_multipart_streaming(
             pending.clear()
 
         cache_dir = await writer.finish(data)
-    except HTTPException:
-        raise
     except BaseException:
-        writer.cancel()
+        # Covers disconnect, parse errors, 413 (size limit) and finish()
+        # failures: the partial cache directory must never be orphaned.
+        await writer.cancel()
         raise
 
     return data, cache_dir, file_names, file_bytes

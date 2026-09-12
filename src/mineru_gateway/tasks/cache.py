@@ -15,6 +15,7 @@ Layout per task::
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import shutil
@@ -23,6 +24,15 @@ import uuid
 import aiofiles
 
 Files = list[tuple[str, tuple[str, bytes, str]]]
+
+
+async def _remove_tree(path: str) -> None:
+    """Delete a cache tree without blocking the single-worker event loop.
+
+    ``shutil.rmtree`` is synchronous and can take a long time on a large
+    upload, so it runs in a worker thread.
+    """
+    await asyncio.to_thread(shutil.rmtree, path, ignore_errors=True)
 
 
 class CacheWriter:
@@ -107,15 +117,17 @@ class CacheWriter:
         self._closed = True
         return self._dir
 
-    def cancel(self) -> None:
+    async def cancel(self) -> None:
         if self._closed:
             return
         self._closed = True
         if os.path.isdir(self._dir):
-            shutil.rmtree(self._dir, ignore_errors=True)
+            await _remove_tree(self._dir)
 
 
 class FileCache:
+    """Restore and release staged uploads. Disk work runs in a thread."""
+
     def __init__(self, base_dir: str) -> None:
         self.base_dir = base_dir
 
@@ -123,6 +135,13 @@ class FileCache:
         return CacheWriter(self.base_dir)
 
     async def restore(self, cache_dir: str) -> tuple[dict, Files]:
+        # Read the whole directory in one thread hop: aiofiles would submit a
+        # separate executor job per blob, which is pure overhead for the
+        # multi-file batches this path handles.
+        return await asyncio.to_thread(self._read_dir, cache_dir)
+
+    @staticmethod
+    def _read_dir(cache_dir: str) -> tuple[dict, Files]:
         with open(os.path.join(cache_dir, "form.json")) as fh:
             data = json.load(fh)
         with open(os.path.join(cache_dir, "files.json")) as fh:
@@ -143,7 +162,7 @@ class FileCache:
     async def release(self, cache_dir: str | None) -> None:
         if not cache_dir:
             return
-        shutil.rmtree(cache_dir, ignore_errors=True)
+        await _remove_tree(cache_dir)
 
     def exists(self, cache_dir: str | None) -> bool:
         return bool(cache_dir) and os.path.isdir(cache_dir)

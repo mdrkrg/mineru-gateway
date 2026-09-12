@@ -446,7 +446,7 @@ async def test_t9_cache_writer_cancel_cleans_directory(tmp_path):
     assert os.path.isdir(cache_dir)
     assert len(os.listdir(cache_dir)) == 2  # blobs written immediately (real streaming)
 
-    writer.cancel()
+    await writer.cancel()
     assert not os.path.isdir(cache_dir), "cancel() must remove the directory"
 
 
@@ -506,7 +506,9 @@ async def test_t9b_finish_failure_calls_cancel(tmp_path):
 
     request.stream = MagicMock(return_value=_MockStream())
 
-    with patch.object(_FailFinishWriter, "cancel") as mock_cancel:
+    with patch.object(
+        _FailFinishWriter, "cancel", new_callable=AsyncMock
+    ) as mock_cancel:
         with pytest.raises(OSError, match="disk full during finish"):
             await _extract_multipart_streaming(request, 100_000, cache)
 
@@ -766,20 +768,20 @@ async def test_t16_cache_writer_closed_guard(tmp_path):
 
     # write_file_chunk after cancel
     w2 = CacheWriter(str(tmp_path))
-    w2.cancel()
+    await w2.cancel()
     with pytest.raises(RuntimeError, match="CacheWriter.*(closed|finished|cancelled)"):
         await w2.write_file_chunk("f", "a", "t", b"x")
 
     # finish after cancel
     w3 = CacheWriter(str(tmp_path))
-    w3.cancel()
+    await w3.cancel()
     with pytest.raises(RuntimeError, match="CacheWriter.*(closed|finished|cancelled)"):
         await w3.finish({})
 
     # cancel after finish (should not raise)
     w4 = CacheWriter(str(tmp_path))
     await w4.finish({})
-    w4.cancel()  # no-op, must not raise
+    await w4.cancel()  # no-op, must not raise
 
 
 # ---------------------------------------------------------------------------
@@ -802,7 +804,7 @@ async def test_t17_cache_writer_cancel_on_disk_error(tmp_path):
             await w.finish({})
 
     # After error, cancel must still clean up
-    w.cancel()
+    await w.cancel()
     assert not os.path.isdir(cache_dir), "cancel() must remove dir after disk error"
 
 

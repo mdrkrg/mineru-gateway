@@ -30,6 +30,8 @@ from .tasks.cache import FileCache
 from .tasks.routes import router as tasks_router
 from .upstream.client import UpstreamClient
 
+logger = logging.getLogger(__name__)
+
 
 def create_app(
     settings: Settings | None = None,
@@ -41,14 +43,13 @@ def create_app(
     if create_tables is None:
         create_tables = settings.create_tables
 
-    # TODO: Support mutli-worker
+    # TODO: Support multi-worker
     if settings.workers > 1:
-        print(
-            f"ERROR: GATEWAY_WORKERS={settings.workers} is not supported. "
-            "Multiple uvicorn workers cause duplicated rate-limiting, "
-            "duplicate background-loop runs, and retry races. "
-            "Set GATEWAY_WORKERS=1 to start.",
-            file=sys.stderr,
+        logger.error(
+            "GATEWAY_WORKERS=%s is not supported. Multiple uvicorn workers "
+            "cause duplicated rate-limiting, duplicate background-loop runs, "
+            "and retry races. Set GATEWAY_WORKERS=1 to start.",
+            settings.workers,
         )
         sys.exit(1)
 
@@ -158,8 +159,6 @@ def create_app(
         allow_credentials=settings.cors_allow_credentials,
         max_age=settings.cors_max_age,
     )
-
-    logger = logging.getLogger("mineru_gateway")
 
     @app.exception_handler(Exception)
     async def _exception_handler(_request: Request, exc: Exception) -> JSONResponse:
