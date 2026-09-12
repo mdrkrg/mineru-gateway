@@ -51,8 +51,6 @@ let _api: typeof ky_default | null = null;
 let _beforeRequestHook: ((state: { request: Request }) => Request | void) | null =
   null;
 let _afterResponseHook: ReturnType<typeof createAuthAfterResponse> | null = null;
-/** Self-reference: set by {@link _createApi}, used by the 401 retry function. */
-let _kyRetry: ((req: Request) => unknown) | null = null;
 
 function _createApi(base: string): typeof ky_default {
   const beforeRequest: BeforeRequestHook[] = [];
@@ -76,8 +74,6 @@ function _createApi(base: string): typeof ky_default {
     prefix: base,
     hooks: { beforeRequest, afterResponse },
   });
-
-  _kyRetry = (req: Request) => api(req);
 
   return api;
 }
@@ -109,10 +105,16 @@ export function registerAuthHooks(
   onApiKeyRejected?: () => void,
 ): void {
   _beforeRequestHook = createAuthBeforeRequest(getToken);
-  _afterResponseHook = createAuthAfterResponse(refresh, (req: Request) => {
-    if (!_kyRetry) throw new Error('ky instance not initialized');
-    return _kyRetry(req);
-  }, onApiKeyRejected);
+  // `ky.retry()` returns a marker that ky's own retry machinery understands:
+  // it increments `retryCount` and honours `retry.limit`, so the
+  // `retryCount > 0` guard in createAuthAfterResponse actually fires. Re-issuing
+  // the request via a fresh `api(request)` call (the previous approach) resets
+  // `retryCount` to 0 and recurses on every 401.
+  _afterResponseHook = createAuthAfterResponse(
+    refresh,
+    (req: Request) => ky_default.retry({ request: req }),
+    onApiKeyRejected,
+  );
   _api = _createApi(env.apiPrefix);
 }
 

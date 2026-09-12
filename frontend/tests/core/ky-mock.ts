@@ -44,13 +44,19 @@ export class TimeoutError extends Error {
   }
 }
 
+export interface RetryMarkerLike {
+  __retryMarker: true;
+  options: unknown;
+}
+
 export function createKyMock() {
   const fn = vi.fn() as MockKy;
   Object.assign(fn, {
     extend: vi.fn(() => fn),
     create: vi.fn(() => fn),
     stop: vi.fn(),
-    retry: vi.fn(),
+    // Mirrors ky.retry(): returns a marker object ky's retry machinery recognizes.
+    retry: vi.fn((options: unknown): RetryMarkerLike => ({ __retryMarker: true, options })),
     get: vi.fn(() => fn),
     post: vi.fn(() => fn),
     put: vi.fn(() => fn),

@@ -29,10 +29,9 @@ const confirmStore = createConfirmStore();
 
 registerAuthHooks(
   () => authStore.accessToken(),
-  async () => {
-    await authStore.refresh();
-    return authStore.accessToken();
-  },
+  // Returns the fresh access token, or null when the refresh failed for any
+  // reason, so the retry hook never re-issues a request with a stale token.
+  () => authStore.refresh(),
   () => apiKeyStore.clearActiveKey(),
 );
 

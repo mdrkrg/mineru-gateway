@@ -577,7 +577,7 @@ describe('AuthStore: refresh', () => {
 
     const store = createAuthStore();
     await store.init();
-    await store.refresh();
+    expect(await store.refresh()).toBe('at-new');
 
     expect(store.isAuthenticated()).toBe(true);
     expect(store.accessToken()).toBe('at-new');
@@ -663,7 +663,7 @@ describe('AuthStore: refresh', () => {
     await store.init();
     onSessionCleared.mockClear();
 
-    await store.refresh();
+    expect(await store.refresh()).toBeNull();
 
     expect(store.isAuthenticated()).toBe(true);
     expect(store.refreshToken()).toBe('rt-net');
@@ -727,7 +727,7 @@ describe('AuthStore: refresh', () => {
     const store = createAuthStore();
     await store.init();
 
-    await store.refresh();
+    expect(await store.refresh()).toBeNull();
 
     expect(store.isAuthenticated()).toBe(false);
     expect(m).not.toHaveBeenCalled();

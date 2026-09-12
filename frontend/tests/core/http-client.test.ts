@@ -100,6 +100,7 @@ function makeHttpError(status: number, data: unknown): InstanceType<typeof HTTPE
 
 beforeEach(() => {
   m.mockReset();
+  m.retry.mockClear();
 });
 
 // ---------------------------------------------------------------------------
@@ -783,18 +784,23 @@ describe('http-client: registerAuthHooks', () => {
       expect(refresh).toHaveBeenCalledTimes(1);
     });
 
-    it('returns retried Response on successful refresh', async () => {
+    it('delegates the retry to ky.retry with the refreshed token', async () => {
       refresh.mockResolvedValue('new-at');
       registerAuthHooks(getToken, refresh);
 
       const hook = getLatestExtendHooks()!.afterResponse![0];
       const req = new Request('http://test/api/tasks');
-      const retriedResp = new Response('ok', { status: 200 });
-
-      m.mockResolvedValueOnce(retriedResp);
 
       const result = await invokeAfterResponse(hook, req, 401);
-      expect(result).toBe(retriedResp);
+
+      // The hook must hand the retried request to ky's own retry machinery
+      // (so ky increments retryCount and honours retry.limit) rather than
+      // re-issuing the request itself.
+      expect((result as { __retryMarker?: boolean }).__retryMarker).toBe(true);
+      expect(m.retry).toHaveBeenCalledOnce();
+      const options = m.retry.mock.calls[0][0] as { request: Request };
+      expect(options.request).toBeInstanceOf(Request);
+      expect(options.request.headers.get('Authorization')).toBe('Bearer new-at');
     });
 
     it('returns undefined when refresh returns null (pass through 401)', async () => {

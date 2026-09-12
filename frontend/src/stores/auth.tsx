@@ -15,7 +15,7 @@ export interface AuthStore {
   login: (email: string, password: string) => Promise<void>;
   loginWithTokens: (accessToken: string, refreshToken: string) => Promise<void>;
   logout: () => Promise<void>;
-  refresh: () => Promise<void>;
+  refresh: () => Promise<string | null>;
   refreshUser: () => Promise<void>;
 }
 
@@ -161,9 +161,9 @@ export function createAuthStore(options: AuthStoreOptions = {}): AuthStore {
     setIsLoading(false);
   }
 
-  async function refresh() {
+  async function refresh(): Promise<string | null> {
     const rt = refreshToken();
-    if (!rt) return;
+    if (!rt) return null;
 
     setIsLoading(true);
     setError(null);
@@ -178,13 +178,17 @@ export function createAuthStore(options: AuthStoreOptions = {}): AuthStore {
       }
       setError(errorMessage(err));
       setIsLoading(false);
-      return;
+      // Return null whenever no fresh access token was obtained. Callers (the
+      // 401 retry hook) must not retry with the stale token, or a transient
+      // refresh failure turns into an endless 401 -> refresh -> 401 loop.
+      return null;
     }
 
     const { accessToken: at } = result.value;
     persistAccessToken(at);
     setAccessToken(at);
     setIsLoading(false);
+    return at;
   }
 
   async function refreshUser() {
