@@ -10,11 +10,11 @@ import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
 import {
-  ACTIVE_TASK_STATUSES,
   ROUTES,
   TASK_POLL_INTERVAL_MS,
   TASK_STATUSES,
   TASK_STATUS_LABELS,
+  isActiveTaskStatus,
 } from '@/utils/constants';
 import { formatDateTime } from '@/utils/format';
 import { createPolling } from '@/utils/polling';
@@ -24,9 +24,6 @@ export const Route = createFileRoute('/_authenticated/tasks/')({
 });
 
 const PAGE_SIZE = 20;
-
-const isActive = (status: string) =>
-  (ACTIVE_TASK_STATUSES as readonly string[]).includes(status);
 
 function TaskListPage() {
   const apiKeyStore = useApiKey();
@@ -76,7 +73,8 @@ function TaskListPage() {
     syncPolling();
   }
 
-  const hasActiveTasks = () => items().some((task) => isActive(task.status));
+  const hasActiveTasks = () =>
+    items().some((task) => isActiveTaskStatus(task.status));
 
   // Refresh in-flight tasks silently so status advances without losing the
   // current selection or flashing the loading state.
@@ -110,7 +108,9 @@ function TaskListPage() {
       setSelected(new Set<string>());
       return;
     }
-    setSelected(new Set(items().filter((t) => isActive(t.status)).map((t) => t.taskId)));
+    setSelected(
+      new Set(items().filter((t) => isActiveTaskStatus(t.status)).map((t) => t.taskId)),
+    );
   }
 
   async function handleCancel(task: TaskListItem) {
@@ -168,7 +168,8 @@ function TaskListPage() {
     setIsActing(false);
   }
 
-  const selectableCount = () => items().filter((t) => isActive(t.status)).length;
+  const selectableCount = () =>
+    items().filter((t) => isActiveTaskStatus(t.status)).length;
 
   return (
     <div class="flex flex-col gap-4">
@@ -275,7 +276,7 @@ function TaskListPage() {
                         <td class="py-2 pl-4 pr-2">
                           <input
                             type="checkbox"
-                            disabled={!isActive(task.status)}
+                            disabled={!isActiveTaskStatus(task.status)}
                             checked={selected().has(task.taskId)}
                             onChange={(e) => toggleSelect(task.taskId, e.currentTarget.checked)}
                           />
@@ -300,7 +301,7 @@ function TaskListPage() {
                         </td>
                         <td class="py-2 pr-4">{task.retryCount}</td>
                         <td class="py-2 pr-4">
-                          <Show when={isActive(task.status)}>
+                          <Show when={isActiveTaskStatus(task.status)}>
                             <button
                               type="button"
                               disabled={isActing()}

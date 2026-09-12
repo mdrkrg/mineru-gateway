@@ -150,7 +150,7 @@ async def get_task_result(
     task = await service.get_owned(session, task_id, key.id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    if task.status not in ("completed", "failed", "cancelled"):
+    if task.status not in service.TERMINAL_STATES:
         raise HTTPException(
             status_code=409,
             detail=f"Task result not yet available (status={task.status})",

@@ -9,7 +9,7 @@ import { useApiKey } from '@/stores/api-key-context';
 import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
-import { ACTIVE_TASK_STATUSES, ROUTES, TASK_POLL_INTERVAL_MS } from '@/utils/constants';
+import { ROUTES, TASK_POLL_INTERVAL_MS, isActiveTaskStatus } from '@/utils/constants';
 import { filenameFromContentDisposition, saveBlob, extensionFromContentType } from '@/utils/download';
 import { formatDateTime, formatDuration } from '@/utils/format';
 import { createPolling } from '@/utils/polling';
@@ -17,9 +17,6 @@ import { createPolling } from '@/utils/polling';
 export const Route = createFileRoute('/_authenticated/tasks/$id')({
   component: TaskDetailPage,
 });
-
-const isActive = (status: string) =>
-  (ACTIVE_TASK_STATUSES as readonly string[]).includes(status);
 
 function Field(props: { label: string; children: import('solid-js').JSX.Element }) {
   return (
@@ -71,7 +68,7 @@ function TaskDetailPage() {
 
   function syncPolling() {
     const status = task()?.status;
-    if (status && isActive(status)) polling.start();
+    if (status && isActiveTaskStatus(status)) polling.start();
     else polling.stop();
   }
 
@@ -197,7 +194,7 @@ function TaskDetailPage() {
                 </Show>
 
                 <div class="flex gap-3">
-                  <Show when={isActive(t().status)}>
+                  <Show when={isActiveTaskStatus(t().status)}>
                     <button
                       type="button"
                       disabled={isActing()}

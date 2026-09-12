@@ -47,6 +47,11 @@ export const ACTIVE_TASK_STATUSES: readonly TaskStatus[] = [
   'retry_pending',
 ];
 
+/** Whether a task status is still advancing (see {@link ACTIVE_TASK_STATUSES}). */
+export function isActiveTaskStatus(status: string): boolean {
+  return (ACTIVE_TASK_STATUSES as readonly string[]).includes(status);
+}
+
 /** Polling interval (ms) for task list/detail views with in-flight tasks. */
 export const TASK_POLL_INTERVAL_MS = 4000;
 

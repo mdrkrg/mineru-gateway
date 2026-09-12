@@ -7,6 +7,7 @@ import {
   ROUTES,
   TASK_STATUSES,
   TASK_STATUS_LABELS,
+  isActiveTaskStatus,
 } from '../../src/utils/constants';
 
 describe('constants', () => {
@@ -29,6 +30,13 @@ describe('constants', () => {
     expect([...ACTIVE_TASK_STATUSES].sort()).toEqual(
       ['pending', 'processing', 'retry_pending'].sort(),
     );
+  });
+
+  it('isActiveTaskStatus matches the active status list', () => {
+    for (const status of TASK_STATUSES) {
+      expect(isActiveTaskStatus(status)).toBe(ACTIVE_TASK_STATUSES.includes(status));
+    }
+    expect(isActiveTaskStatus('unknown')).toBe(false);
   });
 
   it('taskDetail builds the detail route path', () => {
