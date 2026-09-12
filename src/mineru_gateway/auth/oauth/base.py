@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 from httpx_oauth.oauth2 import BaseOAuth2
 
-from ...config import get_settings
+from ...config import OIDCProviderConfig, get_settings
 
 
 class ManualOIDCClient(BaseOAuth2[dict[str, Any]]):
@@ -68,31 +68,53 @@ class ManualOIDCClient(BaseOAuth2[dict[str, Any]]):
         return str(profile["sub"]), profile.get("email")
 
 
-def get_oauth_client(name: str) -> OpenID | ManualOIDCClient | None:
-    """Section 5.2: lookup OIDC client by provider name in config.
+def _build_oauth_client(provider: OIDCProviderConfig) -> OpenID | ManualOIDCClient:
+    """Construct the OIDC client for a provider configuration.
 
-    Returns None if provider not found.
+    ``OpenID`` performs the discovery request synchronously in its
+    constructor, so this must only be called on a cache miss.
     """
     from httpx_oauth.clients.openid import OpenID
 
+    if provider.openid_configuration_endpoint:
+        return OpenID(
+            openid_configuration_endpoint=provider.openid_configuration_endpoint,
+            client_id=provider.client_id,
+            client_secret=provider.client_secret,
+            base_scopes=provider.scopes,
+        )
+
+    return ManualOIDCClient(
+        client_id=provider.client_id,
+        client_secret=provider.client_secret,
+        authorize_endpoint=provider.authorization_endpoint,  # type: ignore[arg-type]
+        access_token_endpoint=provider.token_endpoint,  # type: ignore[arg-type]
+        userinfo_endpoint=provider.userinfo_endpoint,
+        name=provider.name,
+        base_scopes=provider.scopes,
+    )
+
+
+# One client per configured provider. ``OpenID.__init__`` issues a synchronous
+# OIDC discovery request, so constructing a fresh client on every /authorize and
+# /callback call would block the event loop (single worker) and re-fetch the
+# discovery document on every request. Keyed by provider name: get_settings()
+# is lru_cached, so provider objects are stable for the process lifetime.
+_CLIENT_CACHE: dict[str, OpenID | ManualOIDCClient] = {}
+
+
+def get_oauth_client(name: str) -> OpenID | ManualOIDCClient | None:
+    """Section 5.2: lookup OIDC client by provider name in config.
+
+    Returns None if provider not found. Clients are cached per provider
+    configuration so the synchronous discovery fetch happens at most once.
+    """
     settings = get_settings()
     for provider in settings.oidc_providers:
         if provider.name == name:
-            if provider.openid_configuration_endpoint:
-                return OpenID(
-                    openid_configuration_endpoint=provider.openid_configuration_endpoint,
-                    client_id=provider.client_id,
-                    client_secret=provider.client_secret,
-                    base_scopes=provider.scopes,
-                )
-
-            return ManualOIDCClient(
-                client_id=provider.client_id,
-                client_secret=provider.client_secret,
-                authorize_endpoint=provider.authorization_endpoint,  # type: ignore[arg-type]
-                access_token_endpoint=provider.token_endpoint,  # type: ignore[arg-type]
-                userinfo_endpoint=provider.userinfo_endpoint,
-                name=provider.name,
-                base_scopes=provider.scopes,
-            )
+            client = _CLIENT_CACHE.get(name)
+            if client is None:
+                client = _build_oauth_client(provider)
+                _CLIENT_CACHE[name] = client
+            return client
     return None
