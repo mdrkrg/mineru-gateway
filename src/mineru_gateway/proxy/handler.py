@@ -9,6 +9,8 @@ recovery path).
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
@@ -22,6 +24,8 @@ from ..tasks import service as task_service
 from ..tasks.cache import FileCache
 from ..upstream.client import UpstreamClient
 from ..upstream.health import check_free_slot
+
+logger = logging.getLogger(__name__)
 
 _BOOL_FIELDS = {
     "formula_enable",
@@ -232,7 +236,14 @@ async def _extract_multipart_streaming(
     except BaseException:
         # Covers disconnect, parse errors, 413 (size limit) and finish()
         # failures: the partial cache directory must never be orphaned.
-        await writer.cancel()
+        try:
+            await writer.cancel()
+        except Exception:
+            # Best effort. A failing cleanup (for example the default executor
+            # is already shut down) must not replace the error being raised.
+            logger.warning(
+                "Failed to cancel cache dir after aborted upload", exc_info=True
+            )
         raise
 
     return data, cache_dir, file_names, file_bytes

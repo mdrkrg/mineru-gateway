@@ -7,6 +7,7 @@ Labels T1-T15 map to spec sections S1-S15.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -54,6 +55,39 @@ def _count_cache_dirs(cache_base: str) -> int:
     if not os.path.isdir(cache_base):
         return 0
     return len(os.listdir(cache_base))
+
+
+def _mock_boundary_request(boundary: bytes) -> AsyncMock:
+    """Fake Request whose stream() yields one small multipart file part."""
+    request = AsyncMock()
+    request.headers = MagicMock()
+    request.headers.get.return_value = (
+        "multipart/form-data; boundary=" + boundary.decode()
+    )
+
+    class _MockStream:
+        def __init__(self):
+            self._chunks = [
+                b"--" + boundary + b"\r\n",
+                b'Content-Disposition: form-data; name="files"; filename="a.pdf"\r\n',
+                b"Content-Type: application/pdf\r\n\r\n",
+                b"chunk-data\r\n",
+                b"--" + boundary + b"--\r\n",
+            ]
+            self._i = 0
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if self._i >= len(self._chunks):
+                raise StopAsyncIteration
+            chunk = self._chunks[self._i]
+            self._i += 1
+            return chunk
+
+    request.stream = MagicMock(return_value=_MockStream())
+    return request
 
 
 async def _make_streaming_app(
@@ -456,15 +490,11 @@ async def test_t9_cache_writer_cancel_cleans_directory(tmp_path):
 #
 # When CacheWriter.finish() raises (e.g. disk full during metadata writes),
 # the streaming parser must call writer.cancel() to remove the partially
-# written cache directory.  Currently finish() sits outside the try/except
-# that guards chunk processing, so this test FAILS — cancel is never called
-# and the cache directory is orphaned.
+# written cache directory.
 # ---------------------------------------------------------------------------
 
 
 async def test_t9b_finish_failure_calls_cancel(tmp_path):
-    from unittest.mock import MagicMock
-
     from mineru_gateway.proxy.handler import _extract_multipart_streaming
     from mineru_gateway.tasks.cache import CacheWriter, FileCache
 
@@ -477,34 +507,7 @@ async def test_t9b_finish_failure_calls_cancel(tmp_path):
     cache.create_streaming_cache.return_value = _FailFinishWriter(
         str(tmp_path / "cache")
     )
-
-    request = AsyncMock()
-    request.headers = MagicMock()
-    request.headers.get.return_value = "multipart/form-data; boundary=------t9b"
-
-    class _MockStream:
-        def __init__(self):
-            boundary = b"------t9b"
-            self._chunks = [
-                b"--" + boundary + b"\r\n",
-                b'Content-Disposition: form-data; name="files"; filename="a.pdf"\r\n',
-                b"Content-Type: application/pdf\r\n\r\n",
-                b"chunk-data\r\n",
-                b"--" + boundary + b"--\r\n",
-            ]
-            self._i = 0
-
-        def __aiter__(self):
-            return self
-
-        async def __anext__(self):
-            if self._i >= len(self._chunks):
-                raise StopAsyncIteration
-            chunk = self._chunks[self._i]
-            self._i += 1
-            return chunk
-
-    request.stream = MagicMock(return_value=_MockStream())
+    request = _mock_boundary_request(b"------t9b")
 
     with patch.object(
         _FailFinishWriter, "cancel", new_callable=AsyncMock
@@ -513,6 +516,42 @@ async def test_t9b_finish_failure_calls_cancel(tmp_path):
             await _extract_multipart_streaming(request, 100_000, cache)
 
     mock_cancel.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# T9c -- a failing cancel() must not mask the original error
+# spec: streaming-upload.md sec 6.3 S9
+#
+# cancel() runs inside the parser's except block.  If it raises (e.g. the
+# default executor is already shut down during shutdown), the original failure
+# must still surface and the cleanup failure must be logged.
+# ---------------------------------------------------------------------------
+
+
+async def test_t9c_cancel_failure_does_not_mask_original_error(tmp_path, caplog):
+    from mineru_gateway.proxy.handler import _extract_multipart_streaming
+    from mineru_gateway.tasks.cache import CacheWriter, FileCache
+
+    class _FailFinishAndCancelWriter(CacheWriter):
+        async def finish(self, form_fields):
+            raise OSError("disk full during finish")
+
+        async def cancel(self):
+            raise RuntimeError("cannot schedule new futures after shutdown")
+
+    cache = MagicMock(spec=FileCache)
+    cache.create_streaming_cache.return_value = _FailFinishAndCancelWriter(
+        str(tmp_path / "cache")
+    )
+    request = _mock_boundary_request(b"------t9c")
+
+    with caplog.at_level(logging.WARNING, logger="mineru_gateway.proxy.handler"):
+        with pytest.raises(OSError, match="disk full during finish"):
+            await _extract_multipart_streaming(request, 100_000, cache)
+
+    assert any("failed to cancel" in r.getMessage().lower() for r in caplog.records), (
+        "a failed cache cancel must be logged"
+    )
 
 
 # ---------------------------------------------------------------------------
