@@ -1010,6 +1010,44 @@ async def test_result_zip_entry_naming_from_content_disposition(client, api_key)
         assert manifest["included"][0]["entry"] == "upstream-name.zip"
 
 
+async def test_result_zip_entry_name_from_content_disposition_sanitized(
+    client, api_key
+):
+    """§1.2 step 6a + safe naming: an untrusted upstream Content-Disposition
+    filename is basenamed/sanitized like rule 6b, so it cannot produce a
+    zip-slip entry (traversal / absolute path / Windows separators)."""
+    from mineru_gateway import models
+
+    tid, _ = await _submit_and_set_status(client, api_key, "completed")
+    db = client._transport.app.state.db
+    async with db.session_factory() as session:
+        task = await session.get(models.TaskRecord, uuid.UUID(tid))
+        task.file_names = ["ignored.pdf"]
+        await session.commit()
+
+    cases = (
+        ('attachment; filename="../../evil.txt"', "evil.txt"),
+        ('attachment; filename="/etc/passwd"', "passwd"),
+        ('attachment; filename="..\\\\..\\\\evil.zip"', "evil.zip"),
+    )
+    for disposition, expected in cases:
+        mock_state.result_content_disposition = disposition
+
+        resp = await client.post(
+            "/tasks/result-zip",
+            json={"task_ids": [tid]},
+            headers={"X-API-Key": api_key},
+        )
+        assert resp.status_code == 200
+
+        with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+            names = zf.namelist()
+            assert names == [expected, "_manifest.json"], (disposition, names)
+            for name in names:
+                assert ".." not in name
+                assert not name.startswith("/")
+
+
 async def test_result_zip_ownership_checked_before_downloadability(
     client, admin_headers, api_key
 ):

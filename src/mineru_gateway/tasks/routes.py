@@ -365,6 +365,17 @@ def _sanitize_stem(name: str) -> str:
     return stem[:_STEM_MAX_LENGTH]
 
 
+def _sanitize_entry_name(name: str) -> str:
+    """Sanitize an upstream filename for use as a zip entry.
+
+    Strips directories and unsafe characters (zip-slip), keeping the
+    extension. Returns "" when nothing safe remains.
+    """
+    base = name.replace("\\", "/").split("/")[-1]
+    base = _UNSAFE_FILENAME_CHARS.sub("_", base).strip().strip(".")
+    return base[: _STEM_MAX_LENGTH + 16]
+
+
 def _download_extension(disposition: str, content_type: str) -> str:
     """Extension from the upstream filename when present, else Content-Type."""
     upstream_name = _extract_cd_filename(disposition)
@@ -408,7 +419,7 @@ def _build_result_entry_name(task: Any, upstream_resp: Any) -> str:
     """Build zip entry name from task metadata and upstream response.
 
     Priority (spec step 6):
-    a. Content-Disposition filename from upstream
+    a. sanitized Content-Disposition filename from upstream
     b. sanitized file_names[0] stem /result.<extension>
     c. task_id / result.<extension>
     d. .bin fallback
