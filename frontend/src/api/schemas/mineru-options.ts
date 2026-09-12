@@ -5,6 +5,16 @@ export const MineruBackendSchema = type(
 );
 export type MineruBackend = typeof MineruBackendSchema.infer;
 
+/**
+ * MinerU backends that only need the gateway's own vLLM server, i.e. do not
+ * require the user to supply a `server_url`. Kept as an `Exclude` of
+ * `MineruBackend` so it can never drift from `MineruBackendSchema`.
+ */
+export type ServerOnlyMineruBackend = Exclude<
+  MineruBackend,
+  'vlm-http-client' | 'hybrid-http-client'
+>;
+
 export const MineruLanguageSchema = type(
   "'ch' | 'ch_server' | 'korean' | 'ta' | 'te' | 'ka' | 'th' | 'el' | 'arabic' | 'east_slavic' | 'cyrillic' | 'devanagari'",
 );
@@ -22,6 +32,12 @@ export const MINERU_BACKENDS: MineruBackend[] = [
   'hybrid-engine',
   'vlm-http-client',
   'hybrid-http-client',
+];
+/** Subset of `MINERU_BACKENDS` offered in the upload form (no `server_url`). */
+export const MINERU_SERVER_BACKENDS: ServerOnlyMineruBackend[] = [
+  'pipeline',
+  'vlm-engine',
+  'hybrid-engine',
 ];
 export const MINERU_LANGUAGES: MineruLanguage[] = [
   'ch',

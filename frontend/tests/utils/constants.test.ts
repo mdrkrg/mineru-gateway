@@ -6,7 +6,9 @@ import {
   TASK_STATUSES,
   isActiveTaskStatus,
 } from '../../src/utils/constants';
+import { MINERU_BACKENDS, MINERU_SERVER_BACKENDS } from '../../src/api/schemas/mineru-options';
 import {
+  mineruBackendLabel,
   mineruLanguageCoverage,
   mineruLanguageLabel,
   taskStatusLabel,
@@ -43,6 +45,26 @@ describe('constants', () => {
 
   it('taskDetail builds the detail route path', () => {
     expect(ROUTES.taskDetail('abc-123')).toBe('/tasks/abc-123');
+  });
+
+  it('provides a label for every offered MinerU backend', () => {
+    for (const backend of MINERU_SERVER_BACKENDS) {
+      expect(mineruBackendLabel(backend)).toBeTruthy();
+    }
+    expect(MINERU_SERVER_BACKENDS).toHaveLength(3);
+  });
+
+  it('does not offer backends that need a server URL', () => {
+    expect(MINERU_BACKENDS).toEqual(
+      expect.arrayContaining([...MINERU_SERVER_BACKENDS, 'vlm-http-client', 'hybrid-http-client']),
+    );
+    expect(MINERU_SERVER_BACKENDS).not.toContain('vlm-http-client');
+    expect(MINERU_SERVER_BACKENDS).not.toContain('hybrid-http-client');
+  });
+
+  it('falls back to the raw value for unoffered backends', () => {
+    expect(mineruBackendLabel('vlm-http-client')).toBe('vlm-http-client');
+    expect(mineruBackendLabel('hybrid-http-client')).toBe('hybrid-http-client');
   });
 
   it('provides a label and coverage for every MinerU language', () => {

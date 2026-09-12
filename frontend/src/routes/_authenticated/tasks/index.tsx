@@ -6,7 +6,7 @@ import NoActiveKey from '@/components/NoActiveKey';
 import Pagination from '@/components/Pagination';
 import StatusBadge from '@/components/StatusBadge';
 import { t } from '@/i18n';
-import { taskStatusLabel } from '@/i18n/labels';
+import { taskStatusLabel, mineruBackendLabel } from '@/i18n/labels';
 import { useApiKey } from '@/stores/api-key-context';
 import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
@@ -299,7 +299,7 @@ function TaskListPage() {
                         <td class="py-2 pr-4">
                           <StatusBadge status={task.status} />
                         </td>
-                        <td class="py-2 pr-4 text-xs">{task.backend}</td>
+                        <td class="py-2 pr-4 text-xs">{mineruBackendLabel(task.backend)}</td>
                         <td class="py-2 pr-4 max-w-48 truncate" title={task.fileNames.join(', ')}>
                           {task.fileNames.join(', ')}
                         </td>

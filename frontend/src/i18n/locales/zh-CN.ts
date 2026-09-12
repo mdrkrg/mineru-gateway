@@ -91,6 +91,11 @@ export const zhCN: Dict = {
   'status.failed': '失败',
   'status.cancelled': '已取消',
 
+  // MinerU backend options (upload page, task list/detail)
+  'mineruBackend.label.pipeline': 'OCR识别',
+  'mineruBackend.label.vlm-engine': '视觉模型识别',
+  'mineruBackend.label.hybrid-engine': '混合识别',
+
   // MinerU language options (upload page)
   'mineruLang.label.ch': '中文',
   'mineruLang.label.ch_server': '中文服务端版',
@@ -128,7 +133,6 @@ export const zhCN: Dict = {
   'upload.backend': '后端',
   'upload.parseMethod': '解析方式',
   'upload.effort': 'Effort',
-  'upload.serverUrl': 'Server URL',
   'upload.language': '语言（可多选）',
   'upload.langTableOption': '选项',
   'upload.langTableCoverage': '覆盖语言',
@@ -140,7 +144,6 @@ export const zhCN: Dict = {
   'upload.sizeSummary': '共 {{count}} 个文件 · {{size}} / 上限 {{limit}}',
   'upload.submitting': '提交中…',
   'upload.errNoFile': '请先选择要解析的文件',
-  'upload.errServerUrlRequired': '当前后端需要填写 Server URL',
 
   // Task list
   'tasks.filterStatus': '状态',

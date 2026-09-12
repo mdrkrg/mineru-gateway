@@ -4,18 +4,18 @@ import { FileUp, CircleQuestionMark, X } from 'lucide-solid';
 import { submitTask } from '@/api/functions/tasks';
 import type { TaskSubmitResponse } from '@/api/schemas/tasks';
 import {
-  MINERU_BACKENDS,
   MINERU_EFFORTS,
   MINERU_LANGUAGES,
   MINERU_PARSE_METHODS,
-  type MineruBackend,
+  MINERU_SERVER_BACKENDS,
+  type ServerOnlyMineruBackend,
   type MineruEffort,
   type MineruLanguage,
   type MineruParseMethod,
 } from '@/api/schemas/mineru-options';
 import NoActiveKey from '@/components/NoActiveKey';
 import { t } from '@/i18n';
-import { mineruLanguageCoverage, mineruLanguageLabel } from '@/i18n/labels';
+import { mineruBackendLabel, mineruLanguageCoverage, mineruLanguageLabel } from '@/i18n/labels';
 import { useApiKey } from '@/stores/api-key-context';
 import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
@@ -30,8 +30,6 @@ export const Route = createFileRoute('/_authenticated/upload')({
 
 const inputCls =
   'border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500';
-
-const needsServerUrl = (backend: MineruBackend) => backend.endsWith('-http-client');
 
 function LanguageCodeTable() {
   return (
@@ -62,7 +60,7 @@ function UploadPage() {
 
   const [files, setFiles] = createSignal<File[]>([]);
   const [isDragging, setIsDragging] = createSignal(false);
-  const [backend, setBackend] = createSignal<MineruBackend>('pipeline');
+  const [backend, setBackend] = createSignal<ServerOnlyMineruBackend>('hybrid-engine');
   const [langList, setLangList] = createSignal<Set<MineruLanguage>>(new Set(['ch']));
   const [effort, setEffort] = createSignal<MineruEffort>('medium');
   const [parseMethod, setParseMethod] = createSignal<MineruParseMethod>('auto');
@@ -70,7 +68,6 @@ function UploadPage() {
   const [tableEnable, setTableEnable] = createSignal(true);
   const [imageAnalysis, setImageAnalysis] = createSignal(false);
   const [responseZip, setResponseZip] = createSignal(true);
-  const [serverUrl, setServerUrl] = createSignal('');
 
   const [isSubmitting, setIsSubmitting] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
@@ -141,10 +138,6 @@ function UploadPage() {
       setError(sizeCheck.message);
       return;
     }
-    if (needsServerUrl(backend()) && !serverUrl().trim()) {
-      setError(t('upload.errServerUrlRequired'));
-      return;
-    }
 
     setIsSubmitting(true);
     setError(null);
@@ -163,7 +156,6 @@ function UploadPage() {
         imageAnalysis: imageAnalysis(),
         returnImages: true,
         responseFormat: responseZip() ? 'zip' : 'json',
-        serverUrl: needsServerUrl(backend()) ? serverUrl().trim() : undefined,
       },
     });
     setIsSubmitting(false);
@@ -276,11 +268,11 @@ function UploadPage() {
                 <span class="text-sm font-medium text-gray-700">{t('upload.backend')}</span>
                 <select
                   value={backend()}
-                  onChange={(e) => setBackend(e.currentTarget.value as MineruBackend)}
+                  onChange={(e) => setBackend(e.currentTarget.value as ServerOnlyMineruBackend)}
                   class={inputCls}
                 >
-                  <For each={MINERU_BACKENDS}>
-                    {(b) => <option value={b}>{b}</option>}
+                  <For each={MINERU_SERVER_BACKENDS}>
+                    {(b) => <option value={b}>{mineruBackendLabel(b)}</option>}
                   </For>
                 </select>
               </label>
@@ -309,20 +301,6 @@ function UploadPage() {
                 </select>
               </label>
             </div>
-
-            <Show when={needsServerUrl(backend())}>
-              <label class="flex flex-col gap-1">
-                <span class="text-sm font-medium text-gray-700">{t('upload.serverUrl')}</span>
-                <input
-                  type="url"
-                  required
-                  value={serverUrl()}
-                  onInput={(e) => setServerUrl(e.currentTarget.value)}
-                  placeholder="https://…"
-                  class={inputCls}
-                />
-              </label>
-            </Show>
 
             <div>
               <div class="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">

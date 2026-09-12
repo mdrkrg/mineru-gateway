@@ -88,6 +88,11 @@ export const en = {
   'status.failed': 'Failed',
   'status.cancelled': 'Cancelled',
 
+  // MinerU backend options (upload page, task list/detail)
+  'mineruBackend.label.pipeline': 'OCR recognition',
+  'mineruBackend.label.vlm-engine': 'Vision model recognition',
+  'mineruBackend.label.hybrid-engine': 'Hybrid recognition',
+
   // MinerU language options (upload page)
   'mineruLang.label.ch': 'Chinese',
   'mineruLang.label.ch_server': 'Chinese (server)',
@@ -129,7 +134,6 @@ export const en = {
   'upload.backend': 'Backend',
   'upload.parseMethod': 'Parse Method',
   'upload.effort': 'Effort',
-  'upload.serverUrl': 'Server URL',
   'upload.language': 'Languages (multi-select)',
   'upload.langTableOption': 'Option',
   'upload.langTableCoverage': 'Covered Languages',
@@ -141,7 +145,6 @@ export const en = {
   'upload.sizeSummary': '{{count}} files · {{size}} / limit {{limit}}',
   'upload.submitting': 'Submitting…',
   'upload.errNoFile': 'Choose at least one file to parse',
-  'upload.errServerUrlRequired': 'This backend requires a Server URL',
 
   // Task list
   'tasks.filterStatus': 'Status',
