@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { createHttpError } from '../../src/core/error-model';
+import { setLocale } from '../../src/i18n';
 import { errorMessage } from '../../src/utils/api-error';
+
+// The assertions below pin the zh-CN dictionary; force it so the node
+// `navigator.language` ("en-US") cannot leak into the default locale.
+beforeEach(() => setLocale('zh-CN'));
 
 describe('errorMessage: HTTP errors', () => {
   it('maps known backend details to actionable Chinese', () => {

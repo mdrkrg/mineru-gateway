@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { setLocale } from '../../src/i18n';
 import { validateUploadSize } from '../../src/utils/upload';
+
+// The message assertions below pin the zh-CN dictionary; force it so the
+// node `navigator.language` ("en-US") cannot leak into the default locale.
+beforeEach(() => setLocale('zh-CN'));
 
 const MB = 1024 * 1024;
 
