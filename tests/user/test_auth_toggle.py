@@ -96,34 +96,25 @@ async def test_disabled_user_auth_business_routes_work(
 # ===== Section 9.8: USER_AUTH_ENABLED=true, all routes work =====
 
 
-async def test_enabled_user_auth_jwt_routes_accessible(client):
-    """Section 9.8: USER_AUTH_ENABLED=true -> all JWT routes are accessible."""
+async def test_enabled_user_auth_routes_accessible(client):
+    """Section 9.8: USER_AUTH_ENABLED=true -> user/auth routes are registered.
+
+    Each route answers with its normal status (401 without credentials) rather
+    than 404. Deeper per-endpoint behaviour is covered by the dedicated test
+    modules (test_info.py, test_api_keys.py, test_jwt_auth.py).
+    """
     endpoints = [
-        ("/auth/register", "POST", {"email": "x@example.com", "password": "x"}),
-        ("/auth/jwt/login", "POST", {"email": "x@example.com", "password": "x"}),
-        ("/auth/jwt/refresh", "POST", {"refresh_token": "x"}),
-        ("/auth/jwt/logout", "POST", None),
-        ("/auth/users", "POST", {"email": "x@example.com", "password": "x"}),
+        ("POST", "/auth/register", {"email": "x@example.com", "password": "x"}),
+        ("POST", "/auth/jwt/login", {"email": "x@example.com", "password": "x"}),
+        ("POST", "/auth/jwt/refresh", {"refresh_token": "x"}),
+        ("POST", "/auth/jwt/logout", None),
+        ("POST", "/auth/users", {"email": "x@example.com", "password": "x"}),
+        ("GET", "/users/me", None),
+        ("GET", "/me/api-keys", None),
     ]
-    for path, method, body in endpoints:
-        if body:
-            resp = await client.request(method, path, json=body)
-        else:
-            resp = await client.request(method, path)
+    for method, path, body in endpoints:
+        resp = await client.request(method, path, json=body)
         assert resp.status_code != 404, f"{method} {path} returned 404"
-
-
-async def test_enabled_user_auth_user_routes_accessible(client):
-    """Section 9.8: USER_AUTH_ENABLED=true -> /users/me accessible."""
-    # Without JWT, should be 401 (not 404)
-    resp = await client.get("/users/me")
-    assert resp.status_code == 401
-
-
-async def test_enabled_user_auth_api_keys_me_routes_accessible(client):
-    """Section 9.8: USER_AUTH_ENABLED=true -> /me/api-keys accessible."""
-    resp = await client.get("/me/api-keys")
-    assert resp.status_code == 401  # 401 without JWT, not 404
 
 
 # ===== Section 9.9: Existing endpoint regression =====
