@@ -573,10 +573,10 @@ async def test_idempotent_concurrent_same_key(client, api_key, sample_files):
     """T9 sec 6.4: two concurrent requests with same idempotency key.
     Only one task record created, both return 202, second gets replay.
 
-    Mocks task_service.create to simulate a race condition: first call
-    succeeds, second raises IntegrityError.  Also mocks get_by_idempotency_key
-    to return None for the first two calls so both requests pass the
-    idempotency check and reach create."""
+    Mocks task_service.create to simulate a race condition: the first call
+    succeeds, the second raises IntegrityError once the winner has committed.
+    Also mocks get_by_idempotency_key to return None for the first two calls
+    (the two idempotency pre-checks) so both requests reach create."""
     idem_key = "t9-race-key"
     headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
 
@@ -584,18 +584,24 @@ async def test_idempotent_concurrent_same_key(client, api_key, sample_files):
     from mineru_gateway.tasks import service as task_service
 
     original_create = task_service.create
-    _first_done = False
+    winner_committed: asyncio.Event | None = None
 
     async def racing_create(session, **fields):
-        nonlocal _first_done
-        if _first_done:
+        nonlocal winner_committed
+        if winner_committed is not None:
+            # Loser: wait for the winner's commit before raising, otherwise
+            # the recovery lookup can run before the row lands and miss it.
+            await winner_committed.wait()
             raise IntegrityError(
                 "mock",
                 {},
                 Exception("UNIQUE constraint failed: uq_tasks_key_idempotency"),
             )
-        _first_done = True
-        return await original_create(session, **fields)
+        winner_committed = asyncio.Event()
+        try:
+            return await original_create(session, **fields)
+        finally:
+            winner_committed.set()
 
     original_lookup = task_service.get_by_idempotency_key
     _lookup_count = 0
