@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from 'child_process';
-import { resolve } from 'path';
-import { mkdirSync, writeFileSync, rmSync } from 'fs';
+import { resolve, join } from 'path';
+import { mkdirSync, writeFileSync, rmSync, mkdtempSync } from 'fs';
+import { tmpdir } from 'os';
 import * as net from 'net';
 
 // Root of the monorepo (frontend/ -> ../)
@@ -11,6 +12,20 @@ const URLS_FILE = resolve(TMP_DIR, 'urls.json');
 let mockProc: ChildProcess | null = null;
 let smtpProc: ChildProcess | null = null;
 let gatewayProc: ChildProcess | null = null;
+let gatewayTmpDir: string | null = null;
+
+/**
+ * Parent environment with every `GATEWAY_*` variable stripped.
+ *
+ * The gateway subprocess loads `GATEWAY_*` from the repository root `.env`
+ * (pydantic-settings), so inheriting the developer's environment would leak
+ * real credentials (e.g. SMTP) into the tests. Explicit `envExtra` wins.
+ */
+function cleanEnv(): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith('GATEWAY_')),
+  );
+}
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -46,10 +61,15 @@ function waitReady(url: string, timeoutMs = 20_000): Promise<void> {
   });
 }
 
-async function spawnProc(command: string, args: string[], envExtra: Record<string, string>): Promise<ChildProcess> {
+async function spawnProc(
+  command: string,
+  args: string[],
+  envExtra: Record<string, string>,
+  options: { cwd?: string } = {},
+): Promise<ChildProcess> {
   const proc = spawn(command, args, {
-    cwd: ROOT,
-    env: { ...process.env, ...envExtra },
+    cwd: options.cwd ?? ROOT,
+    env: { ...cleanEnv(), ...envExtra },
     stdio: 'ignore',
   });
   proc.on('error', (_err) => {
@@ -87,8 +107,12 @@ export async function setup(): Promise<void> {
   ], {});
   await waitReady(`${smtpCaptureUrl}/health`);
 
+  // Private cwd so the gateway never picks up the repository root `.env`.
+  gatewayTmpDir = mkdtempSync(join(tmpdir(), 'gateway-e2e-'));
   gatewayProc = await spawnProc('uv', [
-    'run', 'uvicorn',
+    // --project keeps uv's environment resolution at the repo root while the
+    // process itself runs in the private cwd below.
+    'run', '--project', ROOT, 'uvicorn',
     'mineru_gateway.main:create_app',
     '--factory',
     '--host', '127.0.0.1',
@@ -103,6 +127,8 @@ export async function setup(): Promise<void> {
     GATEWAY_SMTP_HOST: '127.0.0.1',
     GATEWAY_SMTP_PORT: String(smtpPort),
     GATEWAY_SMTP_FROM: 'e2e@example.com',
+    GATEWAY_SMTP_USERNAME: '',
+    GATEWAY_SMTP_PASSWORD: '',
     GATEWAY_SMTP_STARTTLS: 'false',
     GATEWAY_SMTP_SSL_TLS: 'false',
     GATEWAY_GATEWAY_URL: gatewayUrl,
@@ -115,7 +141,7 @@ export async function setup(): Promise<void> {
     GATEWAY_MAX_UPLOAD_SIZE: '1048576',
     GATEWAY_RATE_LIMIT_PER_KEY: '10',
     GATEWAY_MAX_CONCURRENT_TASKS: '0',
-  });
+  }, { cwd: gatewayTmpDir });
   await waitReady(`${gatewayUrl}/health`);
 
   writeFileSync(URLS_FILE, JSON.stringify({
@@ -140,4 +166,8 @@ export async function teardown(): Promise<void> {
     }
   }
   rmSync(TMP_DIR, { recursive: true, force: true });
+  if (gatewayTmpDir) {
+    rmSync(gatewayTmpDir, { recursive: true, force: true });
+    gatewayTmpDir = null;
+  }
 }
