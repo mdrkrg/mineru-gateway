@@ -148,7 +148,7 @@ describe('email verification flow', () => {
     expect(me.value.isVerified).toBe(true);
   });
 
-  it('re-using the same link after verification is rejected with 400', async () => {
+  it('re-using the same link after verification is idempotent', async () => {
     const email = freshEmail('reuse');
     await registerUser(email);
 
@@ -157,6 +157,10 @@ describe('email verification flow', () => {
 
     await fetch(link, { redirect: 'manual' });
     const resp = await fetch(link, { redirect: 'manual' });
-    expect(resp.status).toBe(400);
+    // Email scanners prefetch links and consume the single-use token, so a
+    // second visit is idempotent success rather than an error.
+    expect(resp.status).toBe(200);
+    const body = (await resp.json()) as { is_verified: boolean };
+    expect(body.is_verified).toBe(true);
   });
 });
