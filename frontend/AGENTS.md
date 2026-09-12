@@ -3,7 +3,7 @@
 ## What this is
 
 `mineru-gateway` frontend - SolidJS SPA for the gateway UI.
-See `specs/` for design docs and `../plans/frontend-plan.md` for the roadmap.
+See `specs/` for design docs.
 
 ## Stack
 
