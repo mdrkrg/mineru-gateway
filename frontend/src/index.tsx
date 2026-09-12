@@ -11,8 +11,12 @@ import { ApiKeyProvider } from '@/stores/api-key-context';
 import { createAdminTokenStore } from '@/stores/admin-token';
 import { AdminTokenProvider } from '@/stores/admin-token-context';
 
-const authStore = createAuthStore();
 const apiKeyStore = createApiKeyStore();
+const authStore = createAuthStore({
+  // Drop the active API key whenever the JWT session ends so a different
+  // user logging in on the same browser cannot inherit it.
+  onSessionCleared: () => apiKeyStore.clearActiveKey(),
+});
 const adminTokenStore = createAdminTokenStore();
 
 registerAuthHooks(

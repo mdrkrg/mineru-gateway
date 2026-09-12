@@ -47,6 +47,16 @@
  * - On `init()`, both keys are read; if tokens exist, `getCurrentUser` is
  *   called to validate.
  *
+ * ### Session-cleared callback
+ *
+ * `createAuthStore({ onSessionCleared })` accepts an optional callback invoked
+ * whenever the client-side session is terminated: `logout()`, `init()` with
+ * invalid/expired tokens (401), `refresh()` auth failure (401/403), and
+ * `refreshUser()` 401. It is NOT invoked when a network or server error merely
+ * preserves the session. The entry point wires it to clear the active API key
+ * so a subsequent login by a different user cannot inherit the previous
+ * user's key.
+ *
  * ### Error handling
  *
  * - HTTP errors (401, 404, 500, etc.) are stored in `error` as a string.
@@ -55,7 +65,8 @@
  * - `error` is cleared to `null` at the start of every action.
  * - On `login` failure, tokens are NOT stored and `user` remains `null`.
  * - On `init` failure (stale/invalid tokens), tokens are cleared.
- * - On `refresh` failure, tokens are cleared (session expired).
+ * - On `refresh` auth failure (401/403), tokens are cleared (session expired);
+ *   network and server errors keep the session.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -623,6 +634,93 @@ describe('AuthStore: refresh', () => {
   });
 
   /**
+   * A transient network error during refresh keeps the session and does not
+   * notify onSessionCleared (so the active API key survives).
+   */
+  it('keeps the session on a network error', async () => {
+    storage.set('auth_access_token', 'at-net');
+    storage.set('auth_refresh_token', 'rt-net');
+
+    m.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'u-net',
+          email: 'net@example.com',
+          is_active: true,
+          is_superuser: false,
+          is_verified: true,
+          display_name: null,
+          created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-01-01T00:00:00Z',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    m.mockRejectedValueOnce(new NetworkError('offline', { cause: new Error('dns') }));
+
+    const onSessionCleared = vi.fn();
+    const store = createAuthStore({ onSessionCleared });
+    await store.init();
+    onSessionCleared.mockClear();
+
+    await store.refresh();
+
+    expect(store.isAuthenticated()).toBe(true);
+    expect(store.refreshToken()).toBe('rt-net');
+    expect(storage.has('auth_refresh_token')).toBe(true);
+    expect(store.error()).toBeTruthy();
+    expect(onSessionCleared).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A server error during refresh is transient, so the session and the active
+   * API key survive (only 401/403 mean the refresh token is dead).
+   */
+  it('keeps the session on a refresh server error', async () => {
+    storage.set('auth_access_token', 'at-5xx');
+    storage.set('auth_refresh_token', 'rt-5xx');
+
+    m.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: 'u-5xx',
+          email: '5xx@example.com',
+          is_active: true,
+          is_superuser: false,
+          is_verified: true,
+          display_name: null,
+          created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-01-01T00:00:00Z',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    const err = new HTTPError(
+      new Response(JSON.stringify({ detail: 'Service Unavailable' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      new Request('http://test'),
+      {},
+    );
+    err.data = { detail: 'Service Unavailable' };
+    m.mockRejectedValueOnce(err);
+
+    const onSessionCleared = vi.fn();
+    const store = createAuthStore({ onSessionCleared });
+    await store.init();
+    onSessionCleared.mockClear();
+
+    await store.refresh();
+
+    expect(store.isAuthenticated()).toBe(true);
+    expect(store.refreshToken()).toBe('rt-5xx');
+    expect(storage.has('auth_refresh_token')).toBe(true);
+    expect(store.error()).toBeTruthy();
+    expect(onSessionCleared).not.toHaveBeenCalled();
+  });
+
+  /**
    * Refresh is a no-op when there is no refreshToken.
    */
   it('is a no-op when no refresh token is available', async () => {
@@ -983,5 +1081,127 @@ describe('AuthStore: localStorage keys', () => {
 
     expect(localStorageMock.removeItem).toHaveBeenCalledWith('auth_access_token');
     expect(localStorageMock.removeItem).toHaveBeenCalledWith('auth_refresh_token');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// onSessionCleared
+// ---------------------------------------------------------------------------
+
+describe('AuthStore: onSessionCleared', () => {
+  const userBody = {
+    id: 'u-sc',
+    email: 'sc@example.com',
+    is_active: true,
+    is_superuser: false,
+    is_verified: true,
+    display_name: null,
+    created_at: '2025-01-01T00:00:00Z',
+    updated_at: '2025-01-01T00:00:00Z',
+  };
+  const jsonResponse = (body: unknown) =>
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+  function unauthenticatedError(detail: string) {
+    const err = new HTTPError(
+      new Response(JSON.stringify({ detail }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      new Request('http://test'),
+      {},
+    );
+    err.data = { detail };
+    return err;
+  }
+
+  /**
+   * Explicit logout notifies the sibling credential stores so the active
+   * API key is dropped before another user logs in.
+   */
+  it('notifies on logout', async () => {
+    storage.set('auth_access_token', 'at-sc');
+    storage.set('auth_refresh_token', 'rt-sc');
+    m.mockResolvedValueOnce(jsonResponse(userBody));
+    m.mockResolvedValueOnce(jsonResponse({ message: 'logged out' }));
+
+    const onSessionCleared = vi.fn();
+    const store = createAuthStore({ onSessionCleared });
+    await store.init();
+    onSessionCleared.mockClear();
+
+    await store.logout();
+    expect(onSessionCleared).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Stale tokens on init (401) clear the session and notify, so a key left
+   * over from a previous session does not survive into the next login.
+   */
+  it('notifies when init clears invalid tokens (401)', async () => {
+    storage.set('auth_access_token', 'at-sc401');
+    storage.set('auth_refresh_token', 'rt-sc401');
+    m.mockRejectedValueOnce(unauthenticatedError('token expired'));
+
+    const onSessionCleared = vi.fn();
+    const store = createAuthStore({ onSessionCleared });
+    await store.init();
+
+    expect(onSessionCleared).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * A failed refresh terminates the session and notifies.
+   */
+  it('notifies when refresh fails (401)', async () => {
+    storage.set('auth_access_token', 'at-scrf');
+    storage.set('auth_refresh_token', 'rt-scrf');
+    m.mockResolvedValueOnce(jsonResponse(userBody));
+    m.mockRejectedValueOnce(unauthenticatedError('refresh expired'));
+
+    const onSessionCleared = vi.fn();
+    const store = createAuthStore({ onSessionCleared });
+    await store.init();
+    onSessionCleared.mockClear();
+
+    await store.refresh();
+    expect(onSessionCleared).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * A 401 from the profile endpoint clears the session and notifies.
+   */
+  it('notifies when refreshUser clears the session (401)', async () => {
+    storage.set('auth_access_token', 'at-scru');
+    storage.set('auth_refresh_token', 'rt-scru');
+    m.mockResolvedValueOnce(jsonResponse(userBody));
+    m.mockRejectedValueOnce(unauthenticatedError('unauthorized'));
+
+    const onSessionCleared = vi.fn();
+    const store = createAuthStore({ onSessionCleared });
+    await store.init();
+    onSessionCleared.mockClear();
+
+    await store.refreshUser();
+    expect(onSessionCleared).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * A network error retains the session, so credentials must NOT be cleared.
+   */
+  it('does not notify when a network error retains the session', async () => {
+    storage.set('auth_access_token', 'at-scnet');
+    storage.set('auth_refresh_token', 'rt-scnet');
+    m.mockRejectedValueOnce(new NetworkError('offline', { cause: new Error('dns') }));
+
+    const onSessionCleared = vi.fn();
+    const store = createAuthStore({ onSessionCleared });
+    await store.init();
+
+    expect(store.isAuthenticated()).toBe(true);
+    expect(onSessionCleared).not.toHaveBeenCalled();
   });
 });

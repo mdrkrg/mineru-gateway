@@ -19,10 +19,29 @@ export interface AuthStore {
   refreshUser: () => Promise<void>;
 }
 
+/**
+ * Optional wiring for {@link createAuthStore}.
+ *
+ * Decouples the auth store from sibling credential stores (e.g. the active
+ * API key store). Kept as a callback so the auth store stays the single
+ * source of truth without importing other stores directly.
+ */
+export interface AuthStoreOptions {
+  /**
+   * Invoked whenever the session is cleared (logout, expired/invalid tokens).
+   * Sibling credential stores should drop any credential scoped to the
+   * previous user here to prevent cross-account leakage.
+   */
+  onSessionCleared?: () => void;
+}
+
 // TODO: Migrate token management to BFF
 
 const ACCESS_TOKEN_KEY = 'auth_access_token';
 const REFRESH_TOKEN_KEY = 'auth_refresh_token';
+
+/** HTTP statuses that mean the JWT session is no longer usable. */
+const DEAD_SESSION_STATUSES = new Set([401, 403]);
 
 function readTokens(): { accessToken: string | null; refreshToken: string | null } {
   return {
@@ -45,13 +64,25 @@ function clearTokens() {
   localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
-export function createAuthStore(): AuthStore {
+export function createAuthStore(options: AuthStoreOptions = {}): AuthStore {
   const [user, setUser] = createSignal<UserRead | null>(null);
   const [accessToken, setAccessToken] = createSignal<string | null>(null);
   const [refreshToken, setRefreshToken] = createSignal<string | null>(null);
   const [isLoading, setIsLoading] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const isAuthenticated = createMemo(() => accessToken() !== null);
+
+  /**
+   * Terminates the client-side session: clears user + tokens from state and
+   * localStorage, then notifies siblings (see {@link AuthStoreOptions}).
+   */
+  function clearSession() {
+    setUser(null);
+    setAccessToken(null);
+    setRefreshToken(null);
+    clearTokens();
+    options.onSessionCleared?.();
+  }
 
   async function init() {
     setIsLoading(true);
@@ -69,10 +100,7 @@ export function createAuthStore(): AuthStore {
     const result = await getCurrentUser();
     if (result.isErr()) {
       if (isHttpError(result.error) && result.error.status === 401) {
-        setUser(null);
-        setAccessToken(null);
-        setRefreshToken(null);
-        clearTokens();
+        clearSession();
       }
       setError(errorMessage(result.error));
     } else {
@@ -124,10 +152,7 @@ export function createAuthStore(): AuthStore {
 
     const result = await apiLogout();
 
-    setUser(null);
-    setAccessToken(null);
-    setRefreshToken(null);
-    clearTokens();
+    clearSession();
 
     if (result.isErr()) {
       setError(errorMessage(result.error));
@@ -145,11 +170,13 @@ export function createAuthStore(): AuthStore {
 
     const result = await apiRefreshToken({ refreshToken: rt });
     if (result.isErr()) {
-      setUser(null);
-      setAccessToken(null);
-      setRefreshToken(null);
-      clearTokens();
-      setError(errorMessage(result.error));
+      const err = result.error;
+      // Only 401/403 mean the refresh token is dead; network and server
+      // errors keep the session (and the active API key) intact.
+      if (isHttpError(err) && DEAD_SESSION_STATUSES.has(err.status)) {
+        clearSession();
+      }
+      setError(errorMessage(err));
       setIsLoading(false);
       return;
     }
@@ -166,10 +193,7 @@ export function createAuthStore(): AuthStore {
     const result = await getCurrentUser();
     if (result.isErr()) {
       if (isHttpError(result.error) && result.error.status === 401) {
-        setUser(null);
-        setAccessToken(null);
-        setRefreshToken(null);
-        clearTokens();
+        clearSession();
       }
       setError(errorMessage(result.error));
       return;
