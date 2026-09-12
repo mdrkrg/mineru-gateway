@@ -15,6 +15,7 @@ import json
 import os
 import sqlite3
 import subprocess
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,12 +23,21 @@ from pathlib import Path
 from mineru_gateway.db import Base
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+ALEMBIC_INI = REPO_ROOT / "alembic.ini"
 
 
-def _alembic_cmd(cmd: str, env: dict, db_file: Path) -> subprocess.CompletedProcess:
+def _alembic_cmd(cmd: str, env: dict, cwd: Path) -> subprocess.CompletedProcess:
+    """Run alembic in *cwd*, never in the repo root.
+
+    ``env.py`` calls ``get_settings()``, which loads ``.env`` relative to the
+    process CWD.  Running from a private directory (the test's tmp_path) keeps
+    a developer's local ``.env`` from breaking the migration, mirroring how the
+    e2e gateway subprocesses are started.  ``-c`` points at the repo's ini so
+    ``%(here)s/alembic`` still resolves to the real script location.
+    """
     return subprocess.run(
-        ["uv", "run", "alembic", *cmd.split()],
-        cwd=REPO_ROOT,
+        [sys.executable, "-m", "alembic", "-c", str(ALEMBIC_INI), *cmd.split()],
+        cwd=cwd,
         env=env,
         capture_output=True,
         text=True,
@@ -38,13 +48,7 @@ def test_upgrade_head_creates_expected_schema(tmp_path):
     """§4: alembic upgrade head 建出模型所有表及命名复合索引, 迁移与模型一致."""
     db_file = tmp_path / "migrated.db"
     env = {**os.environ, "GATEWAY_DATABASE_URL": f"sqlite+aiosqlite:///{db_file}"}
-    result = subprocess.run(
-        ["uv", "run", "alembic", "upgrade", "head"],
-        cwd=REPO_ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
+    result = _alembic_cmd("upgrade head", env, tmp_path)
     assert result.returncode == 0, result.stderr
     assert db_file.exists()
 
@@ -156,7 +160,7 @@ def test_parse_params_data_migration_upgrade_downgrade(tmp_path):
     env = {**os.environ, "GATEWAY_DATABASE_URL": f"sqlite+aiosqlite:///{db_file}"}
 
     # Upgrade to the revision just before parse_params migration.
-    result = _alembic_cmd(f"upgrade {_OLD_PARAM_PRE_REV}", env, db_file)
+    result = _alembic_cmd(f"upgrade {_OLD_PARAM_PRE_REV}", env, tmp_path)
     assert result.returncode == 0, result.stderr
 
     # Insert seed rows using the old schema.
@@ -174,7 +178,7 @@ def test_parse_params_data_migration_upgrade_downgrade(tmp_path):
         conn.close()
 
     # Run the parse_params migration.
-    result = _alembic_cmd(f"upgrade {_OLD_PARAM_MIGRATION_REV}", env, db_file)
+    result = _alembic_cmd(f"upgrade {_OLD_PARAM_MIGRATION_REV}", env, tmp_path)
     assert result.returncode == 0, result.stderr + "\n" + result.stdout
 
     # Validate parse_params JSON content after upgrade.
@@ -215,7 +219,7 @@ def test_parse_params_data_migration_upgrade_downgrade(tmp_path):
         conn.close()
 
     # Downgrade back to pre-migration revision.
-    result = _alembic_cmd(f"downgrade {_OLD_PARAM_PRE_REV}", env, db_file)
+    result = _alembic_cmd(f"downgrade {_OLD_PARAM_PRE_REV}", env, tmp_path)
     assert result.returncode == 0, result.stderr + "\n" + result.stdout
 
     # Validate old columns are restored and parse_params is gone.
