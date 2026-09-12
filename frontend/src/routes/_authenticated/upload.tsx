@@ -18,6 +18,8 @@ import { useApiKey } from '@/stores/api-key-context';
 import { errorMessage } from '@/utils/api-error';
 import { MINERU_LANGUAGE_COVERAGE, MINERU_LANGUAGE_LABELS, ROUTES } from '@/utils/constants';
 import { formatFileSize } from '@/utils/format';
+import { validateUploadSize } from '@/utils/upload';
+import { env } from '@/env';
 
 export const Route = createFileRoute('/_authenticated/upload')({
   component: UploadPage,
@@ -55,6 +57,7 @@ function UploadPage() {
   const apiKeyStore = useApiKey();
 
   const [files, setFiles] = createSignal<File[]>([]);
+  const [isDragging, setIsDragging] = createSignal(false);
   const [backend, setBackend] = createSignal<MineruBackend>('pipeline');
   const [langList, setLangList] = createSignal<Set<MineruLanguage>>(new Set(['ch']));
   const [effort, setEffort] = createSignal<MineruEffort>('medium');
@@ -69,10 +72,46 @@ function UploadPage() {
   const [error, setError] = createSignal<string | null>(null);
   const [submitted, setSubmitted] = createSignal<TaskSubmitResponse | null>(null);
 
-  function addFiles(list: FileList | null) {
+  function addFiles(list: FileList | File[] | null) {
     if (!list) return;
-    setFiles([...files(), ...Array.from(list)]);
+    const incoming = Array.from(list);
+    if (incoming.length === 0) return;
+
+    const next = [...files(), ...incoming];
+    const check = validateUploadSize(next, env.maxUploadSizeBytes);
+    if (!check.ok) {
+      setError(check.message);
+      return;
+    }
+
+    setError(null);
+    setFiles(next);
   }
+
+  // dragenter/dragleave fire on child elements too, so track nesting depth to
+  // avoid flickering the highlight while dragging over the drop zone.
+  let dragDepth = 0;
+
+  function handleDragEnter(e: DragEvent) {
+    e.preventDefault();
+    dragDepth += 1;
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(e: DragEvent) {
+    e.preventDefault();
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) setIsDragging(false);
+  }
+
+  function handleDrop(e: DragEvent) {
+    e.preventDefault();
+    dragDepth = 0;
+    setIsDragging(false);
+    addFiles(e.dataTransfer?.files ?? null);
+  }
+
+  const totalSize = () => files().reduce((sum, file) => sum + file.size, 0);
 
   function removeFile(index: number) {
     setFiles(files().filter((_, i) => i !== index));
@@ -91,6 +130,11 @@ function UploadPage() {
     if (!key) return;
     if (files().length === 0) {
       setError('请先选择要解析的文件');
+      return;
+    }
+    const sizeCheck = validateUploadSize(files(), env.maxUploadSizeBytes);
+    if (!sizeCheck.ok) {
+      setError(sizeCheck.message);
       return;
     }
     if (needsServerUrl(backend()) && !serverUrl().trim()) {
@@ -162,14 +206,29 @@ function UploadPage() {
           {/* File picker */}
           <section class="bg-white rounded-lg shadow p-6">
             <h2 class="text-lg font-semibold mb-3">文件</h2>
-            <label class="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-8 cursor-pointer hover:border-blue-400">
+            <label
+              class={`flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-8 cursor-pointer transition-colors ${
+                isDragging()
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-300 hover:border-blue-400'
+              }`}
+              onDragEnter={handleDragEnter}
+              onDragOver={(e) => e.preventDefault()}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
               <FileUp class="w-8 h-8 text-gray-400 mb-2" />
-              <span class="text-sm text-gray-500">点击选择文件(可多选)</span>
+              <span class="text-sm text-gray-500">点击选择文件，或将文件拖拽到此处(可多选)</span>
               <input
                 type="file"
                 multiple
                 class="hidden"
-                onChange={(e) => addFiles(e.currentTarget.files)}
+                onChange={(e) => {
+                  // Reset so re-picking the same file (e.g. after a rejected
+                  // selection or a successful submit) fires change again.
+                  addFiles(e.currentTarget.files);
+                  e.currentTarget.value = '';
+                }}
               />
             </label>
             <Show when={files().length > 0}>
@@ -192,6 +251,10 @@ function UploadPage() {
                   )}
                 </For>
               </ul>
+              <p class="mt-2 text-xs text-gray-400">
+                共 {files().length} 个文件 · {formatFileSize(totalSize())} / 上限{' '}
+                {formatFileSize(env.maxUploadSizeBytes)}
+              </p>
             </Show>
           </section>
 
