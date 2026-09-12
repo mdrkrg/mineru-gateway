@@ -43,6 +43,11 @@ def create_app(
     if create_tables is None:
         create_tables = settings.create_tables
 
+    # Configure logging before the startup validation below: a rejected
+    # configuration must be reported through the configured handler (JSON when
+    # json_logs is set) rather than the logging last-resort handler.
+    configure_logging(level=settings.log_level, json_logs=settings.json_logs)
+
     # TODO: Support multi-worker
     if settings.workers > 1:
         logger.error(
@@ -73,8 +78,6 @@ def create_app(
             "GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false requires GATEWAY_SMTP_HOST; "
             "configure SMTP or set GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=true"
         )
-
-    configure_logging(level=settings.log_level, json_logs=settings.json_logs)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
