@@ -43,7 +43,14 @@ class OAuthProvidersResponse(BaseModel):
     providers: list[OAuthProviderInfo]
 
 
-_COOKIE_NAME = "gateway_oauth_state"
+def _cookie_name(provider: str) -> str:
+    """Per-provider CSRF state cookie name.
+
+    Namespacing per provider prevents one provider's /authorize from
+    overwriting another provider's pending state when a user starts two
+    logins concurrently (e.g. in two tabs).
+    """
+    return f"gateway_oauth_state_{provider}"
 
 
 def _get_provider_config(
@@ -174,7 +181,7 @@ async def authorize(
     auth_url = await client.get_authorization_url(redirect_uri, state)
 
     response.set_cookie(
-        key=_COOKIE_NAME,
+        key=_cookie_name(provider),
         value=_sign_state(f"{provider}:{state}", settings),
         httponly=True,
         samesite="lax",
@@ -206,7 +213,7 @@ async def callback(
 
     # Step 1: Verify CSRF state (cookie is HMAC-signed and provider-bound)
     cookie_payload = _extract_state_from_cookie(
-        request.cookies.get(_COOKIE_NAME), settings
+        request.cookies.get(_cookie_name(provider)), settings
     )
     expected_payload = f"{provider}:{state}"
     if not cookie_payload or not secrets.compare_digest(
@@ -359,9 +366,10 @@ async def callback(
                 is_verified=is_verified,
                 hashed_password=user_manager.password_helper.hash(random_pw),
             )
-            await user_manager.on_after_register(user, request=request)
             session.add(user)
             await session.flush()
+            # Log after flush so user.id is populated.
+            await user_manager.on_after_register(user, request=request)
 
         # Step 5: Create OAuthAccount
         refresh = (
@@ -394,7 +402,7 @@ async def callback(
     # Step 7: Return JSON or redirect to frontend
     # Clear CSRF cookie (Section 7.2: single-use)
     cookie_jar = Response()
-    cookie_jar.delete_cookie(_COOKIE_NAME)
+    cookie_jar.delete_cookie(_cookie_name(provider))
     set_cookie_header = cookie_jar.headers.get("set-cookie", "")
 
     if settings.oauth_frontend_redirect_url:

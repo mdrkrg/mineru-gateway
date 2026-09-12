@@ -8,6 +8,7 @@ Spec: user-management-and-oauth.md
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlparse
 
@@ -25,6 +26,15 @@ TEST_OIDC_PROVIDER = OIDCProviderConfig(
     openid_configuration_endpoint="https://keycloak.example.com/.well-known/openid-configuration",
     client_id="test-client-id",
     client_secret="test-client-secret",
+)
+
+OTHER_OIDC_PROVIDER = OIDCProviderConfig(
+    name="github",
+    openid_configuration_endpoint=(
+        "https://github.example.com/.well-known/openid-configuration"
+    ),
+    client_id="github-client-id",
+    client_secret="github-client-secret",
 )
 
 
@@ -96,6 +106,30 @@ async def frontend_redirect_client(frontend_redirect_app):
         transport=transport, base_url="http://testserver"
     ) as c:
         yield c
+
+
+@pytest.fixture
+async def two_provider_client(
+    oauth_settings, upstream_client, monkeypatch, mock_oauth_client
+):
+    """Client with both `keycloak` and `github` OIDC providers configured."""
+    from mineru_gateway.auth.oauth import base
+
+    monkeypatch.setattr(
+        base,
+        "get_oauth_client",
+        lambda name: mock_oauth_client if name in {"keycloak", "github"} else None,
+    )
+    settings = oauth_settings.model_copy(
+        update={"oidc_providers": [TEST_OIDC_PROVIDER, OTHER_OIDC_PROVIDER]}
+    )
+    app = create_app(settings=settings, upstream_client=upstream_client)
+    async with LifespanManager(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as c:
+            yield c
 
 
 # ===== Helper =====
@@ -710,42 +744,62 @@ async def test_authorize_normalises_trailing_slash_in_redirect_base(
 
 
 async def test_callback_rejects_state_issued_for_another_provider(
-    oauth_settings, upstream_client, monkeypatch, mock_oauth_client
+    two_provider_client,
 ):
-    """Section 7.2: a state cookie from provider A must not complete B.
+    """Section 7.2: a state issued for provider A must not complete B."""
+    auth = await two_provider_client.get("/auth/oauth/keycloak/authorize")
+    assert auth.status_code == 302
+    state = parse_qs(urlparse(auth.headers["location"]).query)["state"][0]
 
-    /authorize signs the provider into the state cookie so a state issued for
-    one provider cannot be replayed against another provider's callback.
+    resp = await two_provider_client.get(
+        f"/auth/oauth/github/callback?code=test-code&state={state}"
+    )
+    assert resp.status_code == 400
+
+
+async def test_concurrent_provider_authorize_keeps_both_state_cookies(
+    two_provider_client,
+):
+    """Section 7.2: pending states for two providers must not overwrite.
+
+    Each provider gets its own CSRF state cookie, so starting a second
+    provider's /authorize before finishing the first must not invalidate the
+    first provider's pending state.
     """
-    from mineru_gateway.auth.oauth import base
+    auth_k = await two_provider_client.get("/auth/oauth/keycloak/authorize")
+    state_k = parse_qs(urlparse(auth_k.headers["location"]).query)["state"][0]
+    auth_g = await two_provider_client.get("/auth/oauth/github/authorize")
+    state_g = parse_qs(urlparse(auth_g.headers["location"]).query)["state"][0]
 
-    other = OIDCProviderConfig(
-        name="github",
-        openid_configuration_endpoint=(
-            "https://github.example.com/.well-known/openid-configuration"
-        ),
-        client_id="github-client-id",
-        client_secret="github-client-secret",
+    # Complete in the same order they were started. With a single shared
+    # cookie name the github authorize would have clobbered keycloak's state
+    # and this callback would 400.
+    cb_k = await two_provider_client.get(
+        f"/auth/oauth/keycloak/callback?code=test-code&state={state_k}"
     )
-    monkeypatch.setattr(
-        base,
-        "get_oauth_client",
-        lambda name: mock_oauth_client if name in {"keycloak", "github"} else None,
+    assert cb_k.status_code == 200, cb_k.text
+    cb_g = await two_provider_client.get(
+        f"/auth/oauth/github/callback?code=test-code&state={state_g}"
     )
-    settings = oauth_settings.model_copy(
-        update={"oidc_providers": [TEST_OIDC_PROVIDER, other]}
-    )
-    app = create_app(settings=settings, upstream_client=upstream_client)
-    async with LifespanManager(app):
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
-            auth = await client.get("/auth/oauth/keycloak/authorize")
-            assert auth.status_code == 302
-            state = parse_qs(urlparse(auth.headers["location"]).query)["state"][0]
+    assert cb_g.status_code == 200, cb_g.text
 
-            resp = await client.get(
-                f"/auth/oauth/github/callback?code=test-code&state={state}"
+
+async def test_on_after_register_logs_persisted_user_id(oauth_client, caplog):
+    """Section 4.5: on_after_register runs after flush, so it logs the id."""
+    with caplog.at_level(logging.INFO, logger="mineru_gateway.auth.manager"):
+        resp = await _oauth_flow(oauth_client)
+    assert resp.status_code == 200
+
+    app = oauth_client._transport.app
+    async with app.state.db.session_factory() as session:
+        user_id = (
+            await session.execute(
+                select(User.id).where(User.email == "oauth-user@example.com")
             )
-            assert resp.status_code == 400
+        ).scalar_one()
+
+    assert f"User {user_id} registered" in [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == "mineru_gateway.auth.manager"
+    ]
