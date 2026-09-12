@@ -26,6 +26,16 @@ function OAuthCallbackPage() {
 
   onMount(async () => {
     const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    // The tokens / verification outcome are now captured in `params`. Drop the
+    // fragment from the current history entry so they do not linger in the
+    // URL bar or browser history.
+    if (window.location.hash) {
+      window.history.replaceState(
+        null,
+        '',
+        window.location.pathname + window.location.search,
+      );
+    }
     const verified = params.get('verified');
     if (verified === 'true' || verified === 'false') {
       setVerifyState(verified === 'true' ? 'success' : 'failed');
