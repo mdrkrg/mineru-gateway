@@ -6,6 +6,7 @@ import NoActiveKey from '@/components/NoActiveKey';
 import Pagination from '@/components/Pagination';
 import StatusBadge from '@/components/StatusBadge';
 import { useApiKey } from '@/stores/api-key-context';
+import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
 import {
@@ -30,6 +31,7 @@ const isActive = (status: string) =>
 function TaskListPage() {
   const apiKeyStore = useApiKey();
   const toast = useToast();
+  const confirm = useConfirm();
 
   const [items, setItems] = createSignal<TaskListItem[]>([]);
   const [total, setTotal] = createSignal(0);
@@ -114,7 +116,13 @@ function TaskListPage() {
   async function handleCancel(task: TaskListItem) {
     const key = apiKeyStore.activeKey();
     if (!key) return;
-    if (!window.confirm(`确定取消任务 …${task.taskId.slice(-8)} 吗?`)) return;
+    const confirmed = await confirm.ask({
+      title: '取消任务',
+      description: `确定取消任务 …${task.taskId.slice(-8)} 吗？`,
+      confirmText: '取消任务',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     setIsActing(true);
     setError(null);
@@ -133,7 +141,13 @@ function TaskListPage() {
     if (!key) return;
     const ids = [...selected()];
     if (ids.length === 0) return;
-    if (!window.confirm(`确定批量取消选中的 ${ids.length} 个任务吗?`)) return;
+    const confirmed = await confirm.ask({
+      title: '批量取消任务',
+      description: `确定批量取消选中的 ${ids.length} 个任务吗？`,
+      confirmText: '批量取消',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     setIsActing(true);
     setError(null);
@@ -146,7 +160,9 @@ function TaskListPage() {
           `已取消 ${result.value.cancelledCount} 个,${result.value.errors.length} 个失败`,
         );
       }
-      toast.show(`已取消 ${result.value.cancelledCount} 个任务`, 'success');
+      if (result.value.cancelledCount > 0) {
+        toast.show(`已取消 ${result.value.cancelledCount} 个任务`, 'success');
+      }
     }
     await load();
     setIsActing(false);

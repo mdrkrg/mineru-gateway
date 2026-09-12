@@ -12,6 +12,8 @@ import { createAdminTokenStore } from '@/stores/admin-token';
 import { AdminTokenProvider } from '@/stores/admin-token-context';
 import { createToastStore } from '@/stores/toast';
 import { ToastProvider } from '@/stores/toast-context';
+import { createConfirmStore } from '@/stores/confirm';
+import { ConfirmProvider } from '@/stores/confirm-context';
 
 const apiKeyStore = createApiKeyStore();
 const authStore = createAuthStore({
@@ -21,6 +23,7 @@ const authStore = createAuthStore({
 });
 const adminTokenStore = createAdminTokenStore();
 const toastStore = createToastStore();
+const confirmStore = createConfirmStore();
 
 registerAuthHooks(
   () => authStore.accessToken(),
@@ -54,7 +57,9 @@ if (!rootElement.innerHTML) {
         <ApiKeyProvider store={apiKeyStore}>
           <AdminTokenProvider store={adminTokenStore}>
             <ToastProvider store={toastStore}>
-              <RouterProvider router={router} />
+              <ConfirmProvider store={confirmStore}>
+                <RouterProvider router={router} />
+              </ConfirmProvider>
             </ToastProvider>
           </AdminTokenProvider>
         </ApiKeyProvider>

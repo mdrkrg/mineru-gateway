@@ -11,6 +11,7 @@ import AdminTokenGate from '@/components/AdminTokenGate';
 import ApiKeyReveal from '@/components/ApiKeyReveal';
 import type { AuthStore } from '@/stores/auth';
 import { useAdminToken } from '@/stores/admin-token-context';
+import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
 import { requireSuperuser } from '@/stores/guard';
 import { errorMessage } from '@/utils/api-error';
@@ -34,6 +35,7 @@ function AdminKeysPage() {
 function AdminKeysContent() {
   const adminToken = useAdminToken();
   const toast = useToast();
+  const confirm = useConfirm();
 
   const [keys, setKeys] = createSignal<ApiKeyInfo[]>([]);
   const [isLoading, setIsLoading] = createSignal(true);
@@ -93,9 +95,13 @@ function AdminKeysContent() {
   async function handleRevoke(key: ApiKeyInfo) {
     const token = adminToken.token();
     if (!token) return;
-    if (!window.confirm(`确定吊销 Key「${key.label || key.apiKeyPrefix}」吗?此操作不可撤销。`)) {
-      return;
-    }
+    const confirmed = await confirm.ask({
+      title: '吊销 API Key',
+      description: `确定吊销 Key「${key.label || key.apiKeyPrefix}」吗？此操作不可撤销。`,
+      confirmText: '吊销',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     setError(null);
     const result = await revokeApiKey(key.id, token);

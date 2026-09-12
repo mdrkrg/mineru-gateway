@@ -6,6 +6,7 @@ import type { TaskDetail } from '@/api/schemas/tasks';
 import NoActiveKey from '@/components/NoActiveKey';
 import StatusBadge from '@/components/StatusBadge';
 import { useApiKey } from '@/stores/api-key-context';
+import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
 import { ACTIVE_TASK_STATUSES, ROUTES, TASK_POLL_INTERVAL_MS } from '@/utils/constants';
@@ -33,6 +34,7 @@ function TaskDetailPage() {
   const params = Route.useParams();
   const apiKeyStore = useApiKey();
   const toast = useToast();
+  const confirm = useConfirm();
 
   const [task, setTask] = createSignal<TaskDetail | null>(null);
   const [isLoading, setIsLoading] = createSignal(true);
@@ -79,7 +81,13 @@ function TaskDetailPage() {
     const key = apiKeyStore.activeKey();
     const t = task();
     if (!key || !t) return;
-    if (!window.confirm('确定取消该任务吗?')) return;
+    const confirmed = await confirm.ask({
+      title: '取消任务',
+      description: '确定取消该任务吗？',
+      confirmText: '取消任务',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
 
     setIsActing(true);
     setError(null);

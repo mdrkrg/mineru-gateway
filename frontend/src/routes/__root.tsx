@@ -1,5 +1,6 @@
 import { Link, Outlet, createRootRoute } from '@tanstack/solid-router';
 import { TanStackRouterDevtools } from '@tanstack/solid-router-devtools';
+import ConfirmDialogHost from '../components/ConfirmDialogHost';
 import ToastHost from '../components/ToastHost';
 import type { AuthStore } from '../stores/auth';
 
@@ -28,6 +29,7 @@ function RootComponent() {
     <>
       <Outlet />
       <ToastHost />
+      <ConfirmDialogHost />
       <TanStackRouterDevtools position="bottom-right" />
     </>
   );
