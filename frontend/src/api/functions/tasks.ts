@@ -79,6 +79,8 @@ export interface TaskListParams {
   fileName?: string;
   dateFrom?: string;
   dateTo?: string;
+  /** When true, only tasks whose (possibly partial) result can be downloaded. */
+  hasResult?: boolean;
   page?: number;
   pageSize?: number;
 }
@@ -95,6 +97,9 @@ export function listTasks(
   if (params.fileName) searchParams.set('file_name', params.fileName);
   if (params.dateFrom) searchParams.set('date_from', params.dateFrom);
   if (params.dateTo) searchParams.set('date_to', params.dateTo);
+  if (params.hasResult !== undefined) {
+    searchParams.set('has_result', String(params.hasResult));
+  }
   if (params.page !== undefined) searchParams.set('page', String(params.page));
   if (params.pageSize !== undefined) searchParams.set('page_size', String(params.pageSize));
 

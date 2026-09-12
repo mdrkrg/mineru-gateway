@@ -65,6 +65,7 @@ async def list_tasks(
     file_name: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    has_result: bool | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
     api_key: ApiKey | None = Depends(require_api_key),
@@ -79,6 +80,7 @@ async def list_tasks(
         file_name=file_name,
         date_from=date_from,
         date_to=date_to,
+        has_result=has_result,
         page=page,
         page_size=page_size,
     )
@@ -94,6 +96,7 @@ async def list_tasks(
             error=t.error_message,
             retry_count=t.retry_count,
             queued_ahead=t.queued_ahead,
+            has_result=service.task_has_result(t),
         )
         for t in tasks
     ]
@@ -132,6 +135,7 @@ async def get_task(
         error=task.error_message,
         retry_count=task.retry_count,
         queued_ahead=task.queued_ahead,
+        has_result=service.task_has_result(task),
     )
 
 
@@ -232,22 +236,20 @@ async def result_zip(
     non_downloadable: list[NonDownloadableItem] = []
     for task_id in body.task_ids:
         task = tasks_by_id[task_id]
-        if task.status != "completed":
-            non_downloadable.append(
-                NonDownloadableItem(
-                    task_id=task_id,
-                    status=task.status,
-                    reason="not_completed",
-                )
+        if service.task_has_result(task):
+            continue
+        reason = (
+            "missing_upstream_task_id"
+            if task.status in service.RESULT_STATES
+            else "not_completed"
+        )
+        non_downloadable.append(
+            NonDownloadableItem(
+                task_id=task_id,
+                status=task.status,
+                reason=reason,
             )
-        elif not task.upstream_task_id:
-            non_downloadable.append(
-                NonDownloadableItem(
-                    task_id=task_id,
-                    status=task.status,
-                    reason="missing_upstream_task_id",
-                )
-            )
+        )
 
     if non_downloadable:
         return JSONResponse(

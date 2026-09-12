@@ -190,6 +190,12 @@ function TaskDetailPage() {
                   </Show>
                 </div>
 
+                <Show when={t().status === 'failed' && t().hasResult}>
+                  <p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                    任务失败，可尝试下载部分结果。
+                  </p>
+                </Show>
+
                 <div class="flex gap-3">
                   <Show when={isActive(t().status)}>
                     <button
@@ -201,7 +207,7 @@ function TaskDetailPage() {
                       取消任务
                     </button>
                   </Show>
-                  <Show when={t().status === 'completed'}>
+                  <Show when={t().hasResult}>
                     <button
                       type="button"
                       disabled={isActing()}

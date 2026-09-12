@@ -1158,3 +1158,105 @@ async def test_result_zip_duplicate_entry_names_deduplicated(client, api_key):
         assert len(manifest["included"]) == 2
         included_names = {item["entry"] for item in manifest["included"]}
         assert len(included_names) == 2, "duplicate entry names in manifest"
+
+
+# ===== has_result / partial-result downloads =====
+
+
+async def test_detail_has_result_for_failed_task_with_upstream_id(client, api_key):
+    """A failed task that mapped to upstream still exposes a (partial) result."""
+    task_id, upstream_id = await _submit_and_set_status(client, api_key, "failed")
+    assert upstream_id is not None
+
+    resp = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+    assert resp.status_code == 200
+    assert resp.json()["has_result"] is True
+
+
+async def test_detail_has_no_result_without_upstream_id(client, api_key):
+    """A terminal task that never reached upstream has no downloadable result."""
+    db = client._transport.app.state.db
+    async with db.session_factory() as session:
+        key = (await session.execute(select(ApiKey))).scalars().first()
+        task = await service.create(
+            session,
+            api_key_id=key.id,
+            status="failed",
+            upstream_url="http://mock-upstream",
+            upstream_task_id=None,
+            file_names=["x.pdf"],
+            file_count=1,
+        )
+        task_id = task.id
+
+    resp = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+    assert resp.status_code == 200
+    assert resp.json()["has_result"] is False
+
+
+async def test_list_has_result_filter(client, api_key):
+    """has_result=true/false partition result-bearing tasks from the rest."""
+    tid_ok, _ = await _submit_and_set_status(client, api_key, "failed")
+    await _submit_and_set_status(client, api_key, "pending")
+
+    resp = await client.get("/tasks?has_result=true", headers={"X-API-Key": api_key})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["items"][0]["task_id"] == tid_ok
+    assert body["items"][0]["has_result"] is True
+
+    resp_false = await client.get(
+        "/tasks?has_result=false", headers={"X-API-Key": api_key}
+    )
+    assert resp_false.status_code == 200
+    assert resp_false.json()["total"] == 1
+
+
+async def test_list_items_expose_has_result(client, api_key):
+    """List items carry has_result so the download page can filter client-side too."""
+    await _submit_and_set_status(client, api_key, "completed")
+
+    resp = await client.get("/tasks", headers={"X-API-Key": api_key})
+    assert resp.status_code == 200
+    assert resp.json()["items"][0]["has_result"] is True
+
+
+async def test_result_zip_allows_failed_task_with_result(client, api_key):
+    """Failed tasks with an upstream mapping can be zipped (partial results)."""
+    tid, _ = await _submit_and_set_status(client, api_key, "failed")
+
+    resp = await client.post(
+        "/tasks/result-zip",
+        json={"task_ids": [tid]},
+        headers={"X-API-Key": api_key},
+    )
+    assert resp.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        assert "_manifest.json" in zf.namelist()
+        manifest = json.loads(zf.read("_manifest.json"))
+        assert len(manifest["included"]) == 1
+
+
+async def test_cancelled_task_has_no_result(client, api_key):
+    """Cancelled tasks were pending, so upstream never produced a result."""
+    task_id, upstream_id = await _submit_and_set_status(client, api_key, "cancelled")
+    assert upstream_id is not None
+
+    resp = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+    assert resp.status_code == 200
+    assert resp.json()["has_result"] is False
+
+
+async def test_result_zip_rejects_cancelled_task(client, api_key):
+    """Cancelled tasks are not part of the downloadable set."""
+    tid, _ = await _submit_and_set_status(client, api_key, "cancelled")
+
+    resp = await client.post(
+        "/tasks/result-zip",
+        json={"task_ids": [tid]},
+        headers={"X-API-Key": api_key},
+    )
+    assert resp.status_code == 409
+    body = resp.json()
+    assert body["non_downloadable"][0]["reason"] == "not_completed"

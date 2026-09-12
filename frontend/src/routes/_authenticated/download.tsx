@@ -5,6 +5,7 @@ import { downloadResultZip, getTaskResult, listTasks } from '@/api/functions/tas
 import type { TaskListItem } from '@/api/schemas/tasks';
 import NoActiveKey from '@/components/NoActiveKey';
 import Pagination from '@/components/Pagination';
+import StatusBadge from '@/components/StatusBadge';
 import { useApiKey } from '@/stores/api-key-context';
 import { errorMessage } from '@/utils/api-error';
 import { isHttpError } from '@/core/error-model';
@@ -40,7 +41,7 @@ function ResultDownloadPage() {
 
     const result = await listTasks({
       apiKey: key,
-      status: 'completed',
+      hasResult: true,
       page: targetPage,
       pageSize: PAGE_SIZE,
     });
@@ -128,7 +129,7 @@ function ResultDownloadPage() {
 
       <Show when={apiKeyStore.activeKey()}>
         <p class="text-sm text-gray-500">
-          这里列出所有已完成的任务,可单个下载或勾选后打包下载 ZIP。
+          这里列出所有可下载结果的任务（含失败任务的部分结果）,可单个下载或勾选后打包下载 ZIP。
         </p>
 
         <Show when={error()}>
@@ -160,7 +161,7 @@ function ResultDownloadPage() {
           <Show when={!isLoading()} fallback={<p class="p-6 text-gray-500">加载中…</p>}>
             <Show
               when={items().length > 0}
-              fallback={<p class="p-6 text-gray-500">还没有已完成的任务。</p>}
+              fallback={<p class="p-6 text-gray-500">还没有可下载结果的任务。</p>}
             >
               <table class="w-full text-sm">
                 <thead>
@@ -173,6 +174,7 @@ function ResultDownloadPage() {
                       />
                     </th>
                     <th class="py-2 pr-4 font-medium">任务 ID</th>
+                    <th class="py-2 pr-4 font-medium">状态</th>
                     <th class="py-2 pr-4 font-medium">文件</th>
                     <th class="py-2 pr-4 font-medium">完成时间</th>
                     <th class="py-2 pr-4 font-medium">操作</th>
@@ -196,6 +198,9 @@ function ResultDownloadPage() {
                           >
                             <code class="text-xs">…{task.taskId.slice(-8)}</code>
                           </Link>
+                        </td>
+                        <td class="py-2 pr-4">
+                          <StatusBadge status={task.status} />
                         </td>
                         <td class="py-2 pr-4 max-w-64 truncate" title={task.fileNames.join(', ')}>
                           {task.fileNames.join(', ')}

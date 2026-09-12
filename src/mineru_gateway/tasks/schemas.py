@@ -21,6 +21,7 @@ class TaskListItem(BaseModel):
     error: str | None = None
     retry_count: int
     queued_ahead: int | None = None
+    has_result: bool = False
 
 
 class TaskListResponse(BaseModel):
@@ -42,6 +43,7 @@ class TaskDetail(BaseModel):
     error: str | None = None
     retry_count: int
     queued_ahead: int | None = None
+    has_result: bool = False
 
 
 class TaskCancelResponse(BaseModel):

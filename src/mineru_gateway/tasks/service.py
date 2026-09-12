@@ -6,7 +6,7 @@ import uuid
 from datetime import date, datetime, time, timezone, timedelta
 from typing import Any
 
-from sqlalchemy import String, func, select
+from sqlalchemy import String, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -53,6 +53,7 @@ def _build_filters(
     file_name: str | None,
     date_from: date | None,
     date_to: date | None,
+    has_result: bool | None = None,
 ) -> list:
     conditions = [TaskRecord.api_key_id == api_key_id]
     if status:
@@ -73,6 +74,17 @@ def _build_filters(
             TaskRecord.created_at
             <= datetime.combine(date_to, time.max, tzinfo=timezone.utc)
         )
+    if has_result is not None:
+        if has_result:
+            conditions.append(TaskRecord.status.in_(RESULT_STATES))
+            conditions.append(TaskRecord.upstream_task_id.is_not(None))
+        else:
+            conditions.append(
+                or_(
+                    TaskRecord.status.not_in(RESULT_STATES),
+                    TaskRecord.upstream_task_id.is_(None),
+                )
+            )
     return conditions
 
 
@@ -85,11 +97,12 @@ async def list_tasks(
     file_name: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    has_result: bool | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> tuple[list[TaskRecord], int]:
     conditions = _build_filters(
-        api_key_id, status, backend, file_name, date_from, date_to
+        api_key_id, status, backend, file_name, date_from, date_to, has_result
     )
 
     total = await session.scalar(
@@ -121,6 +134,17 @@ async def mark_cancelled(session: AsyncSession, task: TaskRecord) -> str | None:
 
 # Statuses that are settled and no longer change.
 TERMINAL_STATES = ("completed", "failed", "cancelled")
+
+# Terminal statuses whose upstream result may still be downloadable. Cancelled
+# is excluded: the gateway only cancels pending tasks, which have no result.
+RESULT_STATES = ("completed", "failed")
+
+
+def task_has_result(task: TaskRecord) -> bool:
+    """Whether the upstream result endpoint can serve a (possibly partial) result."""
+    return task.status in RESULT_STATES and task.upstream_task_id is not None
+
+
 # Upstream statuses mapped onto gateway statuses.
 _UPSTREAM_STATUS_MAP = {
     "pending": "pending",
