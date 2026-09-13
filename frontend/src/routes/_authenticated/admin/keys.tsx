@@ -1,6 +1,5 @@
-import { For, Show, createSignal, onMount } from 'solid-js';
+import { Show, createSignal, onMount } from 'solid-js';
 import { createFileRoute } from '@tanstack/solid-router';
-import { Trash2 } from 'lucide-solid';
 import {
   createApiKey,
   listApiKeys,
@@ -9,6 +8,7 @@ import {
 import type { ApiKeyCreatedResponse, ApiKeyInfo } from '@/api/schemas/auth';
 import AdminTokenGate from '@/components/AdminTokenGate';
 import ApiKeyReveal from '@/components/ApiKeyReveal';
+import ApiKeyTable from '@/components/ApiKeyTable';
 import { t } from '@/i18n';
 import type { AuthStore } from '@/stores/auth';
 import { useAdminToken } from '@/stores/admin-token-context';
@@ -16,7 +16,6 @@ import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
 import { requireSuperuser } from '@/stores/guard';
 import { errorMessage } from '@/utils/api-error';
-import { formatDateTime } from '@/utils/format';
 
 export const Route = createFileRoute('/_authenticated/admin/keys')({
   beforeLoad: ({ context }) => {
@@ -41,24 +40,29 @@ function AdminKeysContent() {
   const [keys, setKeys] = createSignal<ApiKeyInfo[]>([]);
   const [isLoading, setIsLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
+  const [revokingId, setRevokingId] = createSignal<string | null>(null);
 
   const [label, setLabel] = createSignal('');
   const [expiresAt, setExpiresAt] = createSignal('');
   const [isCreating, setIsCreating] = createSignal(false);
   const [created, setCreated] = createSignal<ApiKeyCreatedResponse | null>(null);
 
-  async function loadKeys() {
+  // `silent` keeps the current table mounted while reconciling with the
+  // server, so post-action refreshes do not flash a loading state.
+  async function loadKeys(opts: { silent?: boolean } = {}) {
     const token = adminToken.token();
     if (!token) return;
-    setIsLoading(true);
-    setError(null);
+    if (!opts.silent) {
+      setIsLoading(true);
+      setError(null);
+    }
     const result = await listApiKeys(token);
     if (result.isErr()) {
       setError(errorMessage(result.error));
     } else {
       setKeys(result.value.keys);
     }
-    setIsLoading(false);
+    if (!opts.silent) setIsLoading(false);
   }
 
   onMount(loadKeys);
@@ -90,7 +94,7 @@ function AdminKeysContent() {
     setLabel('');
     setExpiresAt('');
     toast.show(t('adminKeys.issuedToast'), 'success');
-    await loadKeys();
+    await loadKeys({ silent: true });
   }
 
   async function handleRevoke(key: ApiKeyInfo) {
@@ -105,13 +109,20 @@ function AdminKeysContent() {
     if (!confirmed) return;
 
     setError(null);
+    setRevokingId(key.id);
     const result = await revokeApiKey(key.id, token);
     if (result.isErr()) {
+      setRevokingId(null);
       setError(errorMessage(result.error));
       return;
     }
+
+    // Flip the row in place first, then reconcile silently, so the table
+    // never unmounts and the revoked key stays visible with its new status.
+    setKeys((prev) => prev.map((k) => (k.id === key.id ? { ...k, isActive: false } : k)));
+    setRevokingId(null);
     toast.show(t('keyTable.revokedToast'), 'success');
-    await loadKeys();
+    await loadKeys({ silent: true });
   }
 
   return (
@@ -159,64 +170,13 @@ function AdminKeysContent() {
 
       <section class="bg-white rounded-lg shadow p-6">
         <h2 class="text-lg font-semibold mb-4">{t('adminKeys.listTitle')}</h2>
-        <Show when={!isLoading()} fallback={<p class="text-gray-500">{t('common.loading')}</p>}>
-          <Show
-            when={keys().length > 0}
-            fallback={<p class="text-gray-500">{t('adminKeys.empty')}</p>}
-          >
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="text-left text-gray-500 border-b">
-                  <th class="py-2 pr-4 font-medium">{t('keyTable.prefix')}</th>
-                  <th class="py-2 pr-4 font-medium">{t('keyTable.label')}</th>
-                  <th class="py-2 pr-4 font-medium">{t('keyTable.createdAt')}</th>
-                  <th class="py-2 pr-4 font-medium">{t('keyTable.lastUsed')}</th>
-                  <th class="py-2 pr-4 font-medium">{t('keyTable.expiresAt')}</th>
-                  <th class="py-2 pr-4 font-medium">{t('keyTable.status')}</th>
-                  <th class="py-2 font-medium">{t('keyTable.actions')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <For each={keys()}>
-                  {(key) => (
-                    <tr class="border-b last:border-0">
-                      <td class="py-2 pr-4">
-                        <code class="text-xs">{key.apiKeyPrefix}…</code>
-                      </td>
-                      <td class="py-2 pr-4">{key.label || '—'}</td>
-                      <td class="py-2 pr-4">{formatDateTime(key.createdAt)}</td>
-                      <td class="py-2 pr-4">{formatDateTime(key.lastUsedAt)}</td>
-                      <td class="py-2 pr-4">{formatDateTime(key.expiresAt)}</td>
-                      <td class="py-2 pr-4">
-                        <span
-                          class={
-                            key.isActive
-                              ? 'text-xs bg-green-100 text-green-700 rounded px-1.5 py-0.5'
-                              : 'text-xs bg-gray-100 text-gray-500 rounded px-1.5 py-0.5'
-                          }
-                        >
-                          {key.isActive ? t('keyTable.valid') : t('keyTable.revoked')}
-                        </span>
-                      </td>
-                      <td class="py-2">
-                        <Show when={key.isActive}>
-                          <button
-                            type="button"
-                            onClick={() => handleRevoke(key)}
-                            class="flex items-center gap-1 text-red-600 hover:underline text-sm"
-                          >
-                            <Trash2 class="w-3.5 h-3.5" />
-                            {t('keyTable.revoke')}
-                          </button>
-                        </Show>
-                      </td>
-                    </tr>
-                  )}
-                </For>
-              </tbody>
-            </table>
-          </Show>
-        </Show>
+        <ApiKeyTable
+          keys={keys()}
+          isLoading={isLoading()}
+          emptyText={t('adminKeys.empty')}
+          revokingId={revokingId()}
+          onRevoke={handleRevoke}
+        />
       </section>
     </div>
   );

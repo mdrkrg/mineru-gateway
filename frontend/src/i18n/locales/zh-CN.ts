@@ -217,6 +217,7 @@ export const zhCN: Dict = {
   'keyTable.valid': '有效',
   'keyTable.revoked': '已吊销',
   'keyTable.revoke': '吊销',
+  'keyTable.revoking': '吊销中…',
   'keyTable.confirmRevoke': '确定吊销 Key「{{name}}」吗？此操作不可撤销。',
   'keyTable.revokeTitle': '吊销 API Key',
   'keyTable.revokedToast': 'API Key 已吊销',

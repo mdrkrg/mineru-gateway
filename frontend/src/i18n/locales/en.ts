@@ -220,6 +220,7 @@ export const en = {
   'keyTable.valid': 'Active',
   'keyTable.revoked': 'Revoked',
   'keyTable.revoke': 'Revoke',
+  'keyTable.revoking': 'Revoking…',
   'keyTable.confirmRevoke': 'Revoke key "{{name}}"? This action cannot be undone.',
   'keyTable.revokeTitle': 'Revoke API Key',
   'keyTable.revokedToast': 'API key revoked',

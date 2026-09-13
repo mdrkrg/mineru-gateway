@@ -1,6 +1,6 @@
-import { For, Show, createSignal, onMount } from 'solid-js';
+import { Show, createSignal, onMount } from 'solid-js';
 import { createFileRoute } from '@tanstack/solid-router';
-import { KeyRound, Trash2 } from 'lucide-solid';
+import { KeyRound } from 'lucide-solid';
 import {
   createMyApiKey,
   listMyApiKeys,
@@ -8,21 +8,19 @@ import {
 } from '@/api/functions/auth';
 import type { ApiKeyCreatedResponse, ApiKeyInfo } from '@/api/schemas/auth';
 import ApiKeyReveal from '@/components/ApiKeyReveal';
+import ApiKeyTable from '@/components/ApiKeyTable';
 import { t } from '@/i18n';
 import { isHttpError } from '@/core/error-model';
-import { useAuth } from '@/stores/auth-context';
 import { useApiKey } from '@/stores/api-key-context';
 import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
-import { formatDateTime } from '@/utils/format';
 
 export const Route = createFileRoute('/_authenticated/api-keys')({
   component: ApiKeysPage,
 });
 
 function ApiKeysPage() {
-  const auth = useAuth();
   const apiKeyStore = useApiKey();
   const toast = useToast();
   const confirm = useConfirm();
@@ -30,6 +28,7 @@ function ApiKeysPage() {
   const [keys, setKeys] = createSignal<ApiKeyInfo[]>([]);
   const [isLoading, setIsLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
+  const [revokingId, setRevokingId] = createSignal<string | null>(null);
 
   // Create form state
   const [label, setLabel] = createSignal('');
@@ -40,16 +39,20 @@ function ApiKeysPage() {
   // Manual active-key paste
   const [pastedKey, setPastedKey] = createSignal('');
 
-  async function loadKeys() {
-    setIsLoading(true);
-    setError(null);
+  // `silent` keeps the current table mounted while reconciling with the
+  // server, so post-action refreshes do not flash a loading state.
+  async function loadKeys(opts: { silent?: boolean } = {}) {
+    if (!opts.silent) {
+      setIsLoading(true);
+      setError(null);
+    }
     const result = await listMyApiKeys();
     if (result.isErr()) {
       setError(errorMessage(result.error));
     } else {
       setKeys(result.value.keys);
     }
-    setIsLoading(false);
+    if (!opts.silent) setIsLoading(false);
   }
 
   onMount(loadKeys);
@@ -83,7 +86,7 @@ function ApiKeysPage() {
     setLabel('');
     setExpiresAt('');
     toast.show(t('apiKeys.createdToast'), 'success');
-    await loadKeys();
+    await loadKeys({ silent: true });
   }
 
   async function handleRevoke(key: ApiKeyInfo) {
@@ -96,19 +99,21 @@ function ApiKeysPage() {
     if (!confirmed) return;
 
     setError(null);
+    setRevokingId(key.id);
     const result = await revokeMyApiKey(key.id);
     if (result.isErr()) {
+      setRevokingId(null);
       setError(errorMessage(result.error));
       return;
     }
-    toast.show(t('keyTable.revokedToast'), 'success');
-    await loadKeys();
-  }
 
-  const isActivePrefix = (prefix: string) => {
-    const active = apiKeyStore.activeKey();
-    return active !== null && active.startsWith(prefix);
-  };
+    // Flip the row in place first, then reconcile silently, so the table
+    // never unmounts and the revoked key stays visible with its new status.
+    setKeys((prev) => prev.map((k) => (k.id === key.id ? { ...k, isActive: false } : k)));
+    setRevokingId(null);
+    toast.show(t('keyTable.revokedToast'), 'success');
+    await loadKeys({ silent: true });
+  }
 
   return (
     <div class="max-w-4xl flex flex-col gap-6">
@@ -164,69 +169,14 @@ function ApiKeysPage() {
       {/* Key list */}
       <section class="bg-white rounded-lg shadow p-6">
         <h2 class="text-lg font-semibold mb-4">{t('apiKeys.listTitle')}</h2>
-        <Show when={!isLoading()} fallback={<p class="text-gray-500">{t('common.loading')}</p>}>
-          <Show
-            when={keys().length > 0}
-            fallback={<p class="text-gray-500">{t('apiKeys.empty')}</p>}
-          >
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="text-left text-gray-500 border-b">
-                  <th class="py-2 pr-4 font-medium">{t('keyTable.prefix')}</th>
-                  <th class="py-2 pr-4 font-medium">{t('keyTable.label')}</th>
-                  <th class="py-2 pr-4 font-medium">{t('keyTable.createdAt')}</th>
-                  <th class="py-2 pr-4 font-medium">{t('keyTable.lastUsed')}</th>
-                  <th class="py-2 pr-4 font-medium">{t('keyTable.expiresAt')}</th>
-                  <th class="py-2 pr-4 font-medium">{t('keyTable.status')}</th>
-                  <th class="py-2 font-medium">{t('keyTable.actions')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <For each={keys()}>
-                  {(key) => (
-                    <tr class="border-b last:border-0">
-                      <td class="py-2 pr-4">
-                        <code class="text-xs">{key.apiKeyPrefix}…</code>
-                        <Show when={isActivePrefix(key.apiKeyPrefix)}>
-                          <span class="ml-2 text-xs bg-blue-100 text-blue-700 rounded px-1.5 py-0.5">
-                            {t('keyTable.inUse')}
-                          </span>
-                        </Show>
-                      </td>
-                      <td class="py-2 pr-4">{key.label || '—'}</td>
-                      <td class="py-2 pr-4">{formatDateTime(key.createdAt)}</td>
-                      <td class="py-2 pr-4">{formatDateTime(key.lastUsedAt)}</td>
-                      <td class="py-2 pr-4">{formatDateTime(key.expiresAt)}</td>
-                      <td class="py-2 pr-4">
-                        <span
-                          class={
-                            key.isActive
-                              ? 'text-xs bg-green-100 text-green-700 rounded px-1.5 py-0.5'
-                              : 'text-xs bg-gray-100 text-gray-500 rounded px-1.5 py-0.5'
-                          }
-                        >
-                          {key.isActive ? t('keyTable.valid') : t('keyTable.revoked')}
-                        </span>
-                      </td>
-                      <td class="py-2">
-                        <Show when={key.isActive}>
-                          <button
-                            type="button"
-                            onClick={() => handleRevoke(key)}
-                            class="flex items-center gap-1 text-red-600 hover:underline text-sm"
-                          >
-                            <Trash2 class="w-3.5 h-3.5" />
-                            {t('keyTable.revoke')}
-                          </button>
-                        </Show>
-                      </td>
-                    </tr>
-                  )}
-                </For>
-              </tbody>
-            </table>
-          </Show>
-        </Show>
+        <ApiKeyTable
+          keys={keys()}
+          isLoading={isLoading()}
+          emptyText={t('apiKeys.empty')}
+          activePrefix={apiKeyStore.activeKey()}
+          revokingId={revokingId()}
+          onRevoke={handleRevoke}
+        />
       </section>
 
       {/* Active key for task endpoints */}

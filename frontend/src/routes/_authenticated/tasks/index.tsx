@@ -133,7 +133,10 @@ function TaskListPage() {
     } else {
       toast.show(t('tasks.cancelledToast'), 'success');
     }
-    await load();
+    // Silent refresh keeps the list mounted; clear the selection explicitly
+    // since `load` only resets it on non-silent loads.
+    await load(page(), { silent: true });
+    setSelected(new Set<string>());
     setIsActing(false);
   }
 
@@ -171,7 +174,8 @@ function TaskListPage() {
         );
       }
     }
-    await load();
+    await load(page(), { silent: true });
+    setSelected(new Set<string>());
     setIsActing(false);
   }
 

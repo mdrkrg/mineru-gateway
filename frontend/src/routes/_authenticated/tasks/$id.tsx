@@ -96,7 +96,8 @@ function TaskDetailPage() {
     } else {
       toast.show(t('tasks.cancelledToast'), 'success');
     }
-    await load();
+    // Silent refresh keeps the detail view mounted while the status flips.
+    await load({ silent: true });
     setIsActing(false);
   }
 
