@@ -25,7 +25,6 @@ import {
   type UserCreateRequest,
   type UserUpdateRequest,
   type MyApiKeyCreateRequest,
-  type UserRead,
   type VerifyEmailRequest,
 } from '@/api/schemas/auth';
 

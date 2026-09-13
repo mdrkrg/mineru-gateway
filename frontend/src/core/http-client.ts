@@ -1,4 +1,4 @@
-import ky_default, { HTTPError, NetworkError, TimeoutError, isHTTPError, isNetworkError, isTimeoutError } from 'ky';
+import ky_default, { HTTPError, NetworkError, isHTTPError, isNetworkError, isTimeoutError } from 'ky';
 import type { Options, BeforeRequestHook, AfterResponseHook } from 'ky';
 import { ResultAsync, ok } from 'neverthrow';
 import type { Result } from 'neverthrow';
