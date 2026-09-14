@@ -14,6 +14,11 @@
  * - Network errors -> `Err(NetworkError)`.
  * - Invalid body (email not a string) -> `Err(ValidationError)` and no
  *   HTTP request is made.
+ *
+ * ### `register(body)`
+ *
+ * - POSTs to `auth/register` carrying the active i18n `locale` query param
+ *   so the gateway picks the matching verification-email template.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -26,7 +31,11 @@ vi.mock('ky', async () => {
 
 import ky from 'ky';
 import { HTTPError, NetworkError } from '../core/ky-mock';
-import { requestVerifyToken } from '../../src/api/functions/auth';
+import {
+  register,
+  requestVerifyToken,
+} from '../../src/api/functions/auth';
+import { setLocale } from '../../src/i18n';
 import { isHttpError } from '../../src/core/error-model';
 
 const m = ky as unknown as MockKy;
@@ -48,6 +57,8 @@ function httpError(status: number, body: unknown): HTTPError {
 
 beforeEach(() => {
   m.mockReset();
+  // Pin the SPA locale so the assertion does not depend on navigator.language.
+  setLocale('zh-CN');
 });
 
 afterEach(() => {
@@ -68,11 +79,13 @@ describe('requestVerifyToken', () => {
     expect(m).toHaveBeenCalledTimes(1);
     const [url, options] = m.mock.calls[0] as [
       string,
-      { method: string; json: unknown },
+      { method: string; json: unknown; searchParams: unknown },
     ];
     expect(url).toBe('auth/request-verify-token');
     expect(options.method).toBe('POST');
     expect(options.json).toEqual({ email: EMAIL });
+    // The gateway picks the email template from the SPA's active locale.
+    expect(options.searchParams).toEqual({ locale: 'zh-CN' });
   });
 
   it('returns Ok with status 202 (empty body)', async () => {
@@ -123,5 +136,34 @@ describe('requestVerifyToken', () => {
       expect(result.error._type).toBe('ValidationError');
     }
     expect(m).not.toHaveBeenCalled();
+  });
+});
+
+// ================================================================
+// register
+// ================================================================
+
+describe('register', () => {
+  it('sends the active locale so the verification email matches it', async () => {
+    m.mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: 'user-1' }), { status: 201 }),
+    );
+
+    await register({
+      email: EMAIL,
+      password: 'secret123',
+      isActive: null,
+      isSuperuser: null,
+      isVerified: null,
+      displayName: null,
+    });
+
+    expect(m).toHaveBeenCalledTimes(1);
+    const [url, options] = m.mock.calls[0] as [
+      string,
+      { searchParams: unknown },
+    ];
+    expect(url).toBe('auth/register');
+    expect(options.searchParams).toEqual({ locale: 'zh-CN' });
   });
 });

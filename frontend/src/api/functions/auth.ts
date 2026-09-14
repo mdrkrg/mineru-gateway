@@ -1,4 +1,5 @@
 import type { ResultAsync } from 'neverthrow';
+import { locale } from '@/i18n';
 import { fetchAndValidate, validateRequest } from '@/core/validation';
 import { request } from '@/core/http-client';
 import type { RawResponse } from '@/core/http-client';
@@ -105,6 +106,8 @@ export function register(body: UserCreateRequest) {
   }, {
     method: 'POST',
     json: validated.value,
+    // The gateway picks the verification-email template from this locale.
+    searchParams: { locale: locale() },
   });
 }
 
@@ -191,5 +194,6 @@ export function requestVerifyToken(
   return request('auth/request-verify-token', {
     method: 'POST',
     json: validated.value,
+    searchParams: { locale: locale() },
   });
 }
