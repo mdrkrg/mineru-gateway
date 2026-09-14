@@ -129,8 +129,10 @@ class User(SQLAlchemyBaseUserTable, Base):
 
     # Relationships
     api_keys: Mapped[list["ApiKey"]] = relationship("ApiKey", back_populates="owner")
+    # delete-orphan (not passive_deletes): SQLite does not enforce the FK
+    # ON DELETE CASCADE, so the ORM must issue the DELETEs itself.
     oauth_accounts: Mapped[list["OAuthAccount"]] = relationship(
-        "OAuthAccount", back_populates="user"
+        "OAuthAccount", back_populates="user", cascade="all, delete-orphan"
     )
 
 
