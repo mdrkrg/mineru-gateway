@@ -24,6 +24,9 @@ function LoginPage() {
   const [providers, setProviders] = createSignal<{ name: string }[]>([]);
 
   onMount(async () => {
+    if (auth.isAuthenticated()) {
+      navigate({ to: ROUTES.home });
+    }
     const result = await getOAuthProviders();
     if (result.isOk()) {
       setProviders(result.value.providers);

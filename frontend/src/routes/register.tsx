@@ -4,12 +4,15 @@ import { t } from '@/i18n';
 import { register } from '@/api/functions/auth';
 import { errorMessage } from '@/utils/api-error';
 import { ROUTES } from '@/utils/constants';
+import { onMount } from 'solid-js';
+import { useAuth } from '@/stores/auth-context';
 
 export const Route = createFileRoute('/register')({
   component: RegisterPage,
 });
 
 function RegisterPage() {
+  const auth = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = createSignal('');
   const [password, setPassword] = createSignal('');
@@ -18,6 +21,12 @@ function RegisterPage() {
   const [isSubmitting, setIsSubmitting] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [registeredEmail, setRegisteredEmail] = createSignal<string | null>(null);
+
+  onMount(async () => {
+    if (auth.isAuthenticated()) {
+      navigate({ to: ROUTES.home });
+    }
+  });
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
