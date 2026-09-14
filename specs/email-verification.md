@@ -12,13 +12,14 @@
 4. 受保护功能：**仅** `POST /me/api-keys`（用户自助创建 API Key）。未验证邮箱的用户调用返回 403（由 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS` 控制，定义见 `specs/user-management-and-oauth.md` §3.1）。
 5. 验证流程复用 fastapi-users 内置验证机制（验证 token + 验证接口），邮件发送层使用 fastapi-mail 库。
 6. OIDC 信任例外沿用 `trusted_email_domains`（已定义并实现，本规约不新增 provider 级配置，见 §4.4）：邮箱域名命中信任列表的用户在创建时即 `is_verified=true`，不受本规约的验证/拦截约束。
+7. 验证邮件按 SPA 当前 i18n locale 从**按 locale 分文件的模板**渲染（主题 + 纯文本正文 + HTML 正文）；新增语言只需放入三份模板文件，无需改代码。
 
 **非目标**：
 
 - 重置密码 —— 依赖 SMTP 但不在本阶段范围。
 - 修改邮箱 —— `email` 不可通过 `PATCH /users/me` 修改，验证 token 与邮箱绑定，不受影响。
 - 管理员手动标记用户已验证 —— 不提供管理端点，`is_verified` 只能由验证流程置为 `true`。
-- 邮件模板定制、多语言、营销类邮件与发送重试/队列 —— 仅发送固定内容的验证邮件，发送为 best-effort，失败仅记录日志。
+- 邮件正文的可视化编辑、营销类邮件与发送重试/队列 —— 仅发送验证邮件，发送为 best-effort，失败仅记录日志。
 - `POST /me/api-keys` 之外的任何端点拦截（任务提交、管理员端点等均不在此规约范围内）。
 
 ## 1. 功能开关与行为总览
@@ -80,7 +81,7 @@
 
 > **升级影响**：`GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false` 是默认值。既有部署若已开启用户认证（`user_auth_enabled=true`）但未配置 `GATEWAY_SMTP_HOST`，升级后启动校验将拒绝启动——须在升级时配置 SMTP 或显式设置 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=true`。已配置 `GATEWAY_SMTP_HOST` 但未配置任何发件地址（`GATEWAY_SMTP_FROM`、`GATEWAY_SMTP_USERNAME` 均无）的部署同样会被拒绝——须补配其一。
 
-**新增依赖**：`pyproject.toml` 增加 [`fastapi-mail>=1.6.5`](https://pypi.org/project/fastapi-mail/)（异步 SMTP 发送）。
+**新增依赖**：`pyproject.toml` 增加 [`fastapi-mail>=1.6.5`](https://pypi.org/project/fastapi-mail/)（异步 SMTP 发送）与 [`jinja2`](https://pypi.org/project/Jinja2/)（邮件模板渲染）。
 
 ### 3.2 现有配置新增含义
 
@@ -114,7 +115,9 @@
 
 ### 4.4 验证邮件内容与发送时机
 
-- 邮件内容：主题为固定文案（含"验证"含义），正文包含验证链接 `{verify_email_base_url or gateway_url}/auth/verify?token={token}`。
+- 邮件内容：主题、纯文本正文与 HTML 正文从**按 locale 分文件的 Jinja2 模板**渲染，位于 `email/templates/`，命名 `verify_email.{locale}.subject.txt` / `.txt` / `.html`；正文包含验证链接 `{verify_email_base_url or gateway_url}/auth/verify?token={token}` 与有效期文案。新增语言 = 放入三份模板文件，无需改代码。
+- **locale 解析**：SPA 将当前 i18n locale 作为 `locale` 查询参数传给 `POST /auth/register` 与 `POST /auth/request-verify-token`；网关将该值与实际存在的模板 locale 比较（先精确匹配 tag、再匹配基础语言，如 `zh-TW` → `zh-CN`），缺失或无法识别时回退 `en`。locale 值只与已发现的模板名比较、不拼接进路径；无法匹配任何模板的值回退 `en`。
+- **管理员创建不传 locale**：`POST /auth/users` 的请求方 locale 与收件人无关，该邮件固定走 `en` 回退。
 - 发送时机：`POST /auth/register` 与 `POST /auth/users` 成功后（SMTP 已配置时）自动发送；`POST /auth/request-verify-token` 满足 §4.1 条件时发送；**OIDC 回调创建用户不自动发送**。自动发送的发件地址可确定性由 §4.1/§3.1 启动校验保证。
 - 发送失败（网络错误、认证失败、超时等）仅记录日志，不影响主流程（注册仍 201、申请仍 202）；用户可经 `POST /auth/request-verify-token` 补发。
 - **OIDC 用户验证途径**：`is_verified=false` 的 OIDC 用户可经 `POST /auth/request-verify-token` 自助申请验证邮件并完成验证（OIDC 创建不自动发送，见上方发送时机）。
@@ -134,7 +137,8 @@
 src/mineru_gateway/
 ├── email/
 │   ├── __init__.py
-│   └── service.py            # 邮件发送服务
+│   ├── service.py            # 邮件发送服务
+│   └── templates/            # verify_email.{locale}.{subject.txt,txt,html}（按 locale 分文件）
 └── auth/
     ├── manager.py            # [修改] UserManager 验证 token 配置 + on_after_request_verify / on_after_verify
     ├── jwt_routes.py         # [修改] register / admin_create_user 成功后自动发送验证邮件
@@ -147,9 +151,12 @@ src/mineru_gateway/
 
 | 接口 | 输入 | 输出 | 行为 |
 |------|------|------|------|
-| `send_verification_email(user_email, token, settings)` | `user_email: str, token: str, settings: Settings` | `None` | 构造验证链接 `{verify_email_base_url or gateway_url}/auth/verify?token={token}`，通过已配置的 SMTP 服务发送邮件到 `user_email`。`smtp_host` 未配置或发件地址不可确定时直接返回（不发送）——防御性行为，正常配置下不可达（§3.1 启动校验）；发送失败记录日志不抛出 |
+| `send_verification_email(user_email, token, settings, *, locale=None)` | `user_email: str, token: str, settings: Settings, locale: str \| None` | `None` | 解析 locale → 渲染模板 → 构造验证链接 `{verify_email_base_url or gateway_url}/auth/verify?token={token}`，通过已配置的 SMTP 服务以 multipart/alternative（HTML 正文 + 纯文本回退）发送到 `user_email`。`smtp_host` 未配置或发件地址不可确定时直接返回（不发送）——防御性行为，正常配置下不可达（§3.1 启动校验）；发送失败记录日志不抛出 |
+| `resolve_locale(locale=None)` | `locale: str \| None` | `str`（`available_locales()` 之一） | 先精确（大小写不敏感）匹配 tag，再匹配基础语言；`None`/空/无法识别回退 `en` |
+| `render_verification_email(locale, *, verify_url, lifetime_seconds)` | `locale: str, verify_url: str, lifetime_seconds: int` | `tuple[str, str, str]`（主题、纯文本正文、HTML 正文） | 按 locale 渲染模板；无对应模板时抛 `jinja2.TemplateNotFound`，调用方按发送失败处理 |
+| `available_locales()` | — | `tuple[str, ...]` | 实际带完整模板集的 locale（排序，保证确定性） |
 
-测试通过**替换此接口**捕获验证 token 与收件人，不连接真实 SMTP 服务器（遵循 `AGENTS.md` "Tests must not hit the network"）。
+测试通过**替换 `send_verification_email`** 捕获验证 token、收件人与 `locale`，不连接真实 SMTP 服务器（遵循 `AGENTS.md` "Tests must not hit the network"）。
 
 #### `auth/manager.py` — UserManager
 
@@ -157,19 +164,21 @@ src/mineru_gateway/
 
 | 接口 | 输入 | 输出 | 行为 |
 |------|------|------|------|
-| `UserManager.on_after_request_verify(user, token, request)` | `user: User, token: str, request: Request \| None` | `None` | 调用 `send_verification_email(user.email, token, settings)`；发送异常仅记录日志、不抛出（§4.4，保证注册/申请端点结果不受影响） |
+| `UserManager.on_after_request_verify(user, token, request)` | `user: User, token: str, request: Request \| None` | `None` | 调用 `send_verification_email(user.email, token, settings, locale=request.query_params.get("locale") if request else None)`；发送异常仅记录日志、不抛出（§4.4，保证注册/申请端点结果不受影响） |
 | `UserManager.on_after_verify(user, request)` | `user: User, request: Request \| None` | `None` | 打印结构化日志 `User {id} verified` |
 
 ### 5.3 修改文件
 
 | 文件 | 修改内容 |
 |------|---------|
-| `pyproject.toml` | 增加 `fastapi-mail>=1.6.5` |
+| `pyproject.toml` | 增加 `fastapi-mail>=1.6.5`、`jinja2` |
 | `config.py` | 增加 §3.1 全部配置项及校验规则 |
 | `auth/manager.py` | `UserManager.__init__` 中按 settings 覆盖 fastapi-users 类属性：`verification_token_secret`（= `jwt_secret`）、`verification_token_lifetime_seconds`（= `settings.verify_email_token_lifetime_seconds`，对应 `GATEWAY_VERIFY_EMAIL_TOKEN_LIFETIME_SECONDS`）；重写 `on_after_request_verify`、`on_after_verify` |
 | `auth/jwt_routes.py` | 注册成功与管理员创建用户成功后，SMTP 已配置时触发 `request_verify` 自动发信（§4.4） |
 | `auth/verify_routes.py`（新增） | `GET /auth/verify?token=` 端点（§4.3） |
 | `main.py` | `GATEWAY_USER_AUTH_ENABLED=true` 且 `GATEWAY_SMTP_HOST` 已配置时注册 fastapi-users 内置 verify 路由器（`/auth/request-verify-token`、`/auth/verify`）与 `verify_routes` |
+| `email/templates/verify_email.{locale}.{subject.txt,txt,html}`（新增） | 各 locale 的主题、纯文本正文、HTML 正文模板（§4.4） |
+| `frontend/src/api/functions/auth.ts` | `register` / `requestVerifyToken` 请求附带 `locale` 查询参数（§4.4） |
 
 
 ## 6. 集成要点
@@ -196,7 +205,7 @@ src/mineru_gateway/
 
 ## 8. 测试要点
 
-测试应覆盖以下场景。邮件发送必须被 stub（替换 `send_verification_email` 或等效接口），不连接真实 SMTP；fastapi-users 库行为（202 矩阵、token 校验 400 等）不在本规约测试范围，以 §4 开头文档参考为准。
+测试应覆盖以下场景。邮件发送必须被 stub（替换 `send_verification_email`），不连接真实 SMTP；fastapi-users 库行为（202 矩阵、token 校验 400 等）不在本规约测试范围，以 §4 开头文档参考为准；fastapi-mail 与 Jinja2 的内部行为（`MessageSchema` 字段、multipart 组装、模板引擎语义）同样不测——只测我们自己的 locale 解析、模板渲染结果与 locale 透传。
 
 ### 8.1 配置校验
 
@@ -211,12 +220,14 @@ src/mineru_gateway/
 - 注册与管理员创建成功 → 201，`is_verified=false`（既有行为回归）。
 - SMTP 已配置时注册/管理员创建 → 自动发送验证邮件（stub 捕获收件人 = 注册邮箱，token 可用于验证）；SMTP 未配置 → 不发送，仍 201。
 - SMTP 已配置但发送失败（stub 抛错）→ 注册/管理员创建仍 201（§4.4，失败仅记日志）。
+- 注册携带 `?locale=` → stub 捕获的 `locale` 与查询参数一致；无参数 → `None`（回退由发送层完成）；无法识别的 tag → 原样转发，注册仍 201。
 - OIDC 回调创建用户 → **不**触发验证邮件发送（无论邮箱是否真实、是否未验证）。
 
 ### 8.3 `POST /auth/request-verify-token`
 
 - 未验证用户 + SMTP 已配置 → 发送验证邮件（stub 捕获收件人 = 请求邮箱与 token；token 可用性经 §8.7 端到端流程验证）。
 - 发送失败（stub 抛错）→ 申请结果不受影响（仍 202，§4.4）。
+- 携带 `?locale=` 的补发请求 → stub 捕获的 `locale` 与查询参数一致。
 - SMTP 未配置 → 404（路由不注册，见 §1 矩阵）。
 
 ### 8.4 `POST /auth/verify`
@@ -246,3 +257,9 @@ fastapi-users 提供的库接口，其 200/400 语义不单独测试；验证可
 - `GATEWAY_USER_AUTH_ENABLED=false` → `/auth/request-verify-token`、`/auth/verify` 均 404。
 - `GATEWAY_USER_AUTH_ENABLED=true` + SMTP 未配置 + `allow_unverified_accounts=true` → 三个验证端点均 404（路由不注册），`POST /me/api-keys` 不拦截。
 - `GATEWAY_USER_AUTH_ENABLED=true` + SMTP 未配置 + `allow_unverified_accounts=false`（默认）→ 拒绝启动（配置校验）。
+
+### 8.9 模板渲染与 locale 解析（`email/service.py`）
+
+- `resolve_locale`：精确 tag（大小写不敏感）→ 该 locale；基础语言（`zh-TW`、`zh`）→ `zh-CN`；`None` / 空 / 未知 / 非法值（如 `../`）→ `en`。
+- `render_verification_email`：`en` 与 `zh-CN` 各自渲染出对应主题、HTML `<a>` 链接与纯文本链接；有效期不足一小时时正文以分钟表述。
+- `available_locales` 至少包含 `en`、`zh-CN`。
