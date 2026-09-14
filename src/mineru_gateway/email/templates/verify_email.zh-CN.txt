@@ -1,0 +1,13 @@
+您好，
+
+请打开以下链接完成邮箱验证：
+
+{{ verify_url }}
+
+{%- if lifetime_hours >= 1 %}
+该链接将在 {{ lifetime_hours }} 小时后失效。
+{%- else %}
+该链接将在 {{ lifetime_minutes }} 分钟后失效。
+{%- endif %}
+
+如果您没有注册账户，请忽略本邮件。

@@ -71,9 +71,13 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         email with the freshly minted token. Send failures are logged and
         never raised, so register / admin create / request-verify-token
         results are unaffected (Section 4.4)."""
+        locale = request.query_params.get("locale") if request is not None else None
         try:
             await email_service.send_verification_email(
-                user.email, token, self.settings
+                user.email,
+                token,
+                self.settings,
+                locale=locale,
             )
         except Exception:
             logger.exception("Failed to send verification email to %s", user.email)

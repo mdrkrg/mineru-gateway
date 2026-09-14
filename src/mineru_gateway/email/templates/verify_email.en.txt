@@ -1,0 +1,13 @@
+Hi,
+
+Please verify your email address by opening the link below:
+
+{{ verify_url }}
+
+{% if lifetime_hours >= 1 -%}
+The link expires in {{ lifetime_hours }} hour{{ "s" if lifetime_hours != 1 else "" }}.
+{%- else -%}
+The link expires in {{ lifetime_minutes }} minute{{ "s" if lifetime_minutes != 1 else "" }}.
+{%- endif %}
+
+If you did not create an account, you can safely ignore this email.

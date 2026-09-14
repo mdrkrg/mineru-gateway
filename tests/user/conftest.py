@@ -179,11 +179,23 @@ class EmailSenderStub:
         self.sent: list[dict] = []
         self.raise_error: Exception | None = None
 
-    def __call__(self, user_email: str, token: str, settings) -> Awaitable[None]:
+    def __call__(
+        self,
+        user_email: str,
+        token: str,
+        settings,
+        *,
+        locale: str | None = None,
+    ) -> Awaitable[None]:
         if self.raise_error is not None:
             raise self.raise_error
         self.sent.append(
-            {"user_email": user_email, "token": token, "settings": settings}
+            {
+                "user_email": user_email,
+                "token": token,
+                "settings": settings,
+                "locale": locale,
+            }
         )
         return _completed()
 
