@@ -1,8 +1,81 @@
+import * as stylex from '@stylexjs/stylex';
 import { Show, createSignal } from 'solid-js';
 import type { JSX } from 'solid-js';
 import { ShieldCheck } from 'lucide-solid';
 import { t } from '@/i18n';
 import { useAdminToken } from '@/stores/admin-token-context';
+import { controls } from '@/styles/controls.stylex';
+import {
+  colors,
+  fontSize,
+  lineHeight,
+  maxWidth,
+  space,
+} from '@/styles/tokens.stylex';
+
+const styles = stylex.create({
+  card: {
+    maxWidth: maxWidth.px448,
+  },
+  heading: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: space.px8,
+    fontSize: fontSize.px18,
+    lineHeight: lineHeight.px28,
+    fontWeight: 600,
+    marginBottom: space.px8,
+  },
+  headingIcon: {
+    width: space.px20,
+    height: space.px20,
+  },
+  description: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    color: colors.gray500,
+    marginBottom: space.px16,
+  },
+  form: {
+    display: 'flex',
+    alignItems: 'flex-end',
+    gap: space.px8,
+  },
+  field: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.px4,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  fieldLabel: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    fontWeight: 500,
+    color: colors.gray700,
+  },
+  content: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.px16,
+  },
+  notice: {
+    fontSize: fontSize.px12,
+    lineHeight: lineHeight.px16,
+    color: colors.gray400,
+  },
+  clear: {
+    marginLeft: space.px8,
+    color: colors.red500,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    padding: 0,
+    ':hover': {
+      textDecorationLine: 'underline',
+    },
+  },
+});
 
 /**
  * Gates admin pages behind the gateway admin token (`X-Admin-Token`).
@@ -17,14 +90,12 @@ export default function AdminTokenGate(props: { children: JSX.Element }) {
     <Show
       when={store.token()}
       fallback={
-        <div class="bg-white rounded-lg shadow p-6 max-w-md">
-          <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
-            <ShieldCheck class="w-5 h-5" />
+        <div {...stylex.attrs(controls.card, styles.card)}>
+          <h2 {...stylex.attrs(styles.heading)}>
+            <ShieldCheck class={stylex.attrs(styles.headingIcon).class} />
             {t('adminGate.title')}
           </h2>
-          <p class="text-sm text-gray-500 mb-4">
-            {t('adminGate.description')}
-          </p>
+          <p {...stylex.attrs(styles.description)}>{t('adminGate.description')}</p>
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -34,20 +105,20 @@ export default function AdminTokenGate(props: { children: JSX.Element }) {
                 setInput('');
               }
             }}
-            class="flex items-end gap-2"
+            {...stylex.attrs(styles.form)}
           >
-            <label class="flex flex-col gap-1 flex-1">
-              <span class="text-sm font-medium text-gray-700">{t('adminGate.tokenLabel')}</span>
+            <label {...stylex.attrs(styles.field)}>
+              <span {...stylex.attrs(styles.fieldLabel)}>{t('adminGate.tokenLabel')}</span>
               <input
                 type="password"
                 value={input()}
                 onInput={(e) => setInput(e.currentTarget.value)}
-                class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                {...stylex.attrs(controls.input)}
               />
             </label>
             <button
               type="submit"
-              class="bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-blue-700"
+              {...stylex.attrs(controls.button, controls.buttonPrimary)}
             >
               {t('adminGate.submit')}
             </button>
@@ -55,13 +126,13 @@ export default function AdminTokenGate(props: { children: JSX.Element }) {
         </div>
       }
     >
-      <div class="flex flex-col gap-4">
-        <p class="text-xs text-gray-400">
+      <div {...stylex.attrs(styles.content)}>
+        <p {...stylex.attrs(styles.notice)}>
           {t('adminGate.setNotice')}
           <button
             type="button"
             onClick={() => store.clearToken()}
-            class="ml-2 text-red-500 hover:underline"
+            {...stylex.attrs(styles.clear)}
           >
             {t('common.clear')}
           </button>

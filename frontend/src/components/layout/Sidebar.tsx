@@ -1,5 +1,6 @@
+import * as stylex from '@stylexjs/stylex';
 import { For, Show } from 'solid-js';
-import { Link } from '@tanstack/solid-router';
+import { Link, useMatchRoute } from '@tanstack/solid-router';
 import {
   Download,
   KeyRound,
@@ -13,6 +14,13 @@ import {
 import { useAuth } from '@/stores/auth-context';
 import { t, type DictKey } from '@/i18n';
 import { ROUTES } from '@/utils/constants';
+import {
+  colors,
+  fontSize,
+  lineHeight,
+  radius,
+  space,
+} from '@/styles/tokens.stylex';
 
 interface NavItem {
   to: string;
@@ -34,16 +42,97 @@ const ADMIN_ITEMS: NavItem[] = [
   { to: ROUTES.adminUsers, labelKey: 'nav.adminUsers', icon: Users },
 ];
 
+const styles = stylex.create({
+  sidebar: {
+    width: space.px224,
+    flexShrink: 0,
+    backgroundColor: colors.gray800,
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  brand: {
+    paddingInline: space.px16,
+    paddingBlock: space.px16,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: colors.gray700,
+  },
+  brandText: {
+    color: colors.white,
+    fontWeight: 700,
+  },
+  nav: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.px4,
+    padding: space.px8,
+    overflowY: 'auto',
+  },
+  adminLabel: {
+    marginTop: space.px16,
+    paddingInline: space.px12,
+    paddingBottom: space.px4,
+    fontSize: fontSize.px12,
+    lineHeight: lineHeight.px16,
+    fontWeight: 600,
+    color: colors.gray400,
+    textTransform: 'uppercase',
+  },
+  link: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: space.px12,
+    borderRadius: radius.px4,
+    paddingInline: space.px12,
+    paddingBlock: space.px8,
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    fontWeight: 500,
+    textDecorationLine: 'none',
+    transitionProperty:
+      'color, background-color, border-color, text-decoration-color, fill, stroke',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    transitionDuration: '150ms',
+  },
+  linkActive: {
+    backgroundColor: colors.gray700,
+    color: colors.white,
+  },
+  linkInactive: {
+    color: colors.gray300,
+    ':hover': {
+      backgroundColor: colors.gray700,
+      color: colors.white,
+    },
+  },
+  icon: {
+    width: space.px16,
+    height: space.px16,
+    flexShrink: 0,
+  },
+});
+
 function NavLink(props: { item: NavItem }) {
+  const matchRoute = useMatchRoute();
+  const isActive = matchRoute({
+    to: props.item.to,
+    fuzzy: props.item.to !== ROUTES.home,
+  });
+
   return (
     <Link
       to={props.item.to}
-      activeOptions={{ exact: props.item.to === ROUTES.home }}
-      activeProps={{ class: 'bg-gray-700 text-white' }}
-      inactiveProps={{ class: 'text-gray-300 hover:bg-gray-700 hover:text-white' }}
-      class="flex items-center gap-3 rounded px-3 py-2 text-sm font-medium transition-colors"
+      class={
+        stylex.attrs(
+          styles.link,
+          isActive() ? styles.linkActive : styles.linkInactive,
+        ).class
+      }
     >
-      <props.item.icon class="w-4 h-4 shrink-0" />
+      <props.item.icon class={stylex.attrs(styles.icon).class} />
       {t(props.item.labelKey)}
     </Link>
   );
@@ -54,18 +143,16 @@ export default function Sidebar() {
   const isAdmin = () => auth.user()?.isSuperuser === true;
 
   return (
-    <aside class="w-56 shrink-0 bg-gray-800 flex flex-col">
-      <div class="px-4 py-4 border-b border-gray-700">
-        <span class="text-white font-bold">MinerU Gateway</span>
+    <aside {...stylex.attrs(styles.sidebar)}>
+      <div {...stylex.attrs(styles.brand)}>
+        <span {...stylex.attrs(styles.brandText)}>MinerU Gateway</span>
       </div>
 
-      <nav class="flex-1 flex flex-col gap-1 p-2 overflow-y-auto">
+      <nav {...stylex.attrs(styles.nav)}>
         <For each={NAV_ITEMS}>{(item) => <NavLink item={item} />}</For>
 
         <Show when={isAdmin()}>
-          <div class="mt-4 px-3 pb-1 text-xs font-semibold text-gray-400 uppercase">
-            {t('nav.admin')}
-          </div>
+          <div {...stylex.attrs(styles.adminLabel)}>{t('nav.admin')}</div>
           <For each={ADMIN_ITEMS}>{(item) => <NavLink item={item} />}</For>
         </Show>
       </nav>

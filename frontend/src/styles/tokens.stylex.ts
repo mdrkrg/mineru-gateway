@@ -82,6 +82,7 @@ export const space = stylex.defineConsts({
 export const fontSize = stylex.defineConsts({
   px12: '12px',
   px14: '14px',
+  px16: '16px',
   px18: '18px',
   px20: '20px',
   px24: '24px',
@@ -90,6 +91,7 @@ export const fontSize = stylex.defineConsts({
 export const lineHeight = stylex.defineConsts({
   px16: '16px',
   px20: '20px',
+  px24: '24px',
   px28: '28px',
   px32: '32px',
 });
