@@ -4,11 +4,19 @@ import solidPlugin from 'vite-plugin-solid';
 import devtools from 'solid-devtools/vite';
 import UnocssPlugin from '@unocss/vite';
 import { tanstackRouter } from '@tanstack/router-plugin/vite';
+import stylex from '@stylexjs/unplugin';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
     plugins: [
+      stylex.vite({
+        sxPropName: false,
+        aliases: {
+          '@/*': [resolve(__dirname, 'src', '*')],
+        },
+        unstable_moduleResolution: { type: 'commonJS', rootDir: __dirname },
+      }),
       devtools(),
       tanstackRouter({ target: 'solid' }),
       solidPlugin(),

@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@stylexjs/unplugin": "^0.19.1",
     "@types/node": "^26.1.1",
     "@unocss/preset-wind4": "^66.7.5",
     "@unocss/vite": "^66.5.0",
@@ -22,6 +23,7 @@
     "solid-devtools": "^0.34.3",
     "typescript": "^5.9.2",
     "unocss": "^66.7.5",
+    "unplugin": "^2.3.11",
     "vite": "^7.1.4",
     "vite-plugin-solid": "^2.11.8",
     "vitest": "^4.1.10"
@@ -29,6 +31,7 @@
   "dependencies": {
     "@kobalte/core": "^0.13.12",
     "@solid-primitives/i18n": "^2.2.1",
+    "@stylexjs/stylex": "^0.19.1",
     "@tanstack/router-plugin": "^1.168.23",
     "@tanstack/solid-router": "^1.170.18",
     "@tanstack/solid-router-devtools": "^1.167.0",
