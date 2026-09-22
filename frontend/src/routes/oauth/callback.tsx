@@ -1,11 +1,47 @@
+import * as stylex from '@stylexjs/stylex';
 import { Show, createSignal, onMount } from 'solid-js';
 import { Link, createFileRoute, useNavigate } from '@tanstack/solid-router';
 import { t } from '@/i18n';
 import { useAuth } from '@/stores/auth-context';
 import { ROUTES } from '@/utils/constants';
+import { controls } from '@/styles/controls.stylex';
+import { layout } from '@/styles/layout.stylex';
+import {
+  colors,
+  fontSize,
+  lineHeight,
+  space,
+} from '@/styles/tokens.stylex';
 
 export const Route = createFileRoute('/oauth/callback')({
   component: OAuthCallbackPage,
+});
+
+const styles = stylex.create({
+  panelCentered: {
+    textAlign: 'center',
+  },
+  title: {
+    fontSize: fontSize.px20,
+    lineHeight: lineHeight.px28,
+    fontWeight: 700,
+    marginBottom: space.px8,
+  },
+  text: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    color: colors.gray600,
+    marginBottom: space.px16,
+  },
+  error: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    color: colors.red600,
+    marginBottom: space.px16,
+  },
+  loading: {
+    color: colors.gray600,
+  },
 });
 
 /**
@@ -65,8 +101,8 @@ function OAuthCallbackPage() {
   });
 
   return (
-    <div class="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div class="w-full max-w-sm bg-white rounded-lg shadow p-8 text-center">
+    <div {...stylex.attrs(layout.centeredPage)}>
+      <div {...stylex.attrs(layout.panel, styles.panelCentered)}>
         <Show
           when={verifyState() === 'success'}
           fallback={
@@ -75,39 +111,35 @@ function OAuthCallbackPage() {
               fallback={
                 <Show
                   when={error()}
-                  fallback={<p class="text-gray-600">{t('oauth.completing')}</p>}
+                  fallback={<p {...stylex.attrs(styles.loading)}>{t('oauth.completing')}</p>}
                 >
-                  <h1 class="text-xl font-bold mb-2">{t('oauth.failedTitle')}</h1>
-                  <p class="text-sm text-red-600 mb-4">{error()}</p>
-                  <Link to={ROUTES.login} class="text-blue-600 hover:underline">
+                  <h1 {...stylex.attrs(styles.title)}>{t('oauth.failedTitle')}</h1>
+                  <p {...stylex.attrs(styles.error)}>{error()}</p>
+                  <Link to={ROUTES.login} class={stylex.attrs(controls.link).class}>
                     {t('oauth.backToLogin')}
                   </Link>
                 </Show>
               }
             >
-              <h1 class="text-xl font-bold mb-2">{t('oauth.verifyFailedTitle')}</h1>
-              <p class="text-sm text-red-600 mb-4">
-                {t('oauth.verifyFailedBody')}
-              </p>
-              <Link to={ROUTES.login} class="text-blue-600 hover:underline">
+              <h1 {...stylex.attrs(styles.title)}>{t('oauth.verifyFailedTitle')}</h1>
+              <p {...stylex.attrs(styles.error)}>{t('oauth.verifyFailedBody')}</p>
+              <Link to={ROUTES.login} class={stylex.attrs(controls.link).class}>
                 {t('oauth.backToLogin')}
               </Link>
             </Show>
           }
         >
-          <h1 class="text-xl font-bold mb-2">{t('oauth.verifySuccessTitle')}</h1>
-          <p class="text-sm text-gray-600 mb-4">
-            {t('oauth.verifySuccessBody')}
-          </p>
+          <h1 {...stylex.attrs(styles.title)}>{t('oauth.verifySuccessTitle')}</h1>
+          <p {...stylex.attrs(styles.text)}>{t('oauth.verifySuccessBody')}</p>
           <Show
             when={auth.isAuthenticated()}
             fallback={
-              <Link to={ROUTES.login} class="text-blue-600 hover:underline">
+              <Link to={ROUTES.login} class={stylex.attrs(controls.link).class}>
                 {t('oauth.goLogin')}
               </Link>
             }
           >
-            <Link to={ROUTES.home} class="text-blue-600 hover:underline">
+            <Link to={ROUTES.home} class={stylex.attrs(controls.link).class}>
               {t('oauth.goHome')}
             </Link>
           </Show>

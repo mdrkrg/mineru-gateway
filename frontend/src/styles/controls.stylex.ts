@@ -89,4 +89,29 @@ export const controls = stylex.create({
     },
     color: colors.gray700,
   },
+  buttonLarge: {
+    fontSize: fontSize.px16,
+    lineHeight: lineHeight.px24,
+  },
+  form: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.px16,
+  },
+  field: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.px4,
+  },
+  fieldLabel: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    fontWeight: 500,
+    color: colors.gray700,
+  },
+  errorText: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    color: colors.red600,
+  },
 });

@@ -1,3 +1,4 @@
+import * as stylex from '@stylexjs/stylex';
 import { Show, createSignal } from 'solid-js';
 import { Link, createFileRoute, useNavigate } from '@tanstack/solid-router';
 import { t } from '@/i18n';
@@ -6,9 +7,59 @@ import { errorMessage } from '@/utils/api-error';
 import { ROUTES } from '@/utils/constants';
 import { onMount } from 'solid-js';
 import { useAuth } from '@/stores/auth-context';
+import { controls } from '@/styles/controls.stylex';
+import { layout } from '@/styles/layout.stylex';
+import {
+  colors,
+  fontSize,
+  lineHeight,
+  space,
+} from '@/styles/tokens.stylex';
 
 export const Route = createFileRoute('/register')({
   component: RegisterPage,
+});
+
+const styles = stylex.create({
+  title: {
+    fontSize: fontSize.px24,
+    lineHeight: lineHeight.px32,
+    fontWeight: 700,
+    textAlign: 'center',
+    marginBottom: space.px8,
+  },
+  subtitle: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    color: colors.gray500,
+    textAlign: 'center',
+    marginBottom: space.px24,
+  },
+  footer: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    color: colors.gray500,
+    textAlign: 'center',
+    marginTop: space.px16,
+  },
+  success: {
+    textAlign: 'center',
+  },
+  successTitle: {
+    fontSize: fontSize.px24,
+    lineHeight: lineHeight.px32,
+    fontWeight: 700,
+    marginBottom: space.px8,
+  },
+  successBody: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    color: colors.gray600,
+    marginBottom: space.px24,
+  },
+  successEmail: {
+    fontWeight: 500,
+  },
 });
 
 function RegisterPage() {
@@ -57,79 +108,81 @@ function RegisterPage() {
   }
 
   return (
-    <div class="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div class="w-full max-w-sm bg-white rounded-lg shadow p-8">
+    <div {...stylex.attrs(layout.centeredPage)}>
+      <div {...stylex.attrs(layout.panel)}>
         <Show
           when={registeredEmail()}
           fallback={
             <>
-              <h1 class="text-2xl font-bold text-center mb-2">{t('register.title')}</h1>
-              <p class="text-sm text-gray-500 text-center mb-6">MinerU Gateway</p>
+              <h1 {...stylex.attrs(styles.title)}>{t('register.title')}</h1>
+              <p {...stylex.attrs(styles.subtitle)}>MinerU Gateway</p>
 
-              <form onSubmit={handleSubmit} class="flex flex-col gap-4">
-                <label class="flex flex-col gap-1">
-                  <span class="text-sm font-medium text-gray-700">{t('register.email')}</span>
+              <form onSubmit={handleSubmit} {...stylex.attrs(controls.form)}>
+                <label {...stylex.attrs(controls.field)}>
+                  <span {...stylex.attrs(controls.fieldLabel)}>{t('register.email')}</span>
                   <input
                     type="email"
                     required
                     autocomplete="email"
                     value={email()}
                     onInput={(e) => setEmail(e.currentTarget.value)}
-                    class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    {...stylex.attrs(controls.input)}
                   />
                 </label>
 
-                <label class="flex flex-col gap-1">
-                  <span class="text-sm font-medium text-gray-700">{t('register.displayName')}</span>
+                <label {...stylex.attrs(controls.field)}>
+                  <span {...stylex.attrs(controls.fieldLabel)}>{t('register.displayName')}</span>
                   <input
                     type="text"
                     autocomplete="nickname"
                     value={displayName()}
                     onInput={(e) => setDisplayName(e.currentTarget.value)}
-                    class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    {...stylex.attrs(controls.input)}
                   />
                 </label>
 
-                <label class="flex flex-col gap-1">
-                  <span class="text-sm font-medium text-gray-700">{t('register.password')}</span>
+                <label {...stylex.attrs(controls.field)}>
+                  <span {...stylex.attrs(controls.fieldLabel)}>{t('register.password')}</span>
                   <input
                     type="password"
                     required
                     autocomplete="new-password"
                     value={password()}
                     onInput={(e) => setPassword(e.currentTarget.value)}
-                    class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    {...stylex.attrs(controls.input)}
                   />
                 </label>
 
-                <label class="flex flex-col gap-1">
-                  <span class="text-sm font-medium text-gray-700">{t('register.confirmPassword')}</span>
+                <label {...stylex.attrs(controls.field)}>
+                  <span {...stylex.attrs(controls.fieldLabel)}>
+                    {t('register.confirmPassword')}
+                  </span>
                   <input
                     type="password"
                     required
                     autocomplete="new-password"
                     value={confirm()}
                     onInput={(e) => setConfirm(e.currentTarget.value)}
-                    class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    {...stylex.attrs(controls.input)}
                   />
                 </label>
 
                 <Show when={error()}>
-                  <p class="text-sm text-red-600">{error()}</p>
+                  <p {...stylex.attrs(controls.errorText)}>{error()}</p>
                 </Show>
 
                 <button
                   type="submit"
                   disabled={isSubmitting()}
-                  class="bg-blue-600 text-white rounded px-4 py-2 font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  {...stylex.attrs(controls.button, controls.buttonPrimary, controls.buttonLarge)}
                 >
                   {isSubmitting() ? t('register.submitting') : t('register.submit')}
                 </button>
               </form>
 
-              <p class="text-sm text-gray-500 text-center mt-4">
+              <p {...stylex.attrs(styles.footer)}>
                 {t('register.hasAccount')}{' '}
-                <Link to={ROUTES.login} class="text-blue-600 hover:underline">
+                <Link to={ROUTES.login} class={stylex.attrs(controls.link).class}>
                   {t('register.toLogin')}
                 </Link>
               </p>
@@ -137,17 +190,17 @@ function RegisterPage() {
           }
         >
           {(email) => (
-            <div class="text-center">
-              <h1 class="text-2xl font-bold mb-2">{t('register.successTitle')}</h1>
-              <p class="text-sm text-gray-600 mb-6">
+            <div {...stylex.attrs(styles.success)}>
+              <h1 {...stylex.attrs(styles.successTitle)}>{t('register.successTitle')}</h1>
+              <p {...stylex.attrs(styles.successBody)}>
                 {t('register.successPrefix')}
-                <span class="font-medium">{email()}</span>
+                <span {...stylex.attrs(styles.successEmail)}>{email()}</span>
                 {t('register.successSuffix')}
               </p>
               <button
                 type="button"
                 onClick={() => navigate({ to: ROUTES.login })}
-                class="bg-blue-600 text-white rounded px-4 py-2 font-medium hover:bg-blue-700"
+                {...stylex.attrs(controls.button, controls.buttonPrimary, controls.buttonLarge)}
               >
                 {t('register.goLogin')}
               </button>

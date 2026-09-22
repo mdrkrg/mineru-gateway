@@ -1,9 +1,29 @@
+import * as stylex from '@stylexjs/stylex';
 import { Link, Outlet, createRootRoute } from '@tanstack/solid-router';
 import { TanStackRouterDevtools } from '@tanstack/solid-router-devtools';
 import ConfirmDialogHost from '../components/ConfirmDialogHost';
 import ToastHost from '../components/ToastHost';
 import { t } from '@/i18n';
 import type { AuthStore } from '../stores/auth';
+import { controls } from '@/styles/controls.stylex';
+import { layout } from '@/styles/layout.stylex';
+import { colors, fontSize, lineHeight, space } from '@/styles/tokens.stylex';
+
+const styles = stylex.create({
+  pendingText: {
+    color: colors.gray500,
+  },
+  notFound: {
+    padding: space.px32,
+    textAlign: 'center',
+  },
+  notFoundTitle: {
+    fontSize: fontSize.px24,
+    lineHeight: lineHeight.px32,
+    fontWeight: 700,
+    marginBottom: space.px16,
+  },
+});
 
 export const Route = createRootRoute({
   beforeLoad: ({ context }) => {
@@ -11,15 +31,17 @@ export const Route = createRootRoute({
   },
   component: RootComponent,
   pendingComponent: () => (
-    <div class="min-h-screen flex items-center justify-center bg-gray-50">
-      <p class="text-gray-500">{t('common.loading')}</p>
+    <div {...stylex.attrs(layout.centeredPage)}>
+      <p {...stylex.attrs(styles.pendingText)}>{t('common.loading')}</p>
     </div>
   ),
   notFoundComponent: () => {
     return (
-      <div class="p-8 text-center">
-        <h1 class="text-2xl font-bold mb-4">{t('root.notFound')}</h1>
-        <Link to="/" class="text-blue-600 hover:underline">{t('root.goHome')}</Link>
+      <div {...stylex.attrs(styles.notFound)}>
+        <h1 {...stylex.attrs(styles.notFoundTitle)}>{t('root.notFound')}</h1>
+        <Link to="/" class={stylex.attrs(controls.link).class}>
+          {t('root.goHome')}
+        </Link>
       </div>
     );
   },
