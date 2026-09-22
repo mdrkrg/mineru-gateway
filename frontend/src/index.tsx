@@ -1,4 +1,4 @@
-import 'uno.css';
+import './index.css';
 import { createEffect, createRoot } from 'solid-js';
 import { render } from 'solid-js/web';
 import 'solid-devtools';
