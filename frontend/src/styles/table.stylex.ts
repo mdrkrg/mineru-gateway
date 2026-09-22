@@ -93,7 +93,7 @@ export const actionButton = stylex.create({
     borderColor: colors.red300,
     color: colors.red600,
     backgroundColor: {
-      default: colors.white,
+      default: 'transparent',
       ':enabled:hover': colors.red50,
     },
     paddingInline: space.px12,

@@ -84,7 +84,7 @@ export const controls = stylex.create({
     borderWidth: 1,
     borderColor: colors.gray300,
     backgroundColor: {
-      default: colors.white,
+      default: 'transparent',
       ':enabled:hover': colors.gray50,
     },
     color: colors.gray700,
