@@ -1,3 +1,4 @@
+import * as stylex from '@stylexjs/stylex';
 import { Show, createSignal, onMount } from 'solid-js';
 import { createFileRoute } from '@tanstack/solid-router';
 import { KeyRound } from 'lucide-solid';
@@ -15,9 +16,102 @@ import { useApiKey } from '@/stores/api-key-context';
 import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
+import { controls } from '@/styles/controls.stylex';
+import {
+  colors,
+  fontSize,
+  lineHeight,
+  maxWidth,
+  radius,
+  space,
+} from '@/styles/tokens.stylex';
 
 export const Route = createFileRoute('/_authenticated/api-keys')({
   component: ApiKeysPage,
+});
+
+const styles = stylex.create({
+  root: {
+    maxWidth: maxWidth.px896,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.px24,
+  },
+  sectionTitle: {
+    fontSize: fontSize.px18,
+    lineHeight: lineHeight.px28,
+    fontWeight: 600,
+    marginBottom: space.px16,
+  },
+  createForm: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+    gap: space.px16,
+  },
+  labelInput: {
+    width: space.px224,
+  },
+  activeTitle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: space.px8,
+    fontSize: fontSize.px18,
+    lineHeight: lineHeight.px28,
+    fontWeight: 600,
+    marginBottom: space.px8,
+  },
+  activeIcon: {
+    width: space.px20,
+    height: space.px20,
+  },
+  activeDescription: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    color: colors.gray500,
+    marginBottom: space.px16,
+  },
+  notSet: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    color: colors.amber600,
+    marginBottom: space.px16,
+  },
+  activeValue: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    marginBottom: space.px16,
+  },
+  code: {
+    backgroundColor: colors.gray100,
+    borderRadius: radius.px4,
+    paddingInline: space.px8,
+    paddingBlock: space.px4,
+  },
+  clear: {
+    marginLeft: space.px12,
+    color: colors.red600,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    padding: 0,
+    cursor: 'pointer',
+    ':hover': {
+      textDecorationLine: 'underline',
+    },
+  },
+  manualForm: {
+    display: 'flex',
+    alignItems: 'flex-end',
+    gap: space.px8,
+  },
+  manualField: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: '0%',
+  },
+  setButton: {
+    fontWeight: 400,
+  },
 });
 
 function ApiKeysPage() {
@@ -116,11 +210,9 @@ function ApiKeysPage() {
   }
 
   return (
-    <div class="max-w-4xl flex flex-col gap-6">
+    <div {...stylex.attrs(styles.root)}>
       <Show when={error()}>
-        <p class="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
-          {error()}
-        </p>
+        <p {...stylex.attrs(controls.alertError)}>{error()}</p>
       </Show>
 
       {/* Newly created key — shown once */}
@@ -134,32 +226,32 @@ function ApiKeysPage() {
       </Show>
 
       {/* Create form */}
-      <section class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-4">{t('apiKeys.createTitle')}</h2>
-        <form onSubmit={handleCreate} class="flex flex-wrap items-end gap-4">
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">{t('apiKeys.label')}</span>
+      <section {...stylex.attrs(controls.card)}>
+        <h2 {...stylex.attrs(styles.sectionTitle)}>{t('apiKeys.createTitle')}</h2>
+        <form onSubmit={handleCreate} {...stylex.attrs(styles.createForm)}>
+          <label {...stylex.attrs(controls.field)}>
+            <span {...stylex.attrs(controls.fieldLabel)}>{t('apiKeys.label')}</span>
             <input
               type="text"
               value={label()}
               onInput={(e) => setLabel(e.currentTarget.value)}
               placeholder={t('apiKeys.labelPlaceholder')}
-              class="border border-gray-300 rounded px-3 py-2 w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              {...stylex.attrs(controls.input, styles.labelInput)}
             />
           </label>
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">{t('apiKeys.expiresAt')}</span>
+          <label {...stylex.attrs(controls.field)}>
+            <span {...stylex.attrs(controls.fieldLabel)}>{t('apiKeys.expiresAt')}</span>
             <input
               type="date"
               value={expiresAt()}
               onInput={(e) => setExpiresAt(e.currentTarget.value)}
-              class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              {...stylex.attrs(controls.input)}
             />
           </label>
           <button
             type="submit"
             disabled={isCreating()}
-            class="bg-blue-600 text-white rounded px-4 py-2 font-medium hover:bg-blue-700 disabled:opacity-50"
+            {...stylex.attrs(controls.button, controls.buttonPrimary, controls.buttonLarge)}
           >
             {isCreating() ? t('apiKeys.creating') : t('apiKeys.create')}
           </button>
@@ -167,8 +259,8 @@ function ApiKeysPage() {
       </section>
 
       {/* Key list */}
-      <section class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-4">{t('apiKeys.listTitle')}</h2>
+      <section {...stylex.attrs(controls.card)}>
+        <h2 {...stylex.attrs(styles.sectionTitle)}>{t('apiKeys.listTitle')}</h2>
         <ApiKeyTable
           keys={keys()}
           isLoading={isLoading()}
@@ -180,26 +272,24 @@ function ApiKeysPage() {
       </section>
 
       {/* Active key for task endpoints */}
-      <section class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-2 flex items-center gap-2">
-          <KeyRound class="w-5 h-5" />
+      <section {...stylex.attrs(controls.card)}>
+        <h2 {...stylex.attrs(styles.activeTitle)}>
+          <KeyRound class={stylex.attrs(styles.activeIcon).class} />
           {t('apiKeys.activeKeyTitle')}
         </h2>
-        <p class="text-sm text-gray-500 mb-4">
-          {t('apiKeys.activeKeyDesc')}
-        </p>
+        <p {...stylex.attrs(styles.activeDescription)}>{t('apiKeys.activeKeyDesc')}</p>
         <Show
           when={apiKeyStore.activeKey()}
-          fallback={<p class="text-sm text-amber-600 mb-4">{t('apiKeys.notSet')}</p>}
+          fallback={<p {...stylex.attrs(styles.notSet)}>{t('apiKeys.notSet')}</p>}
         >
-          <p class="text-sm mb-4">
-            <code class="bg-gray-100 rounded px-2 py-1">
+          <p {...stylex.attrs(styles.activeValue)}>
+            <code {...stylex.attrs(styles.code)}>
               {apiKeyStore.activeKey()!.slice(0, 12)}…
             </code>
             <button
               type="button"
               onClick={() => apiKeyStore.clearActiveKey()}
-              class="ml-3 text-red-600 hover:underline"
+              {...stylex.attrs(styles.clear)}
             >
               {t('common.clear')}
             </button>
@@ -214,21 +304,21 @@ function ApiKeysPage() {
               setPastedKey('');
             }
           }}
-          class="flex items-end gap-2"
+          {...stylex.attrs(styles.manualForm)}
         >
-          <label class="flex flex-col gap-1 flex-1">
-            <span class="text-sm font-medium text-gray-700">{t('apiKeys.manualTitle')}</span>
+          <label {...stylex.attrs(controls.field, styles.manualField)}>
+            <span {...stylex.attrs(controls.fieldLabel)}>{t('apiKeys.manualTitle')}</span>
             <input
               type="password"
               value={pastedKey()}
               onInput={(e) => setPastedKey(e.currentTarget.value)}
               placeholder={t('apiKeys.pastePlaceholder')}
-              class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              {...stylex.attrs(controls.input)}
             />
           </label>
           <button
             type="submit"
-            class="border border-gray-300 rounded px-4 py-2 text-sm hover:bg-gray-50"
+            {...stylex.attrs(controls.button, controls.buttonOutline, styles.setButton)}
           >
             {t('apiKeys.set')}
           </button>

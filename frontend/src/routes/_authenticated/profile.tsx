@@ -1,3 +1,4 @@
+import * as stylex from '@stylexjs/stylex';
 import { Show, createSignal } from 'solid-js';
 import { createFileRoute } from '@tanstack/solid-router';
 import { t } from '@/i18n';
@@ -5,13 +6,52 @@ import { updateCurrentUser } from '@/api/functions/auth';
 import { useAuth } from '@/stores/auth-context';
 import { errorMessage } from '@/utils/api-error';
 import { formatDateTime } from '@/utils/format';
+import { controls } from '@/styles/controls.stylex';
+import {
+  colors,
+  fontSize,
+  lineHeight,
+  maxWidth,
+  space,
+} from '@/styles/tokens.stylex';
 
 export const Route = createFileRoute('/_authenticated/profile')({
   component: ProfilePage,
 });
 
-const inputCls =
-  'border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500';
+const styles = stylex.create({
+  root: {
+    maxWidth: maxWidth.px672,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.px16,
+  },
+  sectionTitle: {
+    fontSize: fontSize.px18,
+    lineHeight: lineHeight.px28,
+    fontWeight: 600,
+    marginBottom: space.px16,
+  },
+  infoGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: space.px16,
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+  },
+  infoLabel: {
+    fontSize: fontSize.px12,
+    lineHeight: lineHeight.px16,
+    color: colors.gray500,
+    marginBottom: space.px2,
+  },
+  alertSpacing: {
+    marginBottom: space.px16,
+  },
+  submit: {
+    alignSelf: 'flex-start',
+  },
+});
 
 function ProfilePage() {
   const auth = useAuth();
@@ -62,79 +102,84 @@ function ProfilePage() {
   }
 
   return (
-    <div class="max-w-2xl flex flex-col gap-4">
-      <section class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-4">{t('profile.accountInfo')}</h2>
-        <dl class="grid grid-cols-2 gap-4 text-sm">
+    <div {...stylex.attrs(styles.root)}>
+      <section {...stylex.attrs(controls.card)}>
+        <h2 {...stylex.attrs(styles.sectionTitle)}>{t('profile.accountInfo')}</h2>
+        <dl {...stylex.attrs(styles.infoGrid)}>
           <div>
-            <dt class="text-xs text-gray-500 mb-0.5">{t('profile.email')}</dt>
+            <dt {...stylex.attrs(styles.infoLabel)}>{t('profile.email')}</dt>
             <dd>{auth.user()?.email}</dd>
           </div>
           <div>
-            <dt class="text-xs text-gray-500 mb-0.5">{t('profile.role')}</dt>
+            <dt {...stylex.attrs(styles.infoLabel)}>{t('profile.role')}</dt>
             <dd>{auth.user()?.isSuperuser ? t('profile.roleAdmin') : t('profile.roleUser')}</dd>
           </div>
           <div>
-            <dt class="text-xs text-gray-500 mb-0.5">{t('profile.emailVerification')}</dt>
+            <dt {...stylex.attrs(styles.infoLabel)}>{t('profile.emailVerification')}</dt>
             <dd>{auth.user()?.isVerified ? t('profile.verified') : t('profile.unverified')}</dd>
           </div>
           <div>
-            <dt class="text-xs text-gray-500 mb-0.5">{t('profile.registeredAt')}</dt>
+            <dt {...stylex.attrs(styles.infoLabel)}>{t('profile.registeredAt')}</dt>
             <dd>{formatDateTime(auth.user()?.createdAt)}</dd>
           </div>
         </dl>
       </section>
 
-      <section class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-4">{t('profile.editTitle')}</h2>
+      <section {...stylex.attrs(controls.card)}>
+        <h2 {...stylex.attrs(styles.sectionTitle)}>{t('profile.editTitle')}</h2>
 
         <Show when={error()}>
-          <p class="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2 mb-4">
-            {error()}
-          </p>
+          <p {...stylex.attrs(controls.alertError, styles.alertSpacing)}>{error()}</p>
         </Show>
         <Show when={saved()}>
-          <p class="text-sm text-green-600 bg-green-50 border border-green-200 rounded px-3 py-2 mb-4">
+          <p {...stylex.attrs(controls.alertSuccess, styles.alertSpacing)}>
             {t('profile.saved')}
           </p>
         </Show>
 
-        <form onSubmit={handleSave} class="flex flex-col gap-4">
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">{t('profile.displayName')}</span>
+        <form onSubmit={handleSave} {...stylex.attrs(controls.form)}>
+          <label {...stylex.attrs(controls.field)}>
+            <span {...stylex.attrs(controls.fieldLabel)}>{t('profile.displayName')}</span>
             <input
               type="text"
               value={displayName()}
               onInput={(e) => setDisplayName(e.currentTarget.value)}
-              class={inputCls}
+              {...stylex.attrs(controls.input)}
             />
           </label>
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">{t('profile.newPassword')}</span>
+          <label {...stylex.attrs(controls.field)}>
+            <span {...stylex.attrs(controls.fieldLabel)}>{t('profile.newPassword')}</span>
             <input
               type="password"
               autocomplete="new-password"
               value={password()}
               onInput={(e) => setPassword(e.currentTarget.value)}
-              class={inputCls}
+              {...stylex.attrs(controls.input)}
             />
           </label>
           <Show when={password()}>
-            <label class="flex flex-col gap-1">
-              <span class="text-sm font-medium text-gray-700">{t('profile.confirmNewPassword')}</span>
+            <label {...stylex.attrs(controls.field)}>
+              <span {...stylex.attrs(controls.fieldLabel)}>
+                {t('profile.confirmNewPassword')}
+              </span>
               <input
                 type="password"
                 autocomplete="new-password"
                 value={confirm()}
                 onInput={(e) => setConfirm(e.currentTarget.value)}
-                class={inputCls}
+                {...stylex.attrs(controls.input)}
               />
             </label>
           </Show>
           <button
             type="submit"
             disabled={isSaving()}
-            class="self-start bg-blue-600 text-white rounded px-4 py-2 font-medium hover:bg-blue-700 disabled:opacity-50"
+            {...stylex.attrs(
+              controls.button,
+              controls.buttonPrimary,
+              controls.buttonLarge,
+              styles.submit,
+            )}
           >
             {isSaving() ? t('profile.saving') : t('profile.save')}
           </button>

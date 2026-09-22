@@ -1,3 +1,4 @@
+import * as stylex from '@stylexjs/stylex';
 import { For, Show, createSignal, onMount } from 'solid-js';
 import { Link, createFileRoute } from '@tanstack/solid-router';
 import { listTasks, cancelTask, batchCancelTasks } from '@/api/functions/tasks';
@@ -19,12 +20,71 @@ import {
 } from '@/utils/constants';
 import { formatDateTime } from '@/utils/format';
 import { createPolling } from '@/utils/polling';
+import { controls } from '@/styles/controls.stylex';
+import { actionButton, table } from '@/styles/table.stylex';
+import {
+  colors,
+  fontSize,
+  lineHeight,
+  space,
+} from '@/styles/tokens.stylex';
 
 export const Route = createFileRoute('/_authenticated/tasks/')({
   component: TaskListPage,
 });
 
 const PAGE_SIZE = 20;
+
+const styles = stylex.create({
+  root: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.px16,
+  },
+  filterForm: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+    gap: space.px12,
+    padding: space.px16,
+  },
+  fileNameInput: {
+    width: space.px224,
+  },
+  batchBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: space.px12,
+  },
+  autoRefreshHint: {
+    fontSize: fontSize.px12,
+    lineHeight: lineHeight.px16,
+    color: colors.gray500,
+  },
+  backendCell: {
+    fontSize: fontSize.px12,
+    lineHeight: lineHeight.px16,
+  },
+  cancel: {
+    color: colors.red600,
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    padding: 0,
+    cursor: {
+      default: 'pointer',
+      ':disabled': 'not-allowed',
+    },
+    textDecorationLine: {
+      default: 'none',
+      ':enabled:hover': 'underline',
+    },
+    opacity: {
+      ':disabled': 0.4,
+    },
+  },
+});
 
 function TaskListPage() {
   const apiKeyStore = useApiKey();
@@ -183,7 +243,7 @@ function TaskListPage() {
     items().filter((t) => isActiveTaskStatus(t.status)).length;
 
   return (
-    <div class="flex flex-col gap-4">
+    <div {...stylex.attrs(styles.root)}>
       <Show when={!apiKeyStore.activeKey()}>
         <NoActiveKey />
       </Show>
@@ -192,14 +252,14 @@ function TaskListPage() {
         {/* Filters */}
         <form
           onSubmit={applyFilters}
-          class="bg-white rounded-lg shadow p-4 flex flex-wrap items-end gap-3"
+          {...stylex.attrs(controls.card, styles.filterForm)}
         >
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">{t('tasks.filterStatus')}</span>
+          <label {...stylex.attrs(controls.field)}>
+            <span {...stylex.attrs(controls.fieldLabel)}>{t('tasks.filterStatus')}</span>
             <select
               value={statusFilter()}
               onChange={(e) => setStatusFilter(e.currentTarget.value)}
-              class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              {...stylex.attrs(controls.input)}
             >
               <option value="">{t('tasks.filterAll')}</option>
               <For each={TASK_STATUSES}>
@@ -207,63 +267,64 @@ function TaskListPage() {
               </For>
             </select>
           </label>
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">{t('tasks.filterFileName')}</span>
+          <label {...stylex.attrs(controls.field)}>
+            <span {...stylex.attrs(controls.fieldLabel)}>{t('tasks.filterFileName')}</span>
             <input
               type="text"
               value={fileNameFilter()}
               onInput={(e) => setFileNameFilter(e.currentTarget.value)}
               placeholder={t('tasks.searchPlaceholder')}
-              class="border border-gray-300 rounded px-3 py-2 w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              {...stylex.attrs(controls.input, styles.fileNameInput)}
             />
           </label>
           <button
             type="submit"
-            class="bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-blue-700"
+            {...stylex.attrs(controls.button, controls.buttonPrimary)}
           >
             {t('tasks.search')}
           </button>
         </form>
 
         <Show when={error()}>
-          <p class="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
-            {error()}
-          </p>
+          <p {...stylex.attrs(controls.alertError)}>{error()}</p>
         </Show>
 
         {/* Batch actions */}
-        <div class="flex items-center gap-3">
+        <div {...stylex.attrs(styles.batchBar)}>
           <button
             type="button"
             disabled={selected().size === 0 || isActing()}
             onClick={handleBatchCancel}
-            class="border border-red-300 text-red-600 rounded px-3 py-1.5 text-sm hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            {...stylex.attrs(controls.button, controls.buttonOutline, actionButton.danger)}
           >
             {t('tasks.batchCancel', { count: selected().size })}
           </button>
           <button
             type="button"
             onClick={() => load()}
-            class="border border-gray-300 rounded px-3 py-1.5 text-sm hover:bg-gray-50"
+            {...stylex.attrs(controls.button, controls.buttonOutline, actionButton.refresh)}
           >
             {t('common.refresh')}
           </button>
           <Show when={hasActiveTasks()}>
-            <span class="text-xs text-gray-500">{t('tasks.autoRefreshHint')}</span>
+            <span {...stylex.attrs(styles.autoRefreshHint)}>{t('tasks.autoRefreshHint')}</span>
           </Show>
         </div>
 
         {/* Table */}
-        <div class="bg-white rounded-lg shadow overflow-x-auto">
-          <Show when={!isLoading()} fallback={<p class="p-6 text-gray-500">{t('common.loading')}</p>}>
+        <div {...stylex.attrs(table.card)}>
+          <Show
+            when={!isLoading()}
+            fallback={<p {...stylex.attrs(table.message)}>{t('common.loading')}</p>}
+          >
             <Show
               when={items().length > 0}
-              fallback={<p class="p-6 text-gray-500">{t('tasks.empty')}</p>}
+              fallback={<p {...stylex.attrs(table.message)}>{t('tasks.empty')}</p>}
             >
-              <table class="w-full text-sm">
+              <table {...stylex.attrs(table.root)}>
                 <thead>
-                  <tr class="text-left text-gray-500 border-b">
-                    <th class="py-2 pl-4 pr-2 w-8">
+                  <tr {...stylex.attrs(table.headRow)}>
+                    <th {...stylex.attrs(table.thCheck)}>
                       <input
                         type="checkbox"
                         checked={selectableCount() > 0 && selected().size === selectableCount()}
@@ -271,20 +332,25 @@ function TaskListPage() {
                         disabled={selectableCount() === 0}
                       />
                     </th>
-                    <th class="py-2 pr-4 font-medium">{t('tasks.thTaskId')}</th>
-                    <th class="py-2 pr-4 font-medium">{t('tasks.thStatus')}</th>
-                    <th class="py-2 pr-4 font-medium">{t('tasks.thBackend')}</th>
-                    <th class="py-2 pr-4 font-medium">{t('tasks.thFiles')}</th>
-                    <th class="py-2 pr-4 font-medium">{t('tasks.thCreatedAt')}</th>
-                    <th class="py-2 pr-4 font-medium">{t('tasks.thRetries')}</th>
-                    <th class="py-2 pr-4 font-medium">{t('tasks.thActions')}</th>
+                    <th {...stylex.attrs(table.th)}>{t('tasks.thTaskId')}</th>
+                    <th {...stylex.attrs(table.th)}>{t('tasks.thStatus')}</th>
+                    <th {...stylex.attrs(table.th)}>{t('tasks.thBackend')}</th>
+                    <th {...stylex.attrs(table.th)}>{t('tasks.thFiles')}</th>
+                    <th {...stylex.attrs(table.th)}>{t('tasks.thCreatedAt')}</th>
+                    <th {...stylex.attrs(table.th)}>{t('tasks.thRetries')}</th>
+                    <th {...stylex.attrs(table.th)}>{t('tasks.thActions')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   <For each={items()}>
-                    {(task) => (
-                      <tr class="border-b last:border-0 hover:bg-gray-50">
-                        <td class="py-2 pl-4 pr-2">
+                    {(task, index) => (
+                      <tr
+                        {...stylex.attrs(
+                          table.row,
+                          index() === items().length - 1 && table.lastRow,
+                        )}
+                      >
+                        <td {...stylex.attrs(table.tdCheck)}>
                           <input
                             type="checkbox"
                             disabled={!isActiveTaskStatus(task.status)}
@@ -292,32 +358,37 @@ function TaskListPage() {
                             onChange={(e) => toggleSelect(task.taskId, e.currentTarget.checked)}
                           />
                         </td>
-                        <td class="py-2 pr-4">
+                        <td {...stylex.attrs(table.td)}>
                           <Link
                             to={ROUTES.taskDetail(task.taskId)}
-                            class="text-blue-600 hover:underline"
+                            class={stylex.attrs(controls.link, table.link).class}
                           >
-                            <code class="text-xs">…{task.taskId.slice(-8)}</code>
+                            <code {...stylex.attrs(table.code)}>…{task.taskId.slice(-8)}</code>
                           </Link>
                         </td>
-                        <td class="py-2 pr-4">
+                        <td {...stylex.attrs(table.td)}>
                           <StatusBadge status={task.status} />
                         </td>
-                        <td class="py-2 pr-4 text-xs">{mineruBackendLabel(task.backend)}</td>
-                        <td class="py-2 pr-4 max-w-48 truncate" title={task.fileNames.join(', ')}>
+                        <td {...stylex.attrs(table.td, styles.backendCell)}>
+                          {mineruBackendLabel(task.backend)}
+                        </td>
+                        <td
+                          {...stylex.attrs(table.truncate, table.truncateNarrow)}
+                          title={task.fileNames.join(', ')}
+                        >
                           {task.fileNames.join(', ')}
                         </td>
-                        <td class="py-2 pr-4 whitespace-nowrap">
+                        <td {...stylex.attrs(table.nowrap)}>
                           {formatDateTime(task.createdAt)}
                         </td>
-                        <td class="py-2 pr-4">{task.retryCount}</td>
-                        <td class="py-2 pr-4">
+                        <td {...stylex.attrs(table.td)}>{task.retryCount}</td>
+                        <td {...stylex.attrs(table.td)}>
                           <Show when={isActiveTaskStatus(task.status)}>
                             <button
                               type="button"
                               disabled={isActing()}
                               onClick={() => handleCancel(task)}
-                              class="text-red-600 hover:underline text-sm disabled:opacity-40"
+                              {...stylex.attrs(styles.cancel)}
                             >
                               {t('tasks.cancel')}
                             </button>

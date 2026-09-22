@@ -1,3 +1,4 @@
+import * as stylex from '@stylexjs/stylex';
 import { For, Show, createSignal } from 'solid-js';
 import { Link, createFileRoute } from '@tanstack/solid-router';
 import { FileUp, CircleQuestionMark, X } from 'lucide-solid';
@@ -23,35 +24,265 @@ import { ROUTES } from '@/utils/constants';
 import { formatFileSize } from '@/utils/format';
 import { validateUploadSize } from '@/utils/upload';
 import { env } from '@/env';
+import { controls } from '@/styles/controls.stylex';
+import {
+  breakpoint,
+  colors,
+  fontSize,
+  lineHeight,
+  maxWidth,
+  radius,
+  shadow,
+  space,
+} from '@/styles/tokens.stylex';
 
 export const Route = createFileRoute('/_authenticated/upload')({
   component: UploadPage,
 });
 
-const inputCls =
-  'border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500';
+const styles = stylex.create({
+  root: {
+    maxWidth: maxWidth.px768,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.px16,
+  },
+  successBox: {
+    backgroundColor: colors.green50,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: colors.green300,
+    borderRadius: radius.px8,
+    padding: space.px16,
+  },
+  successTitle: {
+    fontWeight: 600,
+    color: colors.green800,
+    marginBottom: space.px4,
+  },
+  successText: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    color: colors.green700,
+    marginBottom: space.px8,
+  },
+  successLink: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+  },
+  section: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  sectionTitle: {
+    fontSize: fontSize.px18,
+    lineHeight: lineHeight.px28,
+    fontWeight: 600,
+    marginBottom: space.px12,
+  },
+  optionsTitle: {
+    fontSize: fontSize.px18,
+    lineHeight: lineHeight.px28,
+    fontWeight: 600,
+  },
+  optionsSection: {
+    gap: space.px16,
+  },
+  dropzone: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderRadius: radius.px8,
+    padding: space.px32,
+    cursor: 'pointer',
+    transitionProperty:
+      'color, background-color, border-color, text-decoration-color, fill, stroke',
+    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    transitionDuration: '150ms',
+  },
+  dropzoneIdle: {
+    borderColor: {
+      default: colors.gray300,
+      ':hover': colors.blue400,
+    },
+  },
+  dropzoneDragging: {
+    borderColor: colors.blue500,
+    backgroundColor: colors.blue50,
+  },
+  fileIcon: {
+    width: space.px32,
+    height: space.px32,
+    color: colors.gray400,
+    marginBottom: space.px8,
+  },
+  dropzoneText: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    color: colors.gray500,
+  },
+  hidden: {
+    display: 'none',
+  },
+  fileList: {
+    marginTop: space.px12,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.px4,
+  },
+  fileItem: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    backgroundColor: colors.gray50,
+    borderRadius: radius.px4,
+    paddingInline: space.px12,
+    paddingBlock: space.px6,
+  },
+  fileSize: {
+    color: colors.gray400,
+    marginLeft: space.px8,
+  },
+  removeButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    padding: 0,
+    color: colors.gray400,
+    ':hover': {
+      color: colors.red600,
+    },
+  },
+  removeIcon: {
+    width: space.px16,
+    height: space.px16,
+  },
+  sizeSummary: {
+    marginTop: space.px8,
+    fontSize: fontSize.px12,
+    lineHeight: lineHeight.px16,
+    color: colors.gray400,
+  },
+  optionsGrid: {
+    display: 'grid',
+    gridTemplateColumns: {
+      default: 'repeat(1, minmax(0, 1fr))',
+      [breakpoint.sm]: 'repeat(3, minmax(0, 1fr))',
+    },
+    gap: space.px16,
+  },
+  languageHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: space.px6,
+    marginBottom: space.px8,
+  },
+  tooltipHost: {
+    position: 'relative',
+    display: 'inline-flex',
+    cursor: 'help',
+  },
+  helpIcon: {
+    width: space.px16,
+    height: space.px16,
+    color: colors.gray400,
+  },
+  tooltip: {
+    position: 'absolute',
+    bottom: '100%',
+    left: '50%',
+    translate: '-50% 0',
+    marginBottom: space.px8,
+    zIndex: 10,
+    display: {
+      default: 'none',
+      [stylex.when.ancestor(':hover')]: 'block',
+    },
+  },
+  languageList: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    columnGap: space.px16,
+    rowGap: space.px6,
+  },
+  checkboxLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: space.px6,
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+  },
+  optionsRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    columnGap: space.px24,
+    rowGap: space.px6,
+  },
+  submit: {
+    alignSelf: 'flex-start',
+    paddingInline: space.px24,
+  },
+  codeTable: {
+    backgroundColor: colors.gray900,
+    color: colors.white,
+    fontSize: fontSize.px12,
+    lineHeight: lineHeight.px16,
+    borderRadius: radius.px8,
+    boxShadow: shadow.lg,
+    padding: space.px12,
+    width: space.px320,
+  },
+  codeTableInner: {
+    width: '100%',
+  },
+  codeTableHead: {
+    color: colors.gray400,
+  },
+  codeTableTh: {
+    textAlign: 'left',
+    paddingInlineEnd: space.px8,
+    paddingBlock: space.px2,
+  },
+  codeTableThLast: {
+    textAlign: 'left',
+    paddingBlock: space.px2,
+  },
+  codeTableTd: {
+    paddingInlineEnd: space.px8,
+    paddingBlock: space.px2,
+    whiteSpace: 'nowrap',
+    verticalAlign: 'top',
+  },
+  codeTableTdLast: {
+    paddingBlock: space.px2,
+  },
+});
 
 function LanguageCodeTable() {
   return (
-    <div class="bg-gray-900 text-white text-xs rounded-lg shadow-lg p-3 w-80">
-      <table class="w-full">
+    <div {...stylex.attrs(styles.codeTable)}>
+      <table {...stylex.attrs(styles.codeTableInner)}>
         <thead>
-          <tr class="text-gray-400">
-            <th class="text-left pr-2 py-0.5">{t('upload.langTableOption')}</th>
-            <th class="text-left py-0.5">{t('upload.langTableCoverage')}</th>
+          <tr {...stylex.attrs(styles.codeTableHead)}>
+            <th {...stylex.attrs(styles.codeTableTh)}>{t('upload.langTableOption')}</th>
+            <th {...stylex.attrs(styles.codeTableThLast)}>{t('upload.langTableCoverage')}</th>
           </tr>
         </thead>
         <tbody>
           {MINERU_LANGUAGES.map((lang) => (
             <tr>
-              <td class="pr-2 py-0.5 whitespace-nowrap align-top">{mineruLanguageLabel(lang)}</td>
-              <td class="py-0.5">{mineruLanguageCoverage(lang)}</td>
+              <td {...stylex.attrs(styles.codeTableTd)}>{mineruLanguageLabel(lang)}</td>
+              <td {...stylex.attrs(styles.codeTableTdLast)}>{mineruLanguageCoverage(lang)}</td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
-  )
+  );
 }
 
 function UploadPage() {
@@ -170,7 +401,7 @@ function UploadPage() {
   }
 
   return (
-    <div class="max-w-3xl flex flex-col gap-4">
+    <div {...stylex.attrs(styles.root)}>
       <Show when={!apiKeyStore.activeKey()}>
         <NoActiveKey />
       </Show>
@@ -178,15 +409,16 @@ function UploadPage() {
       <Show when={apiKeyStore.activeKey()}>
         <Show when={submitted()}>
           {(s) => (
-            <div class="bg-green-50 border border-green-300 rounded-lg p-4">
-              <h3 class="font-semibold text-green-800 mb-1">{t('upload.submitted')}</h3>
-              <p class="text-sm text-green-700 mb-2">
-                {t('upload.taskIdLabel')}<code>{s().taskId}</code>
+            <div {...stylex.attrs(styles.successBox)}>
+              <h3 {...stylex.attrs(styles.successTitle)}>{t('upload.submitted')}</h3>
+              <p {...stylex.attrs(styles.successText)}>
+                {t('upload.taskIdLabel')}
+                <code>{s().taskId}</code>
                 {t('upload.fileCount', { count: s().fileNames.length })}
               </p>
               <Link
                 to={ROUTES.taskDetail(s().taskId)}
-                class="text-blue-600 hover:underline text-sm"
+                class={stylex.attrs(controls.link, styles.successLink).class}
               >
                 {t('upload.viewDetail')}
               </Link>
@@ -195,32 +427,29 @@ function UploadPage() {
         </Show>
 
         <Show when={error()}>
-          <p class="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
-            {error()}
-          </p>
+          <p {...stylex.attrs(controls.alertError)}>{error()}</p>
         </Show>
 
-        <form onSubmit={handleSubmit} class="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} {...stylex.attrs(controls.form)}>
           {/* File picker */}
-          <section class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-lg font-semibold mb-3">{t('upload.fileSection')}</h2>
+          <section {...stylex.attrs(controls.card, styles.section)}>
+            <h2 {...stylex.attrs(styles.sectionTitle)}>{t('upload.fileSection')}</h2>
             <label
-              class={`flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-8 cursor-pointer transition-colors ${
-                isDragging()
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-300 hover:border-blue-400'
-              }`}
+              {...stylex.attrs(
+                styles.dropzone,
+                isDragging() ? styles.dropzoneDragging : styles.dropzoneIdle,
+              )}
               onDragEnter={handleDragEnter}
               onDragOver={(e) => e.preventDefault()}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
             >
-              <FileUp class="w-8 h-8 text-gray-400 mb-2" />
-              <span class="text-sm text-gray-500">{t('upload.filePicker')}</span>
+              <FileUp class={stylex.attrs(styles.fileIcon).class} />
+              <span {...stylex.attrs(styles.dropzoneText)}>{t('upload.filePicker')}</span>
               <input
                 type="file"
                 multiple
-                class="hidden"
+                {...stylex.attrs(styles.hidden)}
                 onChange={(e) => {
                   // Reset so re-picking the same file (e.g. after a rejected
                   // selection or a successful submit) fires change again.
@@ -230,26 +459,28 @@ function UploadPage() {
               />
             </label>
             <Show when={files().length > 0}>
-              <ul class="mt-3 flex flex-col gap-1">
+              <ul {...stylex.attrs(styles.fileList)}>
                 <For each={files()}>
                   {(file, index) => (
-                    <li class="flex items-center justify-between text-sm bg-gray-50 rounded px-3 py-1.5">
+                    <li {...stylex.attrs(styles.fileItem)}>
                       <span>
                         {file.name}
-                        <span class="text-gray-400 ml-2">{formatFileSize(file.size)}</span>
+                        <span {...stylex.attrs(styles.fileSize)}>
+                          {formatFileSize(file.size)}
+                        </span>
                       </span>
                       <button
                         type="button"
                         onClick={() => removeFile(index())}
-                        class="text-gray-400 hover:text-red-600"
+                        {...stylex.attrs(styles.removeButton)}
                       >
-                        <X class="w-4 h-4" />
+                        <X class={stylex.attrs(styles.removeIcon).class} />
                       </button>
                     </li>
                   )}
                 </For>
               </ul>
-              <p class="mt-2 text-xs text-gray-400">
+              <p {...stylex.attrs(styles.sizeSummary)}>
                 {t('upload.sizeSummary', {
                   count: files().length,
                   size: formatFileSize(totalSize()),
@@ -260,40 +491,40 @@ function UploadPage() {
           </section>
 
           {/* Parse options */}
-          <section class="bg-white rounded-lg shadow p-6 flex flex-col gap-4">
-            <h2 class="text-lg font-semibold">{t('upload.optionsSection')}</h2>
+          <section {...stylex.attrs(controls.card, styles.section, styles.optionsSection)}>
+            <h2 {...stylex.attrs(styles.optionsTitle)}>{t('upload.optionsSection')}</h2>
 
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <label class="flex flex-col gap-1">
-                <span class="text-sm font-medium text-gray-700">{t('upload.backend')}</span>
+            <div {...stylex.attrs(styles.optionsGrid)}>
+              <label {...stylex.attrs(controls.field)}>
+                <span {...stylex.attrs(controls.fieldLabel)}>{t('upload.backend')}</span>
                 <select
                   value={backend()}
                   onChange={(e) => setBackend(e.currentTarget.value as ServerOnlyMineruBackend)}
-                  class={inputCls}
+                  {...stylex.attrs(controls.input)}
                 >
                   <For each={MINERU_SERVER_BACKENDS}>
                     {(b) => <option value={b}>{mineruBackendLabel(b)}</option>}
                   </For>
                 </select>
               </label>
-              <label class="flex flex-col gap-1">
-                <span class="text-sm font-medium text-gray-700">{t('upload.parseMethod')}</span>
+              <label {...stylex.attrs(controls.field)}>
+                <span {...stylex.attrs(controls.fieldLabel)}>{t('upload.parseMethod')}</span>
                 <select
                   value={parseMethod()}
                   onChange={(e) => setParseMethod(e.currentTarget.value as MineruParseMethod)}
-                  class={inputCls}
+                  {...stylex.attrs(controls.input)}
                 >
                   <For each={MINERU_PARSE_METHODS}>
                     {(m) => <option value={m}>{m}</option>}
                   </For>
                 </select>
               </label>
-              <label class="flex flex-col gap-1">
-                <span class="text-sm font-medium text-gray-700">{t('upload.effort')}</span>
+              <label {...stylex.attrs(controls.field)}>
+                <span {...stylex.attrs(controls.fieldLabel)}>{t('upload.effort')}</span>
                 <select
                   value={effort()}
                   onChange={(e) => setEffort(e.currentTarget.value as MineruEffort)}
-                  class={inputCls}
+                  {...stylex.attrs(controls.input)}
                 >
                   <For each={MINERU_EFFORTS}>
                     {(ef) => <option value={ef}>{ef}</option>}
@@ -303,19 +534,19 @@ function UploadPage() {
             </div>
 
             <div>
-              <div class="text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+              <div {...stylex.attrs(controls.fieldLabel, styles.languageHeader)}>
                 {t('upload.language')}
-                <div class="relative inline-flex group cursor-help">
-                  <CircleQuestionMark class="w-4 h-4 text-gray-400" />
-                  <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-10">
+                <div {...stylex.attrs(styles.tooltipHost, stylex.defaultMarker())}>
+                  <CircleQuestionMark class={stylex.attrs(styles.helpIcon).class} />
+                  <div {...stylex.attrs(styles.tooltip)}>
                     <LanguageCodeTable />
                   </div>
                 </div>
               </div>
-              <div class="flex flex-wrap gap-x-4 gap-y-1.5">
+              <div {...stylex.attrs(styles.languageList)}>
                 <For each={MINERU_LANGUAGES}>
                   {(lang) => (
-                    <label class="flex items-center gap-1.5 text-sm">
+                    <label {...stylex.attrs(styles.checkboxLabel)}>
                       <input
                         type="checkbox"
                         checked={langList().has(lang)}
@@ -328,8 +559,8 @@ function UploadPage() {
               </div>
             </div>
 
-            <div class="flex flex-wrap gap-x-6 gap-y-1.5">
-              <label class="flex items-center gap-1.5 text-sm">
+            <div {...stylex.attrs(styles.optionsRow)}>
+              <label {...stylex.attrs(styles.checkboxLabel)}>
                 <input
                   type="checkbox"
                   checked={formulaEnable()}
@@ -337,7 +568,7 @@ function UploadPage() {
                 />
                 {t('upload.formula')}
               </label>
-              <label class="flex items-center gap-1.5 text-sm">
+              <label {...stylex.attrs(styles.checkboxLabel)}>
                 <input
                   type="checkbox"
                   checked={tableEnable()}
@@ -345,7 +576,7 @@ function UploadPage() {
                 />
                 {t('upload.table')}
               </label>
-              <label class="flex items-center gap-1.5 text-sm">
+              <label {...stylex.attrs(styles.checkboxLabel)}>
                 <input
                   type="checkbox"
                   checked={imageAnalysis()}
@@ -353,7 +584,7 @@ function UploadPage() {
                 />
                 {t('upload.imageAnalysis')}
               </label>
-              <label class="flex items-center gap-1.5 text-sm">
+              <label {...stylex.attrs(styles.checkboxLabel)}>
                 <input
                   type="checkbox"
                   checked={responseZip()}
@@ -367,7 +598,7 @@ function UploadPage() {
           <button
             type="submit"
             disabled={isSubmitting() || files().length === 0}
-            class="self-start bg-blue-600 text-white rounded px-6 py-2 font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            {...stylex.attrs(controls.button, controls.buttonPrimary, controls.buttonLarge, styles.submit)}
           >
             {isSubmitting()
               ? t('upload.submitting')

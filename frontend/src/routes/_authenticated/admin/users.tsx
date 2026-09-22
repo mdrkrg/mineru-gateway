@@ -1,3 +1,4 @@
+import * as stylex from '@stylexjs/stylex';
 import { Show, createSignal } from 'solid-js';
 import { createFileRoute } from '@tanstack/solid-router';
 import { adminCreateUser } from '@/api/functions/auth';
@@ -9,6 +10,15 @@ import { useAdminToken } from '@/stores/admin-token-context';
 import { useToast } from '@/stores/toast-context';
 import { requireSuperuser } from '@/stores/guard';
 import { errorMessage } from '@/utils/api-error';
+import { controls } from '@/styles/controls.stylex';
+import {
+  colors,
+  fontSize,
+  lineHeight,
+  maxWidth,
+  radius,
+  space,
+} from '@/styles/tokens.stylex';
 
 export const Route = createFileRoute('/_authenticated/admin/users')({
   beforeLoad: ({ context }) => {
@@ -17,8 +27,52 @@ export const Route = createFileRoute('/_authenticated/admin/users')({
   component: AdminUsersPage,
 });
 
-const inputCls =
-  'border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500';
+const styles = stylex.create({
+  root: {
+    maxWidth: maxWidth.px576,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.px16,
+  },
+  successBox: {
+    backgroundColor: colors.green50,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: colors.green300,
+    borderRadius: radius.px8,
+    padding: space.px16,
+  },
+  successTitle: {
+    fontWeight: 600,
+    color: colors.green800,
+    marginBottom: space.px4,
+  },
+  successText: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    color: colors.green700,
+  },
+  sectionTitle: {
+    fontSize: fontSize.px18,
+    lineHeight: lineHeight.px28,
+    fontWeight: 600,
+    marginBottom: space.px16,
+  },
+  checkboxRow: {
+    display: 'flex',
+    gap: space.px24,
+  },
+  checkboxLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: space.px6,
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+  },
+  submit: {
+    alignSelf: 'flex-start',
+  },
+});
 
 function AdminUsersPage() {
   return (
@@ -76,18 +130,16 @@ function AdminUsersContent() {
   }
 
   return (
-    <div class="max-w-xl flex flex-col gap-4">
+    <div {...stylex.attrs(styles.root)}>
       <Show when={error()}>
-        <p class="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
-          {error()}
-        </p>
+        <p {...stylex.attrs(controls.alertError)}>{error()}</p>
       </Show>
 
       <Show when={created()}>
         {(u) => (
-          <div class="bg-green-50 border border-green-300 rounded-lg p-4">
-            <h3 class="font-semibold text-green-800 mb-1">{t('adminUsers.createdTitle')}</h3>
-            <p class="text-sm text-green-700">
+          <div {...stylex.attrs(styles.successBox)}>
+            <h3 {...stylex.attrs(styles.successTitle)}>{t('adminUsers.createdTitle')}</h3>
+            <p {...stylex.attrs(styles.successText)}>
               {u().email}
               {u().displayName ? t('adminUsers.nameSuffix', { name: u().displayName ?? '' }) : ''}
               {u().isSuperuser ? t('adminUsers.superuserTag') : ''}
@@ -96,41 +148,41 @@ function AdminUsersContent() {
         )}
       </Show>
 
-      <section class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-4">{t('adminUsers.createTitle')}</h2>
-        <form onSubmit={handleCreate} class="flex flex-col gap-4">
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">{t('adminUsers.email')}</span>
+      <section {...stylex.attrs(controls.card)}>
+        <h2 {...stylex.attrs(styles.sectionTitle)}>{t('adminUsers.createTitle')}</h2>
+        <form onSubmit={handleCreate} {...stylex.attrs(controls.form)}>
+          <label {...stylex.attrs(controls.field)}>
+            <span {...stylex.attrs(controls.fieldLabel)}>{t('adminUsers.email')}</span>
             <input
               type="email"
               required
               value={email()}
               onInput={(e) => setEmail(e.currentTarget.value)}
-              class={inputCls}
+              {...stylex.attrs(controls.input)}
             />
           </label>
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">{t('adminUsers.initialPassword')}</span>
+          <label {...stylex.attrs(controls.field)}>
+            <span {...stylex.attrs(controls.fieldLabel)}>{t('adminUsers.initialPassword')}</span>
             <input
               type="password"
               required
               autocomplete="new-password"
               value={password()}
               onInput={(e) => setPassword(e.currentTarget.value)}
-              class={inputCls}
+              {...stylex.attrs(controls.input)}
             />
           </label>
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">{t('adminUsers.displayName')}</span>
+          <label {...stylex.attrs(controls.field)}>
+            <span {...stylex.attrs(controls.fieldLabel)}>{t('adminUsers.displayName')}</span>
             <input
               type="text"
               value={displayName()}
               onInput={(e) => setDisplayName(e.currentTarget.value)}
-              class={inputCls}
+              {...stylex.attrs(controls.input)}
             />
           </label>
-          <div class="flex gap-6">
-            <label class="flex items-center gap-1.5 text-sm">
+          <div {...stylex.attrs(styles.checkboxRow)}>
+            <label {...stylex.attrs(styles.checkboxLabel)}>
               <input
                 type="checkbox"
                 checked={isSuperuser()}
@@ -142,7 +194,12 @@ function AdminUsersContent() {
           <button
             type="submit"
             disabled={isCreating()}
-            class="self-start bg-blue-600 text-white rounded px-4 py-2 font-medium hover:bg-blue-700 disabled:opacity-50"
+            {...stylex.attrs(
+              controls.button,
+              controls.buttonPrimary,
+              controls.buttonLarge,
+              styles.submit,
+            )}
           >
             {isCreating() ? t('adminUsers.creating') : t('adminUsers.submit')}
           </button>

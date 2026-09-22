@@ -1,3 +1,4 @@
+import * as stylex from '@stylexjs/stylex';
 import { For, Show, createSignal, onMount } from 'solid-js';
 import { Link, createFileRoute } from '@tanstack/solid-router';
 import { Download, Package } from 'lucide-solid';
@@ -13,12 +14,71 @@ import { isHttpError } from '@/core/error-model';
 import { ROUTES } from '@/utils/constants';
 import { filenameFromContentDisposition, saveBlob, extensionFromContentType } from '@/utils/download';
 import { formatDateTime } from '@/utils/format';
+import { controls } from '@/styles/controls.stylex';
+import { actionButton, table } from '@/styles/table.stylex';
+import {
+  colors,
+  fontSize,
+  lineHeight,
+  space,
+} from '@/styles/tokens.stylex';
 
 export const Route = createFileRoute('/_authenticated/download')({
   component: ResultDownloadPage,
 });
 
 const PAGE_SIZE = 20;
+
+const styles = stylex.create({
+  root: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.px16,
+  },
+  description: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    color: colors.gray500,
+  },
+  actionBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: space.px12,
+  },
+  packButton: {
+    gap: space.px6,
+  },
+  packIcon: {
+    width: space.px16,
+    height: space.px16,
+  },
+  downloadButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: space.px4,
+    color: colors.blue600,
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    padding: 0,
+    cursor: {
+      default: 'pointer',
+      ':disabled': 'not-allowed',
+    },
+    textDecorationLine: {
+      default: 'none',
+      ':enabled:hover': 'underline',
+    },
+    opacity: {
+      ':disabled': 0.4,
+    },
+  },
+  downloadIcon: {
+    width: space.px14,
+    height: space.px14,
+  },
+});
 
 function ResultDownloadPage() {
   const apiKeyStore = useApiKey();
@@ -125,100 +185,107 @@ function ResultDownloadPage() {
   }
 
   return (
-    <div class="flex flex-col gap-4">
+    <div {...stylex.attrs(styles.root)}>
       <Show when={!apiKeyStore.activeKey()}>
         <NoActiveKey />
       </Show>
 
       <Show when={apiKeyStore.activeKey()}>
-        <p class="text-sm text-gray-500">
-          {t('download.description')}
-        </p>
+        <p {...stylex.attrs(styles.description)}>{t('download.description')}</p>
 
         <Show when={error()}>
-          <p class="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
-            {error()}
-          </p>
+          <p {...stylex.attrs(controls.alertError)}>{error()}</p>
         </Show>
 
-        <div class="flex items-center gap-3">
+        <div {...stylex.attrs(styles.actionBar)}>
           <button
             type="button"
             disabled={selected().size === 0 || isActing()}
             onClick={handleDownloadZip}
-            class="flex items-center gap-1.5 bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            {...stylex.attrs(controls.button, controls.buttonPrimary, styles.packButton)}
           >
-            <Package class="w-4 h-4" />
+            <Package class={stylex.attrs(styles.packIcon).class} />
             {t('download.pack', { count: selected().size })}
           </button>
           <button
             type="button"
             onClick={() => load()}
-            class="border border-gray-300 rounded px-3 py-1.5 text-sm hover:bg-gray-50"
+            {...stylex.attrs(controls.button, controls.buttonOutline, actionButton.refresh)}
           >
             {t('common.refresh')}
           </button>
         </div>
 
-        <div class="bg-white rounded-lg shadow overflow-x-auto">
-          <Show when={!isLoading()} fallback={<p class="p-6 text-gray-500">{t('common.loading')}</p>}>
+        <div {...stylex.attrs(table.card)}>
+          <Show
+            when={!isLoading()}
+            fallback={<p {...stylex.attrs(table.message)}>{t('common.loading')}</p>}
+          >
             <Show
               when={items().length > 0}
-              fallback={<p class="p-6 text-gray-500">{t('download.empty')}</p>}
+              fallback={<p {...stylex.attrs(table.message)}>{t('download.empty')}</p>}
             >
-              <table class="w-full text-sm">
+              <table {...stylex.attrs(table.root)}>
                 <thead>
-                  <tr class="text-left text-gray-500 border-b">
-                    <th class="py-2 pl-4 pr-2 w-8">
+                  <tr {...stylex.attrs(table.headRow)}>
+                    <th {...stylex.attrs(table.thCheck)}>
                       <input
                         type="checkbox"
                         checked={items().length > 0 && selected().size === items().length}
                         onChange={(e) => toggleSelectAll(e.currentTarget.checked)}
                       />
                     </th>
-                    <th class="py-2 pr-4 font-medium">{t('download.thTaskId')}</th>
-                    <th class="py-2 pr-4 font-medium">{t('download.thStatus')}</th>
-                    <th class="py-2 pr-4 font-medium">{t('download.thFiles')}</th>
-                    <th class="py-2 pr-4 font-medium">{t('download.thCompletedAt')}</th>
-                    <th class="py-2 pr-4 font-medium">{t('download.thActions')}</th>
+                    <th {...stylex.attrs(table.th)}>{t('download.thTaskId')}</th>
+                    <th {...stylex.attrs(table.th)}>{t('download.thStatus')}</th>
+                    <th {...stylex.attrs(table.th)}>{t('download.thFiles')}</th>
+                    <th {...stylex.attrs(table.th)}>{t('download.thCompletedAt')}</th>
+                    <th {...stylex.attrs(table.th)}>{t('download.thActions')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   <For each={items()}>
-                    {(task) => (
-                      <tr class="border-b last:border-0 hover:bg-gray-50">
-                        <td class="py-2 pl-4 pr-2">
+                    {(task, index) => (
+                      <tr
+                        {...stylex.attrs(
+                          table.row,
+                          index() === items().length - 1 && table.lastRow,
+                        )}
+                      >
+                        <td {...stylex.attrs(table.tdCheck)}>
                           <input
                             type="checkbox"
                             checked={selected().has(task.taskId)}
                             onChange={(e) => toggleSelect(task.taskId, e.currentTarget.checked)}
                           />
                         </td>
-                        <td class="py-2 pr-4">
+                        <td {...stylex.attrs(table.td)}>
                           <Link
                             to={ROUTES.taskDetail(task.taskId)}
-                            class="text-blue-600 hover:underline"
+                            class={stylex.attrs(controls.link, table.link).class}
                           >
-                            <code class="text-xs">…{task.taskId.slice(-8)}</code>
+                            <code {...stylex.attrs(table.code)}>…{task.taskId.slice(-8)}</code>
                           </Link>
                         </td>
-                        <td class="py-2 pr-4">
+                        <td {...stylex.attrs(table.td)}>
                           <StatusBadge status={task.status} />
                         </td>
-                        <td class="py-2 pr-4 max-w-64 truncate" title={task.fileNames.join(', ')}>
+                        <td
+                          {...stylex.attrs(table.truncate, table.truncateWide)}
+                          title={task.fileNames.join(', ')}
+                        >
                           {task.fileNames.join(', ')}
                         </td>
-                        <td class="py-2 pr-4 whitespace-nowrap">
+                        <td {...stylex.attrs(table.nowrap)}>
                           {formatDateTime(task.completedAt)}
                         </td>
-                        <td class="py-2 pr-4">
+                        <td {...stylex.attrs(table.td)}>
                           <button
                             type="button"
                             disabled={isActing()}
                             onClick={() => handleDownloadOne(task)}
-                            class="flex items-center gap-1 text-blue-600 hover:underline text-sm disabled:opacity-40"
+                            {...stylex.attrs(styles.downloadButton)}
                           >
-                            <Download class="w-3.5 h-3.5" />
+                            <Download class={stylex.attrs(styles.downloadIcon).class} />
                             {t('download.one')}
                           </button>
                         </td>

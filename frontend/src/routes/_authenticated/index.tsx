@@ -1,3 +1,4 @@
+import * as stylex from '@stylexjs/stylex';
 import { Show, createSignal, onMount } from 'solid-js';
 import { Link, createFileRoute } from '@tanstack/solid-router';
 import { Upload } from 'lucide-solid';
@@ -13,6 +14,15 @@ import { ROUTES, STATS_POLL_INTERVAL_MS } from '@/utils/constants';
 import { formatFileSize, formatMilliseconds } from '@/utils/format';
 import { createPolling } from '@/utils/polling';
 import type { TaskStatus } from '@/api/schemas/tasks';
+import { controls } from '@/styles/controls.stylex';
+import {
+  breakpoint,
+  colors,
+  fontSize,
+  lineHeight,
+  maxWidth,
+  space,
+} from '@/styles/tokens.stylex';
 
 export const Route = createFileRoute('/_authenticated/')({
   component: DashboardPage,
@@ -23,6 +33,86 @@ interface StatCard {
   value: string;
   hint?: string;
 }
+
+const styles = stylex.create({
+  root: {
+    maxWidth: maxWidth.px1024,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.px24,
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  heading: {
+    fontSize: fontSize.px20,
+    lineHeight: lineHeight.px28,
+    fontWeight: 700,
+  },
+  uploadButton: {
+    gap: space.px6,
+  },
+  uploadIcon: {
+    width: space.px16,
+    height: space.px16,
+  },
+  loading: {
+    color: colors.gray500,
+  },
+  section: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  sectionTitle: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    fontWeight: 600,
+    color: colors.gray500,
+    marginBottom: space.px8,
+  },
+  statusGrid: {
+    display: 'grid',
+    gridTemplateColumns: {
+      default: 'repeat(2, minmax(0, 1fr))',
+      [breakpoint.sm]: 'repeat(3, minmax(0, 1fr))',
+      [breakpoint.lg]: 'repeat(6, minmax(0, 1fr))',
+    },
+    gap: space.px12,
+  },
+  overviewGrid: {
+    display: 'grid',
+    gridTemplateColumns: {
+      default: 'repeat(2, minmax(0, 1fr))',
+      [breakpoint.lg]: 'repeat(4, minmax(0, 1fr))',
+    },
+    gap: space.px12,
+  },
+  statCard: {
+    padding: space.px16,
+  },
+  statLabel: {
+    fontSize: fontSize.px12,
+    lineHeight: lineHeight.px16,
+    color: colors.gray500,
+    marginBottom: space.px4,
+  },
+  statValue: {
+    fontSize: fontSize.px24,
+    lineHeight: lineHeight.px32,
+    fontWeight: 700,
+  },
+  footer: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    color: colors.gray500,
+  },
+  footerLink: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+  },
+});
 
 function DashboardPage() {
   const auth = useAuth();
@@ -91,18 +181,20 @@ function DashboardPage() {
   };
 
   return (
-    <div class="max-w-5xl flex flex-col gap-6">
-      <div class="flex items-center justify-between">
-        <h2 class="text-xl font-bold">
+    <div {...stylex.attrs(styles.root)}>
+      <div {...stylex.attrs(styles.header)}>
+        <h2 {...stylex.attrs(styles.heading)}>
           {t('dashboard.welcome', {
             name: auth.user()?.displayName || auth.user()?.email || '',
           })}
         </h2>
         <Link
           to={ROUTES.upload}
-          class="flex items-center gap-1.5 bg-blue-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-blue-700"
+          class={
+            stylex.attrs(controls.button, controls.buttonPrimary, styles.uploadButton).class
+          }
         >
-          <Upload class="w-4 h-4" />
+          <Upload class={stylex.attrs(styles.uploadIcon).class} />
           {t('nav.upload')}
         </Link>
       </div>
@@ -112,41 +204,47 @@ function DashboardPage() {
       </Show>
 
       <Show when={apiKeyStore.activeKey()}>
-        <Show when={!isLoading()} fallback={<p class="text-gray-500">{t('common.loading')}</p>}>
+        <Show
+          when={!isLoading()}
+          fallback={<p {...stylex.attrs(styles.loading)}>{t('common.loading')}</p>}
+        >
           <Show when={error()}>
-            <p class="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
-              {error()}
-            </p>
+            <p {...stylex.attrs(controls.alertError)}>{error()}</p>
           </Show>
 
           <Show when={stats()}>
-            <section>
-              <h3 class="text-sm font-semibold text-gray-500 mb-2">{t('dashboard.statusSection')}</h3>
-              <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <section {...stylex.attrs(styles.section)}>
+              <h3 {...stylex.attrs(styles.sectionTitle)}>{t('dashboard.statusSection')}</h3>
+              <div {...stylex.attrs(styles.statusGrid)}>
                 {statusCards().map((card) => (
-                  <div class="bg-white rounded-lg shadow p-4">
-                      <p class="text-xs text-gray-500 mb-1">{card.label}</p>
-                      <p class="text-2xl font-bold">{card.value}</p>
+                  <div {...stylex.attrs(controls.card, styles.statCard)}>
+                    <p {...stylex.attrs(styles.statLabel)}>{card.label}</p>
+                    <p {...stylex.attrs(styles.statValue)}>{card.value}</p>
                   </div>
                 ))}
               </div>
             </section>
 
-            <section>
-              <h3 class="text-sm font-semibold text-gray-500 mb-2">{t('dashboard.overviewSection')}</h3>
-              <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <section {...stylex.attrs(styles.section)}>
+              <h3 {...stylex.attrs(styles.sectionTitle)}>{t('dashboard.overviewSection')}</h3>
+              <div {...stylex.attrs(styles.overviewGrid)}>
                 {overviewCards().map((card) => (
-                  <div class="bg-white rounded-lg shadow p-4">
-                    <p class="text-xs text-gray-500 mb-1">{card.label}</p>
-                    <p class="text-2xl font-bold">{card.value}</p>
+                  <div {...stylex.attrs(controls.card, styles.statCard)}>
+                    <p {...stylex.attrs(styles.statLabel)}>{card.label}</p>
+                    <p {...stylex.attrs(styles.statValue)}>{card.value}</p>
                   </div>
                 ))}
               </div>
             </section>
 
-            <p class="text-sm text-gray-500">
+            <p {...stylex.attrs(styles.footer)}>
               {t('dashboard.footerPrefix')}
-              <Link to={ROUTES.tasks} class="text-blue-600 hover:underline">{t('dashboard.tasksLink')}</Link>
+              <Link
+                to={ROUTES.tasks}
+                class={stylex.attrs(controls.link, styles.footerLink).class}
+              >
+                {t('dashboard.tasksLink')}
+              </Link>
               {t('dashboard.footerSuffix')}
             </p>
           </Show>

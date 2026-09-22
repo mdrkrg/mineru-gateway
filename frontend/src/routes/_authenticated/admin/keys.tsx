@@ -1,3 +1,4 @@
+import * as stylex from '@stylexjs/stylex';
 import { Show, createSignal, onMount } from 'solid-js';
 import { createFileRoute } from '@tanstack/solid-router';
 import {
@@ -16,12 +17,43 @@ import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
 import { requireSuperuser } from '@/stores/guard';
 import { errorMessage } from '@/utils/api-error';
+import { controls } from '@/styles/controls.stylex';
+import {
+  fontSize,
+  lineHeight,
+  maxWidth,
+  space,
+} from '@/styles/tokens.stylex';
 
 export const Route = createFileRoute('/_authenticated/admin/keys')({
   beforeLoad: ({ context }) => {
     requireSuperuser((context as { auth: AuthStore }).auth);
   },
   component: AdminKeysPage,
+});
+
+const styles = stylex.create({
+  root: {
+    maxWidth: maxWidth.px896,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.px24,
+  },
+  sectionTitle: {
+    fontSize: fontSize.px18,
+    lineHeight: lineHeight.px28,
+    fontWeight: 600,
+    marginBottom: space.px16,
+  },
+  createForm: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+    gap: space.px16,
+  },
+  labelInput: {
+    width: space.px224,
+  },
 });
 
 function AdminKeysPage() {
@@ -126,50 +158,48 @@ function AdminKeysContent() {
   }
 
   return (
-    <div class="max-w-4xl flex flex-col gap-6">
+    <div {...stylex.attrs(styles.root)}>
       <Show when={error()}>
-        <p class="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
-          {error()}
-        </p>
+        <p {...stylex.attrs(controls.alertError)}>{error()}</p>
       </Show>
 
       <Show when={created()}>
         {(c) => <ApiKeyReveal created={c()} />}
       </Show>
 
-      <section class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-4">{t('adminKeys.issueTitle')}</h2>
-        <form onSubmit={handleCreate} class="flex flex-wrap items-end gap-4">
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">{t('adminKeys.label')}</span>
+      <section {...stylex.attrs(controls.card)}>
+        <h2 {...stylex.attrs(styles.sectionTitle)}>{t('adminKeys.issueTitle')}</h2>
+        <form onSubmit={handleCreate} {...stylex.attrs(styles.createForm)}>
+          <label {...stylex.attrs(controls.field)}>
+            <span {...stylex.attrs(controls.fieldLabel)}>{t('adminKeys.label')}</span>
             <input
               type="text"
               value={label()}
               onInput={(e) => setLabel(e.currentTarget.value)}
-              class="border border-gray-300 rounded px-3 py-2 w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              {...stylex.attrs(controls.input, styles.labelInput)}
             />
           </label>
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium text-gray-700">{t('adminKeys.expiresAt')}</span>
+          <label {...stylex.attrs(controls.field)}>
+            <span {...stylex.attrs(controls.fieldLabel)}>{t('adminKeys.expiresAt')}</span>
             <input
               type="date"
               value={expiresAt()}
               onInput={(e) => setExpiresAt(e.currentTarget.value)}
-              class="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              {...stylex.attrs(controls.input)}
             />
           </label>
           <button
             type="submit"
             disabled={isCreating()}
-            class="bg-blue-600 text-white rounded px-4 py-2 font-medium hover:bg-blue-700 disabled:opacity-50"
+            {...stylex.attrs(controls.button, controls.buttonPrimary, controls.buttonLarge)}
           >
             {isCreating() ? t('adminKeys.issuing') : t('adminKeys.issue')}
           </button>
         </form>
       </section>
 
-      <section class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold mb-4">{t('adminKeys.listTitle')}</h2>
+      <section {...stylex.attrs(controls.card)}>
+        <h2 {...stylex.attrs(styles.sectionTitle)}>{t('adminKeys.listTitle')}</h2>
         <ApiKeyTable
           keys={keys()}
           isLoading={isLoading()}

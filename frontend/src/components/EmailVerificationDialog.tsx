@@ -65,25 +65,8 @@ const styles = stylex.create({
     color: colors.gray600,
     marginBottom: space.px16,
   },
-  alert: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderRadius: radius.px4,
-    paddingInline: space.px12,
-    paddingBlock: space.px8,
+  alertSpacing: {
     marginBottom: space.px16,
-  },
-  alertSuccess: {
-    color: colors.green600,
-    backgroundColor: colors.green50,
-    borderColor: colors.green200,
-  },
-  alertError: {
-    color: colors.red600,
-    backgroundColor: colors.red50,
-    borderColor: colors.red200,
   },
   actions: {
     display: 'flex',
@@ -188,12 +171,12 @@ export default function EmailVerificationDialog() {
           <p {...stylex.attrs(styles.body)}>{t('emailVerification.body')}</p>
 
           <Show when={sent()}>
-            <p {...stylex.attrs(styles.alert, styles.alertSuccess)}>
+            <p {...stylex.attrs(controls.alertSuccess, styles.alertSpacing)}>
               {t('emailVerification.sent')}
             </p>
           </Show>
           <Show when={error()}>
-            <p {...stylex.attrs(styles.alert, styles.alertError)}>{error()}</p>
+            <p {...stylex.attrs(controls.alertError, styles.alertSpacing)}>{error()}</p>
           </Show>
 
           <div {...stylex.attrs(styles.actions)}>
