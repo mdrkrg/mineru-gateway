@@ -13,7 +13,7 @@ See `specs/` for design docs.
 - **ky 2.x** - HTTP client
 - **neverthrow 8.x** - `Result` / `ResultAsync`
 - **arktype 2.x** - runtime schema validation + type derivation
-- **UnoCSS** - atomic CSS (Wind4 preset)
+- **StyleX 0.19** - atomic CSS compiled at build time (`@stylexjs/unplugin`)
 - **Kobalte** - UI components
 - **Lucide** - icons
 - **Vitest 4.x** - test runner
@@ -44,9 +44,11 @@ src/
   routes/           # TanStack file-based routes (__root.tsx, _authenticated.tsx layout, ...)
   components/       # shared UI (layout/, StatusBadge, Pagination, NoActiveKey, ApiKeyReveal, AdminTokenGate)
   stores/           # global state (auth, api-key, admin-token)
+  styles/           # StyleX tokens + shared styles, reset.css
   utils/            # constants, format, download, api-error helpers
   env.ts            # typed import.meta.env access
   index.tsx         # entry point - creates stores, providers, RouterProvider
+  index.css         # CSS entry: imports the reset (StyleX output is appended here)
   routeTree.gen.ts  # auto-generated route tree (do not edit)
 specs/core/         # infra-layer behavioral contracts (source of truth)
 tests/core/         # tests for the infrastructure layer
@@ -96,6 +98,15 @@ tests/e2e/          # e2e tests against running gateway + mock upstream
   Admin endpoints take the gateway admin token from `useAdminToken()`,
   gated by `<AdminTokenGate/>`.
 
+### Styling
+
+- StyleX only - no utility classes and no stylesheets besides
+  `src/styles/reset.css`; `stylex.create` objects live at module scope.
+- Solid uses `stylex.attrs()`, never `stylex.props()`/`sx` (`sxPropName` is
+  off). Never add `class=`/`style=` next to an `attrs` spread.
+- Read `src/styles/AGENTS.md` before adding tokens, shared styles, or local
+  style blocks.
+
 ## Critical constraints
 
 - **All request/response key conversion** goes through `defineResponseSchema` /
@@ -124,7 +135,9 @@ tests/e2e/          # e2e tests against running gateway + mock upstream
 - New global state? -> add to `src/stores/` (store + `-context.tsx` provider,
   wired in `src/index.tsx`)
 - New shared UI? -> `src/components/` (extract only when reused 3+ times;
-  prefer plain elements + UnoCSS classes otherwise)
+  prefer plain elements + StyleX styles otherwise)
+- New design token or shared style? -> extend `src/styles/tokens.stylex.ts` or
+  the relevant `src/styles/*.stylex.ts` module
 - New core primitives? -> extend files in `src/core/`, update matching spec in
   `specs/core/`.
 
@@ -134,8 +147,11 @@ tests/e2e/          # e2e tests against running gateway + mock upstream
 - `tests/api/` covers auth hooks, form builders, and other API-layer primitives.
 - `tests/core/ky-mock.ts` provides a shared ky mock factory. Always use it;
   don't inline `vi.mock('ky', ...)`.
-- Tests verify spec invariants (`specs/core/*.md` each have an "不变量清单" section).
-  When adding a new invariant to a spec, add a matching test.
+- Tests verify spec invariants (`specs/core/*.md`, section "不变量清单");
+  add a matching test when adding an invariant.
+- `vitest.config.ts` skips the StyleX compiler: upstream `@stylexjs/unplugin`
+  keeps the Vitest server alive (facebook/stylex#1533). Keep this suite to
+  pure `.ts` modules; revisit if component tests become necessary.
 - E2E tests live in `tests/e2e/` and use `helpers.ts` (mock control API, PDF blob,
   API key factory). Run with `pnpm test:e2e`.
 - Run the full suite before finishing: `pnpm test`.
