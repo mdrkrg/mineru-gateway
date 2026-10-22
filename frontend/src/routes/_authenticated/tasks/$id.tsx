@@ -141,14 +141,18 @@ const styles = stylex.create({
     color: colors.red600,
     backgroundColor: {
       default: 'transparent',
-      ':enabled:hover': colors.red50,
+      ':hover:not(:disabled)': colors.red50,
     },
+    fontWeight: 400,
     opacity: {
       ':disabled': 0.4,
     },
   },
   download: {
     gap: space.px6,
+    opacity: {
+      ':disabled': 0.4,
+    },
   },
   downloadIcon: {
     width: space.px16,
