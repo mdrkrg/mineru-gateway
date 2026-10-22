@@ -101,8 +101,9 @@ the same internal layout - **routes / service / schemas** is the canonical split
 
 - New endpoint? -> add a route in the relevant domain's `routes.py`, register the
   router in `main.py` (lines ~137-147).
-- New env var? -> add to `Settings` in `config.py`, document in `.env.example` and
-  the table in `README.md`.
+- New env var? -> add to `Settings` in `config.py` and document it in
+  `.env.example` (the full list); add it to the README table if it is a key
+  setting.
 - New DB column? -> add the field to the model in `models.py`, then
   `uv run alembic revision --autogenerate -m "describe"` and review the generated
   file in `alembic/versions/`. **Do not hand-edit existing migrations.**
