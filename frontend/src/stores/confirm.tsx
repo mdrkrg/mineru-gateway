@@ -4,9 +4,9 @@ import { createSignal } from 'solid-js';
 export interface ConfirmOptions {
   title: string;
   description?: string;
-  /** Confirm button label. Defaults to `确定`. */
+  /** Confirm button label. Defaults to the `common.confirm` translation. */
   confirmText?: string;
-  /** Cancel button label. Defaults to `取消`. */
+  /** Cancel button label. Defaults to the `common.cancel` translation. */
   cancelText?: string;
   /** `danger` renders a destructive confirm button. Defaults to `default`. */
   variant?: 'danger' | 'default';

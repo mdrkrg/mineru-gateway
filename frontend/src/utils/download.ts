@@ -30,6 +30,7 @@ export function filenameFromContentDisposition(header: string | null): string | 
  * response header. Used as fallback when Content-Disposition has no
  * filename or the upstream returns a misleading extension.
  *
+ * - missing Content-Type -> `.zip` (result downloads default to ZIP)
  * - `application/json` -> `.json`
  * - `application/zip` -> `.zip`
  * - anything else -> `.bin`

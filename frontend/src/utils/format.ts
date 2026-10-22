@@ -57,7 +57,8 @@ function composeDuration(totalSeconds: number): string {
 /**
  * Formats the elapsed time between two ISO timestamps.
  * When `endIso` is null/undefined, measures up to `now` (defaults to
- * the current time). Returns e.g. `"1小时 2分 3秒"`, `"45秒"`.
+ * the current time). Returns a locale-formatted duration such as
+ * `"1h 2m 3s"` or `"45s"`.
  * Returns the placeholder when input is unparseable or negative.
  */
 export function formatDuration(
