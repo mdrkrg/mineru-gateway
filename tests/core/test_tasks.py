@@ -1316,3 +1316,67 @@ async def test_result_zip_rejects_cancelled_task(client, api_key):
     assert resp.status_code == 409
     body = resp.json()
     assert body["non_downloadable"][0]["reason"] == "not_completed"
+
+
+def test_extract_cd_filename_prefers_rfc5987_filename_star():
+    """filename*=UTF-8''... is percent-decoded and wins over filename=."""
+    from mineru_gateway.tasks.routes import _extract_cd_filename
+
+    assert (
+        _extract_cd_filename(
+            'attachment; filename="fallback.zip"; '
+            "filename*=UTF-8''%E8%AE%BA%E6%96%87.zip"
+        )
+        == "论文.zip"
+    )
+    assert (
+        _extract_cd_filename("attachment; filename*=UTF-8''thesis%20final.zip")
+        == "thesis final.zip"
+    )
+    assert _extract_cd_filename('attachment; filename="a b.zip"') == "a b.zip"
+    assert _extract_cd_filename("attachment; filename=simple.zip") == "simple.zip"
+    assert _extract_cd_filename("attachment") is None
+
+
+def test_extract_cd_filename_handles_quoting_and_charset_case():
+    """Single quotes, charset case and a quoted filename* are all accepted."""
+    from mineru_gateway.tasks.routes import _extract_cd_filename
+
+    cases = {
+        "attachment; filename='a b.zip'": "a b.zip",
+        "attachment; filename*=Utf-8''thesis%20final.zip": "thesis final.zip",
+        "attachment; FILENAME*=UTF-8''a%20b.zip": "a b.zip",
+        "attachment; filename*=\"UTF-8''a%20b.zip\"": "a b.zip",
+        "attachment; filename*=iso-8859-1''caf%E9.zip": "café.zip",
+        "attachment; filename*=x-unknown''a%20b.zip": "a b.zip",
+        "attachment; filename*0*=UTF-8''part; filename*1*=two.zip": "parttwo.zip",
+        "attachment; filename*=no-charset.zip": "no-charset.zip",
+    }
+    for disposition, expected in cases.items():
+        assert _extract_cd_filename(disposition) == expected, disposition
+
+
+async def test_result_zip_entry_name_from_rfc5987_filename_star(client, api_key):
+    """§1.2 step 6a: an RFC 5987 filename* names the zip entry after decoding."""
+    from mineru_gateway import models
+
+    tid, _ = await _submit_and_set_status(client, api_key, "completed")
+    db = client._transport.app.state.db
+    async with db.session_factory() as session:
+        task = await session.get(models.TaskRecord, uuid.UUID(tid))
+        task.file_names = ["ignored.pdf"]
+        await session.commit()
+
+    mock_state.result_content_disposition = (
+        "attachment; filename=\"fallback.zip\"; filename*=UTF-8''%E8%AE%BA%E6%96%87.zip"
+    )
+
+    resp = await client.post(
+        "/tasks/result-zip",
+        json={"task_ids": [tid]},
+        headers={"X-API-Key": api_key},
+    )
+    assert resp.status_code == 200
+
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        assert zf.namelist() == ["论文.zip", "_manifest.json"]

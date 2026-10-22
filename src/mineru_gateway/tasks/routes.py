@@ -13,9 +13,10 @@ import mimetypes
 import re
 import uuid
 import zipfile
-from urllib.parse import quote
 from datetime import date
+from email.message import Message
 from typing import Any
+from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
@@ -388,14 +389,32 @@ def _download_extension(disposition: str, content_type: str) -> str:
     return _guess_extension(content_type)
 
 
+_FILENAME_STAR_RE = re.compile(
+    r"filename\*\s*=\s*([^';\s]+)'[^']*'([^;]+)", re.IGNORECASE
+)
+_FILENAME_RE = re.compile(
+    r"""filename\s*=\s*(?:"([^"]*)"|'([^']*)'|([^;\s"']+))""", re.IGNORECASE
+)
+
+
 def _extract_cd_filename(content_disposition: str) -> str | None:
-    """Extract filename from Content-Disposition header value."""
+    """Extract filename from Content-Disposition, preferring RFC 5987 filename*."""
     if not content_disposition:
         return None
-    match = re.search(r'filename[^;=\n]*=["\']?([^"\'\s;]+)["\']?', content_disposition)
+    match = _FILENAME_STAR_RE.search(content_disposition)
     if match:
-        return match.group(1)
-    return None
+        charset, encoded = match.group(1).strip('"'), match.group(2).strip('"')
+        try:
+            return unquote(encoded, encoding=charset)
+        except LookupError:
+            return unquote(encoded)
+    match = _FILENAME_RE.search(content_disposition)
+    if match:
+        return next(value for value in match.groups() if value is not None)
+    # RFC 2231 continuations (filename*0*/filename*1*) and non-conforming values.
+    msg = Message()
+    msg["content-disposition"] = content_disposition
+    return msg.get_filename() or None
 
 
 def _guess_extension(content_type: str | None) -> str:
