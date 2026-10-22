@@ -2,7 +2,7 @@ import * as stylex from '@stylexjs/stylex';
 
 export const colors = stylex.defineConsts({
   white: '#fff',
-  black: '#000',
+  overlay: 'rgb(0 0 0 / 40%)',
 
   gray50: 'oklch(98.5% 0.002 247.839)',
   gray100: 'oklch(96.7% 0.003 264.542)',
@@ -60,24 +60,14 @@ export const space = stylex.defineConsts({
   px4: '0.25rem',
   px6: '0.375rem',
   px8: '0.5rem',
-  px10: '0.625rem',
   px12: '0.75rem',
   px14: '0.875rem',
   px16: '1rem',
   px20: '1.25rem',
   px24: '1.5rem',
-  px28: '1.75rem',
   px32: '2rem',
-  px40: '2.5rem',
-  px48: '3rem',
   px56: '3.5rem',
-  px64: '4rem',
-  px80: '5rem',
-  px96: '6rem',
-  px128: '8rem',
-  px192: '12rem',
   px224: '14rem',
-  px256: '16rem',
   px320: '20rem',
 });
 
@@ -107,6 +97,13 @@ export const shadow = stylex.defineConsts({
   base: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)',
   lg: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)',
   xl: '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)',
+});
+
+export const motion = stylex.defineConsts({
+  colors:
+    'color, background-color, border-color, text-decoration-color, fill, stroke',
+  easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+  duration: '150ms',
 });
 
 export const maxWidth = stylex.defineConsts({

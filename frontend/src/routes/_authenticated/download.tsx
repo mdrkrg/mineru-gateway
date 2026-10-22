@@ -14,71 +14,18 @@ import { isHttpError } from '@/core/error-model';
 import { ROUTES } from '@/utils/constants';
 import { filenameFromContentDisposition, saveBlob, extensionFromContentType } from '@/utils/download';
 import { formatDateTime } from '@/utils/format';
+import { actions } from '@/styles/actions.stylex';
 import { controls } from '@/styles/controls.stylex';
-import { actionButton, table } from '@/styles/table.stylex';
-import {
-  colors,
-  fontSize,
-  lineHeight,
-  space,
-} from '@/styles/tokens.stylex';
+import { icons } from '@/styles/icons.stylex';
+import { layout } from '@/styles/layout.stylex';
+import { table } from '@/styles/table.stylex';
+import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/download')({
   component: ResultDownloadPage,
 });
 
 const PAGE_SIZE = 20;
-
-const styles = stylex.create({
-  root: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: space.px16,
-  },
-  description: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    color: colors.gray500,
-  },
-  actionBar: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: space.px12,
-  },
-  packButton: {
-    gap: space.px6,
-  },
-  packIcon: {
-    width: space.px16,
-    height: space.px16,
-  },
-  downloadButton: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: space.px4,
-    color: colors.blue600,
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-    padding: 0,
-    cursor: {
-      default: 'pointer',
-      ':disabled': 'not-allowed',
-    },
-    textDecorationLine: {
-      default: 'none',
-      ':enabled:hover': 'underline',
-    },
-    opacity: {
-      ':disabled': 0.4,
-    },
-  },
-  downloadIcon: {
-    width: space.px14,
-    height: space.px14,
-  },
-});
 
 function ResultDownloadPage() {
   const apiKeyStore = useApiKey();
@@ -185,32 +132,40 @@ function ResultDownloadPage() {
   }
 
   return (
-    <div {...stylex.attrs(styles.root)}>
+    <div {...stylex.attrs(layout.stack16)}>
       <Show when={!apiKeyStore.activeKey()}>
         <NoActiveKey />
       </Show>
 
       <Show when={apiKeyStore.activeKey()}>
-        <p {...stylex.attrs(styles.description)}>{t('download.description')}</p>
+        <p {...stylex.attrs(typography.bodyMuted)}>{t('download.description')}</p>
 
         <Show when={error()}>
           <p {...stylex.attrs(controls.alertError)}>{error()}</p>
         </Show>
 
-        <div {...stylex.attrs(styles.actionBar)}>
+        <div {...stylex.attrs(layout.rowCenter12)}>
           <button
             type="button"
             disabled={selected().size === 0 || isActing()}
             onClick={handleDownloadZip}
-            {...stylex.attrs(controls.button, controls.buttonPrimary, styles.packButton)}
+            {...stylex.attrs(
+              controls.button,
+              controls.buttonPrimary,
+              actions.disabled40,
+            )}
           >
-            <Package class={stylex.attrs(styles.packIcon).class} />
+            <Package class={stylex.attrs(icons.sm).class} />
             {t('download.pack', { count: selected().size })}
           </button>
           <button
             type="button"
             onClick={() => load()}
-            {...stylex.attrs(controls.button, controls.buttonOutline, actionButton.refresh)}
+            {...stylex.attrs(
+              controls.button,
+              controls.buttonOutline,
+              actions.outlineCompact,
+            )}
           >
             {t('common.refresh')}
           </button>
@@ -261,9 +216,11 @@ function ResultDownloadPage() {
                         <td {...stylex.attrs(table.td)}>
                           <Link
                             to={ROUTES.taskDetail(task.taskId)}
-                            class={stylex.attrs(controls.link, table.link).class}
+                            class={stylex.attrs(controls.link, typography.body).class}
                           >
-                            <code {...stylex.attrs(table.code)}>…{task.taskId.slice(-8)}</code>
+                            <code {...stylex.attrs(typography.meta)}>
+                              …{task.taskId.slice(-8)}
+                            </code>
                           </Link>
                         </td>
                         <td {...stylex.attrs(table.td)}>
@@ -283,9 +240,13 @@ function ResultDownloadPage() {
                             type="button"
                             disabled={isActing()}
                             onClick={() => handleDownloadOne(task)}
-                            {...stylex.attrs(styles.downloadButton)}
+                            {...stylex.attrs(
+                              actions.text,
+                              actions.textPrimary,
+                              actions.disabled40,
+                            )}
                           >
-                            <Download class={stylex.attrs(styles.downloadIcon).class} />
+                            <Download class={stylex.attrs(icons.xs).class} />
                             {t('download.one')}
                           </button>
                         </td>

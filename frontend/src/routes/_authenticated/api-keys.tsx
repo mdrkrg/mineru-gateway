@@ -16,15 +16,13 @@ import { useApiKey } from '@/stores/api-key-context';
 import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
+import { actions } from '@/styles/actions.stylex';
 import { controls } from '@/styles/controls.stylex';
-import {
-  colors,
-  fontSize,
-  lineHeight,
-  maxWidth,
-  radius,
-  space,
-} from '@/styles/tokens.stylex';
+import { forms } from '@/styles/forms.stylex';
+import { icons } from '@/styles/icons.stylex';
+import { layout } from '@/styles/layout.stylex';
+import { colors, maxWidth, radius, space } from '@/styles/tokens.stylex';
+import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/api-keys')({
   component: ApiKeysPage,
@@ -33,54 +31,9 @@ export const Route = createFileRoute('/_authenticated/api-keys')({
 const styles = stylex.create({
   root: {
     maxWidth: maxWidth.px896,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: space.px24,
-  },
-  sectionTitle: {
-    fontSize: fontSize.px18,
-    lineHeight: lineHeight.px28,
-    fontWeight: 600,
-    marginBottom: space.px16,
-  },
-  createForm: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'flex-end',
-    gap: space.px16,
-  },
-  labelInput: {
-    width: space.px224,
-  },
-  activeTitle: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: space.px8,
-    fontSize: fontSize.px18,
-    lineHeight: lineHeight.px28,
-    fontWeight: 600,
-    marginBottom: space.px8,
-  },
-  activeIcon: {
-    width: space.px20,
-    height: space.px20,
-  },
-  activeDescription: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    color: colors.gray500,
-    marginBottom: space.px16,
   },
   notSet: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
     color: colors.amber600,
-    marginBottom: space.px16,
-  },
-  activeValue: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    marginBottom: space.px16,
   },
   code: {
     backgroundColor: colors.gray100,
@@ -91,26 +44,6 @@ const styles = stylex.create({
   clear: {
     marginLeft: space.px12,
     color: colors.red600,
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-    padding: 0,
-    cursor: 'pointer',
-    ':hover': {
-      textDecorationLine: 'underline',
-    },
-  },
-  manualForm: {
-    display: 'flex',
-    alignItems: 'flex-end',
-    gap: space.px8,
-  },
-  manualField: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
-  },
-  setButton: {
-    fontWeight: 400,
   },
 });
 
@@ -210,7 +143,7 @@ function ApiKeysPage() {
   }
 
   return (
-    <div {...stylex.attrs(styles.root)}>
+    <div {...stylex.attrs(layout.stack24, styles.root)}>
       <Show when={error()}>
         <p {...stylex.attrs(controls.alertError)}>{error()}</p>
       </Show>
@@ -227,8 +160,8 @@ function ApiKeysPage() {
 
       {/* Create form */}
       <section {...stylex.attrs(controls.card)}>
-        <h2 {...stylex.attrs(styles.sectionTitle)}>{t('apiKeys.createTitle')}</h2>
-        <form onSubmit={handleCreate} {...stylex.attrs(styles.createForm)}>
+        <h2 {...stylex.attrs(typography.sectionTitle)}>{t('apiKeys.createTitle')}</h2>
+        <form onSubmit={handleCreate} {...stylex.attrs(forms.row)}>
           <label {...stylex.attrs(controls.field)}>
             <span {...stylex.attrs(controls.fieldLabel)}>{t('apiKeys.label')}</span>
             <input
@@ -236,7 +169,7 @@ function ApiKeysPage() {
               value={label()}
               onInput={(e) => setLabel(e.currentTarget.value)}
               placeholder={t('apiKeys.labelPlaceholder')}
-              {...stylex.attrs(controls.input, styles.labelInput)}
+              {...stylex.attrs(controls.input, forms.inputMedium)}
             />
           </label>
           <label {...stylex.attrs(controls.field)}>
@@ -260,7 +193,7 @@ function ApiKeysPage() {
 
       {/* Key list */}
       <section {...stylex.attrs(controls.card)}>
-        <h2 {...stylex.attrs(styles.sectionTitle)}>{t('apiKeys.listTitle')}</h2>
+        <h2 {...stylex.attrs(typography.sectionTitle)}>{t('apiKeys.listTitle')}</h2>
         <ApiKeyTable
           keys={keys()}
           isLoading={isLoading()}
@@ -273,23 +206,34 @@ function ApiKeysPage() {
 
       {/* Active key for task endpoints */}
       <section {...stylex.attrs(controls.card)}>
-        <h2 {...stylex.attrs(styles.activeTitle)}>
-          <KeyRound class={stylex.attrs(styles.activeIcon).class} />
+        <h2
+          {...stylex.attrs(
+            layout.rowCenter8,
+            typography.sectionTitleCompact,
+          )}
+        >
+          <KeyRound class={stylex.attrs(icons.md).class} />
           {t('apiKeys.activeKeyTitle')}
         </h2>
-        <p {...stylex.attrs(styles.activeDescription)}>{t('apiKeys.activeKeyDesc')}</p>
+        <p {...stylex.attrs(typography.bodyMuted, layout.mb16)}>
+          {t('apiKeys.activeKeyDesc')}
+        </p>
         <Show
           when={apiKeyStore.activeKey()}
-          fallback={<p {...stylex.attrs(styles.notSet)}>{t('apiKeys.notSet')}</p>}
+          fallback={
+            <p {...stylex.attrs(typography.body, layout.mb16, styles.notSet)}>
+              {t('apiKeys.notSet')}
+            </p>
+          }
         >
-          <p {...stylex.attrs(styles.activeValue)}>
+          <p {...stylex.attrs(typography.body, layout.mb16)}>
             <code {...stylex.attrs(styles.code)}>
               {apiKeyStore.activeKey()!.slice(0, 12)}…
             </code>
             <button
               type="button"
               onClick={() => apiKeyStore.clearActiveKey()}
-              {...stylex.attrs(styles.clear)}
+              {...stylex.attrs(actions.clear, styles.clear)}
             >
               {t('common.clear')}
             </button>
@@ -304,9 +248,9 @@ function ApiKeysPage() {
               setPastedKey('');
             }
           }}
-          {...stylex.attrs(styles.manualForm)}
+          {...stylex.attrs(forms.rowTight)}
         >
-          <label {...stylex.attrs(controls.field, styles.manualField)}>
+          <label {...stylex.attrs(controls.field, layout.flex1)}>
             <span {...stylex.attrs(controls.fieldLabel)}>{t('apiKeys.manualTitle')}</span>
             <input
               type="password"
@@ -318,7 +262,7 @@ function ApiKeysPage() {
           </label>
           <button
             type="submit"
-            {...stylex.attrs(controls.button, controls.buttonOutline, styles.setButton)}
+            {...stylex.attrs(controls.button, controls.buttonOutline, actions.weightNormal)}
           >
             {t('apiKeys.set')}
           </button>

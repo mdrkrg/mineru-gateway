@@ -4,38 +4,17 @@ import { Check, Copy } from 'lucide-solid';
 import { t } from '@/i18n';
 import type { ApiKeyCreatedResponse } from '@/api/schemas/auth';
 import { controls } from '@/styles/controls.stylex';
-import {
-  colors,
-  fontSize,
-  lineHeight,
-  radius,
-  space,
-} from '@/styles/tokens.stylex';
+import { feedback } from '@/styles/feedback.stylex';
+import { icons } from '@/styles/icons.stylex';
+import { layout } from '@/styles/layout.stylex';
+import { colors, radius, space } from '@/styles/tokens.stylex';
+import { typography } from '@/styles/typography.stylex';
 
 const styles = stylex.create({
-  card: {
-    backgroundColor: colors.green50,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: colors.green300,
-    borderRadius: radius.px8,
-    padding: space.px16,
-  },
-  title: {
-    fontWeight: 600,
-    color: colors.green800,
-    marginBottom: space.px8,
-  },
   row: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: space.px8,
     marginBottom: space.px12,
   },
   code: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
     backgroundColor: colors.white,
     borderWidth: 1,
     borderStyle: 'solid',
@@ -43,18 +22,12 @@ const styles = stylex.create({
     borderRadius: radius.px4,
     paddingInline: space.px12,
     paddingBlock: space.px8,
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
     wordBreak: 'break-all',
   },
   copyBtn: {
     gap: space.px4,
     paddingInline: space.px12,
     fontWeight: 400,
-  },
-  icon: {
-    width: space.px16,
-    height: space.px16,
   },
   copiedIcon: {
     color: colors.green600,
@@ -79,10 +52,14 @@ export default function ApiKeyReveal(props: {
   }
 
   return (
-    <div {...stylex.attrs(styles.card)}>
-      <h3 {...stylex.attrs(styles.title)}>{t('apiKeyReveal.title')}</h3>
-      <div {...stylex.attrs(styles.row)}>
-        <code {...stylex.attrs(styles.code)}>{props.created.apiKey}</code>
+    <div {...stylex.attrs(feedback.successBox)}>
+      <h3 {...stylex.attrs(feedback.successTitle, layout.mb8)}>
+        {t('apiKeyReveal.title')}
+      </h3>
+      <div {...stylex.attrs(layout.rowCenter8, styles.row)}>
+        <code {...stylex.attrs(typography.body, layout.flex1, styles.code)}>
+          {props.created.apiKey}
+        </code>
         <button
           type="button"
           onClick={copy}
@@ -90,9 +67,9 @@ export default function ApiKeyReveal(props: {
         >
           <Show
             when={copied()}
-            fallback={<Copy class={stylex.attrs(styles.icon).class} />}
+            fallback={<Copy class={stylex.attrs(icons.sm).class} />}
           >
-            <Check class={stylex.attrs(styles.icon, styles.copiedIcon).class} />
+            <Check class={stylex.attrs(icons.sm, styles.copiedIcon).class} />
           </Show>
           {copied() ? t('apiKeyReveal.copied') : t('apiKeyReveal.copy')}
         </button>

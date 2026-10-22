@@ -24,6 +24,16 @@ export const actions = stylex.create({
   weightNormal: {
     fontWeight: 400,
   },
+  clear: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    padding: 0,
+    cursor: 'pointer',
+    textDecorationLine: {
+      default: 'none',
+      ':hover': 'underline',
+    },
+  },
   textDanger: {
     color: colors.red600,
   },

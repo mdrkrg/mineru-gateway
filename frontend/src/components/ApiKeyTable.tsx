@@ -4,7 +4,11 @@ import { Trash2 } from 'lucide-solid';
 import type { ApiKeyInfo } from '@/api/schemas/auth';
 import { t } from '@/i18n';
 import { formatDateTime } from '@/utils/format';
-import { colors, fontSize, lineHeight, radius, space } from '@/styles/tokens.stylex';
+import { actions } from '@/styles/actions.stylex';
+import { badges } from '@/styles/badges.stylex';
+import { icons } from '@/styles/icons.stylex';
+import { table } from '@/styles/table.stylex';
+import { typography } from '@/styles/typography.stylex';
 
 interface ApiKeyTableProps {
   keys: ApiKeyInfo[];
@@ -21,98 +25,6 @@ interface ApiKeyTableProps {
   onRevoke: (key: ApiKeyInfo) => void;
 }
 
-const styles = stylex.create({
-  table: {
-    width: '100%',
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-  },
-  headRow: {
-    textAlign: 'left',
-    color: colors.gray500,
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: 'currentColor',
-  },
-  th: {
-    paddingBlock: space.px8,
-    paddingInlineEnd: space.px16,
-    fontWeight: 500,
-  },
-  thActions: {
-    paddingBlock: space.px8,
-    fontWeight: 500,
-  },
-  row: {
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: 'currentColor',
-  },
-  lastRow: {
-    borderBottomWidth: 0,
-  },
-  td: {
-    paddingBlock: space.px8,
-    paddingInlineEnd: space.px16,
-  },
-  tdActions: {
-    paddingBlock: space.px8,
-  },
-  code: {
-    fontSize: fontSize.px12,
-    lineHeight: lineHeight.px16,
-  },
-  pill: {
-    fontSize: fontSize.px12,
-    lineHeight: lineHeight.px16,
-    borderRadius: radius.px4,
-    paddingInline: space.px6,
-    paddingBlock: space.px2,
-  },
-  inUse: {
-    marginLeft: space.px8,
-    backgroundColor: colors.blue100,
-    color: colors.blue700,
-  },
-  valid: {
-    backgroundColor: colors.green100,
-    color: colors.green700,
-  },
-  revoked: {
-    backgroundColor: colors.gray100,
-    color: colors.gray500,
-  },
-  revoke: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: space.px4,
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    color: colors.red600,
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-    padding: 0,
-    cursor: {
-      default: 'pointer',
-      ':disabled': 'not-allowed',
-    },
-    textDecorationLine: {
-      default: 'none',
-      ':enabled:hover': 'underline',
-    },
-    opacity: {
-      ':disabled': 0.5,
-    },
-  },
-  trashIcon: {
-    width: space.px14,
-    height: space.px14,
-  },
-  muted: {
-    color: colors.gray500,
-  },
-});
-
 /**
  * Revocable key list shared by `/api-keys` (own keys) and `/admin/keys` (all
  * keys). Renders revoked keys too, so a revoke only flips the row's status
@@ -125,22 +37,22 @@ export default function ApiKeyTable(props: ApiKeyTableProps) {
   return (
     <Show
       when={!props.isLoading}
-      fallback={<p {...stylex.attrs(styles.muted)}>{t('common.loading')}</p>}
+      fallback={<p {...stylex.attrs(typography.muted)}>{t('common.loading')}</p>}
     >
       <Show
         when={props.keys.length > 0}
-        fallback={<p {...stylex.attrs(styles.muted)}>{props.emptyText}</p>}
+        fallback={<p {...stylex.attrs(typography.muted)}>{props.emptyText}</p>}
       >
-        <table {...stylex.attrs(styles.table)}>
+        <table {...stylex.attrs(table.root)}>
           <thead>
-            <tr {...stylex.attrs(styles.headRow)}>
-              <th {...stylex.attrs(styles.th)}>{t('keyTable.prefix')}</th>
-              <th {...stylex.attrs(styles.th)}>{t('keyTable.label')}</th>
-              <th {...stylex.attrs(styles.th)}>{t('keyTable.createdAt')}</th>
-              <th {...stylex.attrs(styles.th)}>{t('keyTable.lastUsed')}</th>
-              <th {...stylex.attrs(styles.th)}>{t('keyTable.expiresAt')}</th>
-              <th {...stylex.attrs(styles.th)}>{t('keyTable.status')}</th>
-              <th {...stylex.attrs(styles.thActions)}>{t('keyTable.actions')}</th>
+            <tr {...stylex.attrs(table.headRow)}>
+              <th {...stylex.attrs(table.th)}>{t('keyTable.prefix')}</th>
+              <th {...stylex.attrs(table.th)}>{t('keyTable.label')}</th>
+              <th {...stylex.attrs(table.th)}>{t('keyTable.createdAt')}</th>
+              <th {...stylex.attrs(table.th)}>{t('keyTable.lastUsed')}</th>
+              <th {...stylex.attrs(table.th)}>{t('keyTable.expiresAt')}</th>
+              <th {...stylex.attrs(table.th)}>{t('keyTable.status')}</th>
+              <th {...stylex.attrs(table.thEnd)}>{t('keyTable.actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -148,41 +60,45 @@ export default function ApiKeyTable(props: ApiKeyTableProps) {
               {(key, index) => (
                 <tr
                   {...stylex.attrs(
-                    styles.row,
-                    index() === props.keys.length - 1 && styles.lastRow,
+                    table.rowStatic,
+                    index() === props.keys.length - 1 && table.lastRow,
                   )}
                 >
-                  <td {...stylex.attrs(styles.td)}>
-                    <code {...stylex.attrs(styles.code)}>{key.apiKeyPrefix}…</code>
+                  <td {...stylex.attrs(table.td)}>
+                    <code {...stylex.attrs(typography.meta)}>{key.apiKeyPrefix}…</code>
                     <Show when={isInUse(key.apiKeyPrefix)}>
-                      <span {...stylex.attrs(styles.pill, styles.inUse)}>
+                      <span {...stylex.attrs(badges.pill, badges.blue, badges.inUse)}>
                         {t('keyTable.inUse')}
                       </span>
                     </Show>
                   </td>
-                  <td {...stylex.attrs(styles.td)}>{key.label || '—'}</td>
-                  <td {...stylex.attrs(styles.td)}>{formatDateTime(key.createdAt)}</td>
-                  <td {...stylex.attrs(styles.td)}>{formatDateTime(key.lastUsedAt)}</td>
-                  <td {...stylex.attrs(styles.td)}>{formatDateTime(key.expiresAt)}</td>
-                  <td {...stylex.attrs(styles.td)}>
+                  <td {...stylex.attrs(table.td)}>{key.label || '—'}</td>
+                  <td {...stylex.attrs(table.td)}>{formatDateTime(key.createdAt)}</td>
+                  <td {...stylex.attrs(table.td)}>{formatDateTime(key.lastUsedAt)}</td>
+                  <td {...stylex.attrs(table.td)}>{formatDateTime(key.expiresAt)}</td>
+                  <td {...stylex.attrs(table.td)}>
                     <span
                       {...stylex.attrs(
-                        styles.pill,
-                        key.isActive ? styles.valid : styles.revoked,
+                        badges.pill,
+                        key.isActive ? badges.green : badges.gray,
                       )}
                     >
                       {key.isActive ? t('keyTable.valid') : t('keyTable.revoked')}
                     </span>
                   </td>
-                  <td {...stylex.attrs(styles.tdActions)}>
+                  <td {...stylex.attrs(table.tdEnd)}>
                     <Show when={key.isActive}>
                       <button
                         type="button"
                         disabled={props.revokingId === key.id}
                         onClick={() => props.onRevoke(key)}
-                        {...stylex.attrs(styles.revoke)}
+                        {...stylex.attrs(
+                          actions.text,
+                          actions.textDanger,
+                          actions.disabled50,
+                        )}
                       >
-                        <Trash2 class={stylex.attrs(styles.trashIcon).class} />
+                        <Trash2 class={stylex.attrs(icons.xs).class} />
                         {props.revokingId === key.id
                           ? t('keyTable.revoking')
                           : t('keyTable.revoke')}

@@ -16,16 +16,12 @@ import { ROUTES, TASK_POLL_INTERVAL_MS, isActiveTaskStatus } from '@/utils/const
 import { filenameFromContentDisposition, saveBlob, extensionFromContentType } from '@/utils/download';
 import { formatDateTime, formatDuration } from '@/utils/format';
 import { createPolling } from '@/utils/polling';
+import { actions } from '@/styles/actions.stylex';
 import { controls } from '@/styles/controls.stylex';
-import {
-  breakpoint,
-  colors,
-  fontSize,
-  lineHeight,
-  maxWidth,
-  radius,
-  space,
-} from '@/styles/tokens.stylex';
+import { icons } from '@/styles/icons.stylex';
+import { layout } from '@/styles/layout.stylex';
+import { breakpoint, colors, maxWidth, radius, space } from '@/styles/tokens.stylex';
+import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/tasks/$id')({
   component: TaskDetailPage,
@@ -34,46 +30,16 @@ export const Route = createFileRoute('/_authenticated/tasks/$id')({
 const styles = stylex.create({
   root: {
     maxWidth: maxWidth.px768,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: space.px16,
   },
   backLink: {
     display: 'flex',
     alignItems: 'center',
     gap: space.px4,
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
     color: colors.gray600,
     textDecorationLine: 'none',
     ':hover': {
       color: colors.gray900,
     },
-  },
-  backIcon: {
-    width: space.px16,
-    height: space.px16,
-  },
-  loading: {
-    color: colors.gray500,
-  },
-  headerRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: space.px16,
-  },
-  title: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: space.px12,
-    fontSize: fontSize.px18,
-    lineHeight: lineHeight.px28,
-    fontWeight: 600,
-  },
-  taskId: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
   },
   fields: {
     display: 'grid',
@@ -83,88 +49,30 @@ const styles = stylex.create({
     },
     gap: space.px16,
   },
-  fieldLabel: {
-    fontSize: fontSize.px12,
-    lineHeight: lineHeight.px16,
-    color: colors.gray500,
-    marginBottom: space.px2,
-  },
-  fieldValue: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-  },
-  filesSection: {
-    marginTop: space.px16,
-  },
-  smallLabel: {
-    fontSize: fontSize.px12,
-    lineHeight: lineHeight.px16,
-    color: colors.gray500,
-    marginBottom: space.px4,
-  },
   fileList: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
     listStyleType: 'disc',
     listStylePosition: 'inside',
   },
-  errorBox: {
-    marginTop: space.px16,
-  },
   errorPre: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
     color: colors.red600,
     backgroundColor: colors.red50,
     borderRadius: radius.px4,
     padding: space.px12,
     whiteSpace: 'pre-wrap',
   },
-  partialHint: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    color: colors.amber700,
-    backgroundColor: colors.amber50,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: colors.amber200,
-    borderRadius: radius.px4,
-    paddingInline: space.px12,
-    paddingBlock: space.px8,
-  },
   actions: {
     display: 'flex',
     gap: space.px12,
-  },
-  cancel: {
-    borderColor: colors.red300,
-    color: colors.red600,
-    backgroundColor: {
-      default: 'transparent',
-      ':hover:not(:disabled)': colors.red50,
-    },
-    fontWeight: 400,
-    opacity: {
-      ':disabled': 0.4,
-    },
-  },
-  download: {
-    gap: space.px6,
-    opacity: {
-      ':disabled': 0.4,
-    },
-  },
-  downloadIcon: {
-    width: space.px16,
-    height: space.px16,
   },
 });
 
 function Field(props: { label: string; children: import('solid-js').JSX.Element }) {
   return (
     <div>
-      <dt {...stylex.attrs(styles.fieldLabel)}>{props.label}</dt>
-      <dd {...stylex.attrs(styles.fieldValue)}>{props.children}</dd>
+      <dt {...stylex.attrs(typography.metaMuted, layout.mb2)}>
+        {props.label}
+      </dt>
+      <dd {...stylex.attrs(typography.body)}>{props.children}</dd>
     </div>
   );
 }
@@ -263,9 +171,12 @@ function TaskDetailPage() {
   }
 
   return (
-    <div {...stylex.attrs(styles.root)}>
-      <Link to={ROUTES.tasks} class={stylex.attrs(styles.backLink).class}>
-        <ArrowLeft class={stylex.attrs(styles.backIcon).class} />
+    <div {...stylex.attrs(layout.stack16, styles.root)}>
+      <Link
+        to={ROUTES.tasks}
+        class={stylex.attrs(typography.bodySecondary, styles.backLink).class}
+      >
+        <ArrowLeft class={stylex.attrs(icons.sm).class} />
         {t('taskDetail.back')}
       </Link>
 
@@ -276,7 +187,7 @@ function TaskDetailPage() {
       <Show when={apiKeyStore.activeKey()}>
         <Show
           when={!isLoading()}
-          fallback={<p {...stylex.attrs(styles.loading)}>{t('common.loading')}</p>}
+          fallback={<p {...stylex.attrs(typography.muted)}>{t('common.loading')}</p>}
         >
           <Show when={error()}>
             <p {...stylex.attrs(controls.alertError)}>{error()}</p>
@@ -286,10 +197,10 @@ function TaskDetailPage() {
             {(task) => (
               <>
                 <div {...stylex.attrs(controls.card)}>
-                  <div {...stylex.attrs(styles.headerRow)}>
-                    <h2 {...stylex.attrs(styles.title)}>
+                  <div {...stylex.attrs(layout.rowBetween, layout.mb16)}>
+                    <h2 {...stylex.attrs(layout.rowCenter12, typography.sectionHeading)}>
                       {t('taskDetail.title')}
-                      <code {...stylex.attrs(styles.taskId)}>{task().taskId}</code>
+                      <code {...stylex.attrs(typography.body)}>{task().taskId}</code>
                     </h2>
                     <StatusBadge status={task().status} />
                   </div>
@@ -312,23 +223,29 @@ function TaskDetailPage() {
                     </Show>
                   </dl>
 
-                  <div {...stylex.attrs(styles.filesSection)}>
-                    <p {...stylex.attrs(styles.smallLabel)}>{t('taskDetail.fileList')}</p>
-                    <ul {...stylex.attrs(styles.fileList)}>
+                  <div {...stylex.attrs(layout.mt16)}>
+                    <p {...stylex.attrs(typography.metaMuted, layout.mb4)}>
+                      {t('taskDetail.fileList')}
+                    </p>
+                    <ul {...stylex.attrs(typography.body, styles.fileList)}>
                       <For each={task().fileNames}>{(name) => <li>{name}</li>}</For>
                     </ul>
                   </div>
 
                   <Show when={task().error}>
-                    <div {...stylex.attrs(styles.errorBox)}>
-                      <p {...stylex.attrs(styles.smallLabel)}>{t('taskDetail.error')}</p>
-                      <pre {...stylex.attrs(styles.errorPre)}>{task().error}</pre>
+                    <div {...stylex.attrs(layout.mt16)}>
+                      <p {...stylex.attrs(typography.metaMuted, layout.mb4)}>
+                        {t('taskDetail.error')}
+                      </p>
+                      <pre {...stylex.attrs(typography.body, styles.errorPre)}>
+                        {task().error}
+                      </pre>
                     </div>
                   </Show>
                 </div>
 
                 <Show when={task().status === 'failed' && task().hasResult}>
-                  <p {...stylex.attrs(styles.partialHint)}>
+                  <p {...stylex.attrs(controls.alertWarning)}>
                     {t('taskDetail.partialResultHint')}
                   </p>
                 </Show>
@@ -339,7 +256,11 @@ function TaskDetailPage() {
                       type="button"
                       disabled={isActing()}
                       onClick={handleCancel}
-                      {...stylex.attrs(controls.button, controls.buttonOutline, styles.cancel)}
+                      {...stylex.attrs(
+                        controls.button,
+                        controls.buttonOutline,
+                        actions.outlineDanger,
+                      )}
                     >
                       {t('taskDetail.cancel')}
                     </button>
@@ -349,9 +270,13 @@ function TaskDetailPage() {
                       type="button"
                       disabled={isActing()}
                       onClick={handleDownload}
-                      {...stylex.attrs(controls.button, controls.buttonPrimary, styles.download)}
+                      {...stylex.attrs(
+                        controls.button,
+                        controls.buttonPrimary,
+                        actions.disabled40,
+                      )}
                     >
-                      <Download class={stylex.attrs(styles.downloadIcon).class} />
+                      <Download class={stylex.attrs(icons.sm).class} />
                       {t('taskDetail.download')}
                     </button>
                   </Show>

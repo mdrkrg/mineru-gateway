@@ -14,13 +14,10 @@ import {
 import { useAuth } from '@/stores/auth-context';
 import { t, type DictKey } from '@/i18n';
 import { ROUTES } from '@/utils/constants';
-import {
-  colors,
-  fontSize,
-  lineHeight,
-  radius,
-  space,
-} from '@/styles/tokens.stylex';
+import { icons } from '@/styles/icons.stylex';
+import { layout } from '@/styles/layout.stylex';
+import { colors, radius, space } from '@/styles/tokens.stylex';
+import { typography } from '@/styles/typography.stylex';
 
 interface NavItem {
   to: string;
@@ -62,9 +59,6 @@ const styles = stylex.create({
     fontWeight: 700,
   },
   nav: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
     display: 'flex',
     flexDirection: 'column',
     gap: space.px4,
@@ -75,10 +69,7 @@ const styles = stylex.create({
     marginTop: space.px16,
     paddingInline: space.px12,
     paddingBottom: space.px4,
-    fontSize: fontSize.px12,
-    lineHeight: lineHeight.px16,
     fontWeight: 600,
-    color: colors.gray400,
     textTransform: 'uppercase',
   },
   link: {
@@ -88,14 +79,8 @@ const styles = stylex.create({
     borderRadius: radius.px4,
     paddingInline: space.px12,
     paddingBlock: space.px8,
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
     fontWeight: 500,
     textDecorationLine: 'none',
-    transitionProperty:
-      'color, background-color, border-color, text-decoration-color, fill, stroke',
-    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
-    transitionDuration: '150ms',
   },
   linkActive: {
     backgroundColor: colors.gray700,
@@ -107,11 +92,6 @@ const styles = stylex.create({
       backgroundColor: colors.gray700,
       color: colors.white,
     },
-  },
-  icon: {
-    width: space.px16,
-    height: space.px16,
-    flexShrink: 0,
   },
 });
 
@@ -127,12 +107,14 @@ function NavLink(props: { item: NavItem }) {
       to={props.item.to}
       class={
         stylex.attrs(
+          typography.body,
+          layout.transitionColors,
           styles.link,
           isActive() ? styles.linkActive : styles.linkInactive,
         ).class
       }
     >
-      <props.item.icon class={stylex.attrs(styles.icon).class} />
+      <props.item.icon class={stylex.attrs(icons.sm, layout.noShrink).class} />
       {t(props.item.labelKey)}
     </Link>
   );
@@ -148,11 +130,13 @@ export default function Sidebar() {
         <span {...stylex.attrs(styles.brandText)}>MinerU Gateway</span>
       </div>
 
-      <nav {...stylex.attrs(styles.nav)}>
+      <nav {...stylex.attrs(layout.flex1, styles.nav)}>
         <For each={NAV_ITEMS}>{(item) => <NavLink item={item} />}</For>
 
         <Show when={isAdmin()}>
-          <div {...stylex.attrs(styles.adminLabel)}>{t('nav.admin')}</div>
+          <div {...stylex.attrs(typography.metaFaint, styles.adminLabel)}>
+            {t('nav.admin')}
+          </div>
           <For each={ADMIN_ITEMS}>{(item) => <NavLink item={item} />}</For>
         </Show>
       </nav>

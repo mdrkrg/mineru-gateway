@@ -7,16 +7,12 @@ export const modal = stylex.create({
     position: 'fixed',
     inset: 0,
     zIndex: 50,
-    backgroundColor: 'rgb(0 0 0 / 40%)',
+    backgroundColor: colors.overlay,
   },
   overlayCentered: {
-    position: 'fixed',
-    inset: 0,
-    zIndex: 50,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgb(0 0 0 / 40%)',
     paddingInline: space.px16,
   },
   dialogFixed: {
@@ -35,12 +31,7 @@ export const modal = stylex.create({
     padding: space.px24,
   },
   dialogWide: {
-    width: '100%',
     maxWidth: maxWidth.px448,
-    backgroundColor: colors.white,
-    borderRadius: radius.px8,
-    boxShadow: shadow.xl,
-    padding: space.px24,
   },
   titleStrong: {
     fontSize: fontSize.px18,

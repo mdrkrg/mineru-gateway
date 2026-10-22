@@ -6,85 +6,19 @@ import { t } from '@/i18n';
 import { useAuth } from '@/stores/auth-context';
 import { errorMessage } from '@/utils/api-error';
 import { controls } from '@/styles/controls.stylex';
-import {
-  colors,
-  fontSize,
-  lineHeight,
-  maxWidth,
-  radius,
-  shadow,
-  space,
-} from '@/styles/tokens.stylex';
+import { icons } from '@/styles/icons.stylex';
+import { layout } from '@/styles/layout.stylex';
+import { modal } from '@/styles/modal.stylex';
+import { typography } from '@/styles/typography.stylex';
+import { space } from '@/styles/tokens.stylex';
 
 const styles = stylex.create({
-  overlay: {
-    position: 'fixed',
-    inset: 0,
-    zIndex: 50,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgb(0 0 0 / 40%)',
-    paddingInline: space.px16,
-  },
-  panel: {
-    width: '100%',
-    maxWidth: maxWidth.px448,
-    backgroundColor: colors.white,
-    borderRadius: radius.px8,
-    boxShadow: shadow.xl,
-    padding: space.px24,
-  },
-  header: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: space.px12,
-  },
-  title: {
-    fontSize: fontSize.px18,
-    lineHeight: lineHeight.px28,
-    fontWeight: 600,
-  },
-  close: {
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-    padding: 0,
-    color: colors.gray400,
-    ':hover': {
-      color: colors.gray600,
-    },
-  },
-  closeIcon: {
-    width: space.px20,
-    height: space.px20,
-  },
-  body: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    color: colors.gray600,
-    marginBottom: space.px16,
-  },
-  alertSpacing: {
-    marginBottom: space.px16,
-  },
-  actions: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: space.px8,
-  },
   send: {
     gap: space.px8,
-    fontSize: fontSize.px16,
-    lineHeight: lineHeight.px24,
   },
   check: {
     gap: space.px8,
     fontWeight: 400,
-  },
-  icon: {
-    width: space.px16,
-    height: space.px16,
   },
 });
 
@@ -154,39 +88,44 @@ export default function EmailVerificationDialog() {
 
   return (
     <Show when={open()}>
-      <div {...stylex.attrs(styles.overlay)}>
-        <div {...stylex.attrs(styles.panel)}>
-          <div {...stylex.attrs(styles.header)}>
-            <h2 {...stylex.attrs(styles.title)}>{t('emailVerification.title')}</h2>
+      <div {...stylex.attrs(modal.overlay, modal.overlayCentered)}>
+        <div {...stylex.attrs(modal.dialog, modal.dialogWide)}>
+          <div {...stylex.attrs(modal.header)}>
+            <h2 {...stylex.attrs(typography.sectionHeading)}>{t('emailVerification.title')}</h2>
             <button
               type="button"
               onClick={() => setOpen(false)}
               aria-label={t('common.close')}
-              {...stylex.attrs(styles.close)}
+              {...stylex.attrs(controls.iconButton)}
             >
-              <X class={stylex.attrs(styles.closeIcon).class} />
+              <X class={stylex.attrs(icons.md).class} />
             </button>
           </div>
 
-          <p {...stylex.attrs(styles.body)}>{t('emailVerification.body')}</p>
+          <p {...stylex.attrs(typography.bodySecondary, layout.mb16)}>{t('emailVerification.body')}</p>
 
           <Show when={sent()}>
-            <p {...stylex.attrs(controls.alertSuccess, styles.alertSpacing)}>
+            <p {...stylex.attrs(controls.alertSuccess, layout.mb16)}>
               {t('emailVerification.sent')}
             </p>
           </Show>
           <Show when={error()}>
-            <p {...stylex.attrs(controls.alertError, styles.alertSpacing)}>{error()}</p>
+            <p {...stylex.attrs(controls.alertError, layout.mb16)}>{error()}</p>
           </Show>
 
-          <div {...stylex.attrs(styles.actions)}>
+          <div {...stylex.attrs(layout.stack8)}>
             <button
               type="button"
               onClick={handleSend}
               disabled={sending()}
-              {...stylex.attrs(controls.button, controls.buttonPrimary, styles.send)}
+              {...stylex.attrs(
+                controls.button,
+                controls.buttonPrimary,
+                controls.buttonLarge,
+                styles.send,
+              )}
             >
-              <MailCheck class={stylex.attrs(styles.icon).class} />
+              <MailCheck class={stylex.attrs(icons.sm).class} />
               {sending()
                 ? t('emailVerification.sending')
                 : sent()
@@ -199,7 +138,7 @@ export default function EmailVerificationDialog() {
               disabled={checking()}
               {...stylex.attrs(controls.button, controls.buttonOutline, styles.check)}
             >
-              <RefreshCw class={stylex.attrs(styles.icon).class} />
+              <RefreshCw class={stylex.attrs(icons.sm).class} />
               {checking() ? t('emailVerification.checking') : t('emailVerification.check')}
             </button>
           </div>

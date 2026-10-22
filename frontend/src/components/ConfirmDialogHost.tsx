@@ -3,59 +3,11 @@ import { Show } from 'solid-js';
 import { AlertDialog } from '@kobalte/core/alert-dialog';
 import { t } from '@/i18n';
 import { useConfirm } from '@/stores/confirm-context';
+import { actions } from '@/styles/actions.stylex';
 import { controls } from '@/styles/controls.stylex';
-import {
-  colors,
-  fontSize,
-  lineHeight,
-  maxWidth,
-  radius,
-  shadow,
-  space,
-} from '@/styles/tokens.stylex';
-
-const styles = stylex.create({
-  overlay: {
-    position: 'fixed',
-    inset: 0,
-    zIndex: 50,
-    backgroundColor: 'rgb(0 0 0 / 40%)',
-  },
-  content: {
-    position: 'fixed',
-    left: '50%',
-    top: '50%',
-    translate: '-50% -50%',
-    zIndex: 50,
-    width: '100%',
-    maxWidth: maxWidth.px384,
-    borderRadius: radius.px8,
-    backgroundColor: colors.white,
-    padding: space.px24,
-    boxShadow: shadow.xl,
-  },
-  title: {
-    fontSize: fontSize.px18,
-    lineHeight: lineHeight.px28,
-    fontWeight: 600,
-    color: colors.gray900,
-  },
-  description: {
-    marginTop: space.px8,
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    color: colors.gray600,
-  },
-  actions: {
-    marginTop: space.px24,
-    display: 'flex',
-    justifyContent: 'flex-end',
-    gap: space.px12,
-  },
-  cancel: {
-    fontWeight: 400,
-  },
-});
+import { layout } from '@/styles/layout.stylex';
+import { modal } from '@/styles/modal.stylex';
+import { typography } from '@/styles/typography.stylex';
 
 /**
  * Renders the pending confirmation dialog, if any. Mounted once near the
@@ -74,19 +26,23 @@ export default function ConfirmDialogHost() {
           }}
         >
           <AlertDialog.Portal>
-            <AlertDialog.Overlay class={stylex.attrs(styles.overlay).class} />
-            <AlertDialog.Content class={stylex.attrs(styles.content).class}>
-              <AlertDialog.Title class={stylex.attrs(styles.title).class}>
+            <AlertDialog.Overlay class={stylex.attrs(modal.overlay).class} />
+            <AlertDialog.Content
+              class={stylex.attrs(modal.dialog, modal.dialogFixed).class}
+            >
+              <AlertDialog.Title class={stylex.attrs(modal.titleStrong).class}>
                 {req().title}
               </AlertDialog.Title>
-              <AlertDialog.Description class={stylex.attrs(styles.description).class}>
+              <AlertDialog.Description
+                class={stylex.attrs(typography.bodySecondary, layout.mt8).class}
+              >
                 {req().description ?? ''}
               </AlertDialog.Description>
-              <div {...stylex.attrs(styles.actions)}>
+              <div {...stylex.attrs(modal.actions)}>
                 <button
                   type="button"
                   onClick={() => confirm.resolve(false)}
-                  {...stylex.attrs(controls.button, controls.buttonOutline, styles.cancel)}
+                  {...stylex.attrs(controls.button, controls.buttonOutline, actions.weightNormal)}
                 >
                   {req().cancelText ?? t('common.cancel')}
                 </button>

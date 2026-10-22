@@ -7,59 +7,13 @@ import { errorMessage } from '@/utils/api-error';
 import { ROUTES } from '@/utils/constants';
 import { onMount } from 'solid-js';
 import { useAuth } from '@/stores/auth-context';
+import { auth as authStyles } from '@/styles/auth.stylex';
 import { controls } from '@/styles/controls.stylex';
 import { layout } from '@/styles/layout.stylex';
-import {
-  colors,
-  fontSize,
-  lineHeight,
-  space,
-} from '@/styles/tokens.stylex';
+import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/register')({
   component: RegisterPage,
-});
-
-const styles = stylex.create({
-  title: {
-    fontSize: fontSize.px24,
-    lineHeight: lineHeight.px32,
-    fontWeight: 700,
-    textAlign: 'center',
-    marginBottom: space.px8,
-  },
-  subtitle: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    color: colors.gray500,
-    textAlign: 'center',
-    marginBottom: space.px24,
-  },
-  footer: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    color: colors.gray500,
-    textAlign: 'center',
-    marginTop: space.px16,
-  },
-  success: {
-    textAlign: 'center',
-  },
-  successTitle: {
-    fontSize: fontSize.px24,
-    lineHeight: lineHeight.px32,
-    fontWeight: 700,
-    marginBottom: space.px8,
-  },
-  successBody: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    color: colors.gray600,
-    marginBottom: space.px24,
-  },
-  successEmail: {
-    fontWeight: 500,
-  },
 });
 
 function RegisterPage() {
@@ -114,10 +68,10 @@ function RegisterPage() {
           when={registeredEmail()}
           fallback={
             <>
-              <h1 {...stylex.attrs(styles.title)}>{t('register.title')}</h1>
-              <p {...stylex.attrs(styles.subtitle)}>MinerU Gateway</p>
+              <h1 {...stylex.attrs(typography.heroTitle)}>{t('register.title')}</h1>
+              <p {...stylex.attrs(authStyles.heroSubtitle)}>MinerU Gateway</p>
 
-              <form onSubmit={handleSubmit} {...stylex.attrs(controls.form)}>
+              <form onSubmit={handleSubmit} {...stylex.attrs(layout.stack16)}>
                 <label {...stylex.attrs(controls.field)}>
                   <span {...stylex.attrs(controls.fieldLabel)}>{t('register.email')}</span>
                   <input
@@ -180,7 +134,7 @@ function RegisterPage() {
                 </button>
               </form>
 
-              <p {...stylex.attrs(styles.footer)}>
+              <p {...stylex.attrs(authStyles.footer)}>
                 {t('register.hasAccount')}{' '}
                 <Link to={ROUTES.login} class={stylex.attrs(controls.link).class}>
                   {t('register.toLogin')}
@@ -190,11 +144,11 @@ function RegisterPage() {
           }
         >
           {(email) => (
-            <div {...stylex.attrs(styles.success)}>
-              <h1 {...stylex.attrs(styles.successTitle)}>{t('register.successTitle')}</h1>
-              <p {...stylex.attrs(styles.successBody)}>
+            <div {...stylex.attrs(layout.textCenter)}>
+              <h1 {...stylex.attrs(typography.heroTitle)}>{t('register.successTitle')}</h1>
+              <p {...stylex.attrs(authStyles.successBody)}>
                 {t('register.successPrefix')}
-                <span {...stylex.attrs(styles.successEmail)}>{email()}</span>
+                <span {...stylex.attrs(typography.emphasis)}>{email()}</span>
                 {t('register.successSuffix')}
               </p>
               <button

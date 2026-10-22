@@ -1,5 +1,5 @@
 import * as stylex from '@stylexjs/stylex';
-import { colors, fontSize, lineHeight, radius, shadow, space } from './tokens.stylex';
+import { colors, fontSize, lineHeight, motion, radius, shadow, space } from './tokens.stylex';
 
 export const controls = stylex.create({
   card: {
@@ -22,6 +22,15 @@ export const controls = stylex.create({
     outlineWidth: 2,
     outlineColor: colors.blue500,
     outlineOffset: 0,
+  },
+  iconButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    padding: 0,
+    color: colors.gray400,
+    ':hover': {
+      color: colors.gray600,
+    },
   },
   link: {
     color: colors.blue600,
@@ -55,10 +64,9 @@ export const controls = stylex.create({
     outlineColor: colors.blue500,
     outlineOffset: 0,
     textDecorationLine: 'none',
-    transitionProperty:
-      'color, background-color, border-color, text-decoration-color, fill, stroke',
-    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
-    transitionDuration: '150ms',
+    transitionProperty: motion.colors,
+    transitionTimingFunction: motion.easing,
+    transitionDuration: motion.duration,
     opacity: {
       ':disabled': 0.5,
     },
@@ -96,11 +104,6 @@ export const controls = stylex.create({
   buttonLarge: {
     fontSize: fontSize.px16,
     lineHeight: lineHeight.px24,
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: space.px16,
   },
   field: {
     display: 'flex',
@@ -142,7 +145,16 @@ export const controls = stylex.create({
     paddingInline: space.px12,
     paddingBlock: space.px8,
   },
-  alertSpacing: {
-    marginBottom: space.px16,
+  alertWarning: {
+    fontSize: fontSize.px14,
+    lineHeight: lineHeight.px20,
+    color: colors.amber700,
+    backgroundColor: colors.amber50,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: colors.amber200,
+    borderRadius: radius.px4,
+    paddingInline: space.px12,
+    paddingBlock: space.px8,
   },
 });

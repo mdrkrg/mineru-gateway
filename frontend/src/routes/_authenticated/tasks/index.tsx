@@ -20,14 +20,13 @@ import {
 } from '@/utils/constants';
 import { formatDateTime } from '@/utils/format';
 import { createPolling } from '@/utils/polling';
+import { actions } from '@/styles/actions.stylex';
 import { controls } from '@/styles/controls.stylex';
-import { actionButton, table } from '@/styles/table.stylex';
-import {
-  colors,
-  fontSize,
-  lineHeight,
-  space,
-} from '@/styles/tokens.stylex';
+import { forms } from '@/styles/forms.stylex';
+import { layout } from '@/styles/layout.stylex';
+import { table } from '@/styles/table.stylex';
+import { space } from '@/styles/tokens.stylex';
+import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/tasks/')({
   component: TaskListPage,
@@ -36,53 +35,12 @@ export const Route = createFileRoute('/_authenticated/tasks/')({
 const PAGE_SIZE = 20;
 
 const styles = stylex.create({
-  root: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: space.px16,
-  },
   filterForm: {
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'flex-end',
     gap: space.px12,
     padding: space.px16,
-  },
-  fileNameInput: {
-    width: space.px224,
-  },
-  batchBar: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: space.px12,
-  },
-  autoRefreshHint: {
-    fontSize: fontSize.px12,
-    lineHeight: lineHeight.px16,
-    color: colors.gray500,
-  },
-  backendCell: {
-    fontSize: fontSize.px12,
-    lineHeight: lineHeight.px16,
-  },
-  cancel: {
-    color: colors.red600,
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-    padding: 0,
-    cursor: {
-      default: 'pointer',
-      ':disabled': 'not-allowed',
-    },
-    textDecorationLine: {
-      default: 'none',
-      ':enabled:hover': 'underline',
-    },
-    opacity: {
-      ':disabled': 0.4,
-    },
   },
 });
 
@@ -243,7 +201,7 @@ function TaskListPage() {
     items().filter((t) => isActiveTaskStatus(t.status)).length;
 
   return (
-    <div {...stylex.attrs(styles.root)}>
+    <div {...stylex.attrs(layout.stack16)}>
       <Show when={!apiKeyStore.activeKey()}>
         <NoActiveKey />
       </Show>
@@ -274,7 +232,7 @@ function TaskListPage() {
               value={fileNameFilter()}
               onInput={(e) => setFileNameFilter(e.currentTarget.value)}
               placeholder={t('tasks.searchPlaceholder')}
-              {...stylex.attrs(controls.input, styles.fileNameInput)}
+              {...stylex.attrs(controls.input, forms.inputMedium)}
             />
           </label>
           <button
@@ -290,24 +248,35 @@ function TaskListPage() {
         </Show>
 
         {/* Batch actions */}
-        <div {...stylex.attrs(styles.batchBar)}>
+        <div {...stylex.attrs(layout.rowCenter12)}>
           <button
             type="button"
             disabled={selected().size === 0 || isActing()}
             onClick={handleBatchCancel}
-            {...stylex.attrs(controls.button, controls.buttonOutline, actionButton.danger)}
+            {...stylex.attrs(
+              controls.button,
+              controls.buttonOutline,
+              actions.outlineDanger,
+              actions.outlineCompact,
+            )}
           >
             {t('tasks.batchCancel', { count: selected().size })}
           </button>
           <button
             type="button"
             onClick={() => load()}
-            {...stylex.attrs(controls.button, controls.buttonOutline, actionButton.refresh)}
+            {...stylex.attrs(
+              controls.button,
+              controls.buttonOutline,
+              actions.outlineCompact,
+            )}
           >
             {t('common.refresh')}
           </button>
           <Show when={hasActiveTasks()}>
-            <span {...stylex.attrs(styles.autoRefreshHint)}>{t('tasks.autoRefreshHint')}</span>
+            <span {...stylex.attrs(typography.metaMuted)}>
+              {t('tasks.autoRefreshHint')}
+            </span>
           </Show>
         </div>
 
@@ -361,15 +330,17 @@ function TaskListPage() {
                         <td {...stylex.attrs(table.td)}>
                           <Link
                             to={ROUTES.taskDetail(task.taskId)}
-                            class={stylex.attrs(controls.link, table.link).class}
+                            class={stylex.attrs(controls.link, typography.body).class}
                           >
-                            <code {...stylex.attrs(table.code)}>…{task.taskId.slice(-8)}</code>
+                            <code {...stylex.attrs(typography.meta)}>
+                              …{task.taskId.slice(-8)}
+                            </code>
                           </Link>
                         </td>
                         <td {...stylex.attrs(table.td)}>
                           <StatusBadge status={task.status} />
                         </td>
-                        <td {...stylex.attrs(table.td, styles.backendCell)}>
+                        <td {...stylex.attrs(table.td, typography.meta)}>
                           {mineruBackendLabel(task.backend)}
                         </td>
                         <td
@@ -388,7 +359,11 @@ function TaskListPage() {
                               type="button"
                               disabled={isActing()}
                               onClick={() => handleCancel(task)}
-                              {...stylex.attrs(styles.cancel)}
+                              {...stylex.attrs(
+                                actions.text,
+                                actions.textDanger,
+                                actions.disabled40,
+                              )}
                             >
                               {t('tasks.cancel')}
                             </button>

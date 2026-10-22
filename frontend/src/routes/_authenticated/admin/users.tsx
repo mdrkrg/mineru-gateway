@@ -11,14 +11,11 @@ import { useToast } from '@/stores/toast-context';
 import { requireSuperuser } from '@/stores/guard';
 import { errorMessage } from '@/utils/api-error';
 import { controls } from '@/styles/controls.stylex';
-import {
-  colors,
-  fontSize,
-  lineHeight,
-  maxWidth,
-  radius,
-  space,
-} from '@/styles/tokens.stylex';
+import { feedback } from '@/styles/feedback.stylex';
+import { forms } from '@/styles/forms.stylex';
+import { layout } from '@/styles/layout.stylex';
+import { maxWidth } from '@/styles/tokens.stylex';
+import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/admin/users')({
   beforeLoad: ({ context }) => {
@@ -30,47 +27,6 @@ export const Route = createFileRoute('/_authenticated/admin/users')({
 const styles = stylex.create({
   root: {
     maxWidth: maxWidth.px576,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: space.px16,
-  },
-  successBox: {
-    backgroundColor: colors.green50,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: colors.green300,
-    borderRadius: radius.px8,
-    padding: space.px16,
-  },
-  successTitle: {
-    fontWeight: 600,
-    color: colors.green800,
-    marginBottom: space.px4,
-  },
-  successText: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    color: colors.green700,
-  },
-  sectionTitle: {
-    fontSize: fontSize.px18,
-    lineHeight: lineHeight.px28,
-    fontWeight: 600,
-    marginBottom: space.px16,
-  },
-  checkboxRow: {
-    display: 'flex',
-    gap: space.px24,
-  },
-  checkboxLabel: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: space.px6,
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-  },
-  submit: {
-    alignSelf: 'flex-start',
   },
 });
 
@@ -130,16 +86,16 @@ function AdminUsersContent() {
   }
 
   return (
-    <div {...stylex.attrs(styles.root)}>
+    <div {...stylex.attrs(layout.stack16, styles.root)}>
       <Show when={error()}>
         <p {...stylex.attrs(controls.alertError)}>{error()}</p>
       </Show>
 
       <Show when={created()}>
         {(u) => (
-          <div {...stylex.attrs(styles.successBox)}>
-            <h3 {...stylex.attrs(styles.successTitle)}>{t('adminUsers.createdTitle')}</h3>
-            <p {...stylex.attrs(styles.successText)}>
+          <div {...stylex.attrs(feedback.successBox)}>
+            <h3 {...stylex.attrs(feedback.successTitle)}>{t('adminUsers.createdTitle')}</h3>
+            <p {...stylex.attrs(feedback.successText)}>
               {u().email}
               {u().displayName ? t('adminUsers.nameSuffix', { name: u().displayName ?? '' }) : ''}
               {u().isSuperuser ? t('adminUsers.superuserTag') : ''}
@@ -149,8 +105,8 @@ function AdminUsersContent() {
       </Show>
 
       <section {...stylex.attrs(controls.card)}>
-        <h2 {...stylex.attrs(styles.sectionTitle)}>{t('adminUsers.createTitle')}</h2>
-        <form onSubmit={handleCreate} {...stylex.attrs(controls.form)}>
+        <h2 {...stylex.attrs(typography.sectionTitle)}>{t('adminUsers.createTitle')}</h2>
+        <form onSubmit={handleCreate} {...stylex.attrs(layout.stack16)}>
           <label {...stylex.attrs(controls.field)}>
             <span {...stylex.attrs(controls.fieldLabel)}>{t('adminUsers.email')}</span>
             <input
@@ -181,8 +137,8 @@ function AdminUsersContent() {
               {...stylex.attrs(controls.input)}
             />
           </label>
-          <div {...stylex.attrs(styles.checkboxRow)}>
-            <label {...stylex.attrs(styles.checkboxLabel)}>
+          <div {...stylex.attrs(forms.checkboxRow)}>
+            <label {...stylex.attrs(forms.checkboxLabel)}>
               <input
                 type="checkbox"
                 checked={isSuperuser()}
@@ -198,7 +154,7 @@ function AdminUsersContent() {
               controls.button,
               controls.buttonPrimary,
               controls.buttonLarge,
-              styles.submit,
+              layout.selfStart,
             )}
           >
             {isCreating() ? t('adminUsers.creating') : t('adminUsers.submit')}

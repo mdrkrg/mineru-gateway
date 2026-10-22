@@ -7,13 +7,9 @@ import { useAuth } from '@/stores/auth-context';
 import { errorMessage } from '@/utils/api-error';
 import { formatDateTime } from '@/utils/format';
 import { controls } from '@/styles/controls.stylex';
-import {
-  colors,
-  fontSize,
-  lineHeight,
-  maxWidth,
-  space,
-} from '@/styles/tokens.stylex';
+import { layout } from '@/styles/layout.stylex';
+import { maxWidth, space } from '@/styles/tokens.stylex';
+import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/profile')({
   component: ProfilePage,
@@ -22,34 +18,11 @@ export const Route = createFileRoute('/_authenticated/profile')({
 const styles = stylex.create({
   root: {
     maxWidth: maxWidth.px672,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: space.px16,
-  },
-  sectionTitle: {
-    fontSize: fontSize.px18,
-    lineHeight: lineHeight.px28,
-    fontWeight: 600,
-    marginBottom: space.px16,
   },
   infoGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
     gap: space.px16,
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-  },
-  infoLabel: {
-    fontSize: fontSize.px12,
-    lineHeight: lineHeight.px16,
-    color: colors.gray500,
-    marginBottom: space.px2,
-  },
-  alertSpacing: {
-    marginBottom: space.px16,
-  },
-  submit: {
-    alignSelf: 'flex-start',
   },
 });
 
@@ -102,42 +75,50 @@ function ProfilePage() {
   }
 
   return (
-    <div {...stylex.attrs(styles.root)}>
+    <div {...stylex.attrs(layout.stack16, styles.root)}>
       <section {...stylex.attrs(controls.card)}>
-        <h2 {...stylex.attrs(styles.sectionTitle)}>{t('profile.accountInfo')}</h2>
-        <dl {...stylex.attrs(styles.infoGrid)}>
+        <h2 {...stylex.attrs(typography.sectionTitle)}>{t('profile.accountInfo')}</h2>
+        <dl {...stylex.attrs(typography.body, styles.infoGrid)}>
           <div>
-            <dt {...stylex.attrs(styles.infoLabel)}>{t('profile.email')}</dt>
+            <dt {...stylex.attrs(typography.metaMuted, layout.mb2)}>
+              {t('profile.email')}
+            </dt>
             <dd>{auth.user()?.email}</dd>
           </div>
           <div>
-            <dt {...stylex.attrs(styles.infoLabel)}>{t('profile.role')}</dt>
+            <dt {...stylex.attrs(typography.metaMuted, layout.mb2)}>
+              {t('profile.role')}
+            </dt>
             <dd>{auth.user()?.isSuperuser ? t('profile.roleAdmin') : t('profile.roleUser')}</dd>
           </div>
           <div>
-            <dt {...stylex.attrs(styles.infoLabel)}>{t('profile.emailVerification')}</dt>
+            <dt {...stylex.attrs(typography.metaMuted, layout.mb2)}>
+              {t('profile.emailVerification')}
+            </dt>
             <dd>{auth.user()?.isVerified ? t('profile.verified') : t('profile.unverified')}</dd>
           </div>
           <div>
-            <dt {...stylex.attrs(styles.infoLabel)}>{t('profile.registeredAt')}</dt>
+            <dt {...stylex.attrs(typography.metaMuted, layout.mb2)}>
+              {t('profile.registeredAt')}
+            </dt>
             <dd>{formatDateTime(auth.user()?.createdAt)}</dd>
           </div>
         </dl>
       </section>
 
       <section {...stylex.attrs(controls.card)}>
-        <h2 {...stylex.attrs(styles.sectionTitle)}>{t('profile.editTitle')}</h2>
+        <h2 {...stylex.attrs(typography.sectionTitle)}>{t('profile.editTitle')}</h2>
 
         <Show when={error()}>
-          <p {...stylex.attrs(controls.alertError, styles.alertSpacing)}>{error()}</p>
+          <p {...stylex.attrs(controls.alertError, layout.mb16)}>{error()}</p>
         </Show>
         <Show when={saved()}>
-          <p {...stylex.attrs(controls.alertSuccess, styles.alertSpacing)}>
+          <p {...stylex.attrs(controls.alertSuccess, layout.mb16)}>
             {t('profile.saved')}
           </p>
         </Show>
 
-        <form onSubmit={handleSave} {...stylex.attrs(controls.form)}>
+        <form onSubmit={handleSave} {...stylex.attrs(layout.stack16)}>
           <label {...stylex.attrs(controls.field)}>
             <span {...stylex.attrs(controls.fieldLabel)}>{t('profile.displayName')}</span>
             <input
@@ -178,7 +159,7 @@ function ProfilePage() {
               controls.button,
               controls.buttonPrimary,
               controls.buttonLarge,
-              styles.submit,
+              layout.selfStart,
             )}
           >
             {isSaving() ? t('profile.saving') : t('profile.save')}

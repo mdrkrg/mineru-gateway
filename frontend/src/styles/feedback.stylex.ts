@@ -16,20 +16,9 @@ export const feedback = stylex.create({
     color: colors.green800,
     marginBottom: space.px4,
   },
-  successTitleSpaced: {
-    fontWeight: 600,
-    color: colors.green800,
-    marginBottom: space.px8,
-  },
   successText: {
     fontSize: fontSize.px14,
     lineHeight: lineHeight.px20,
     color: colors.green700,
-  },
-  successTextSpaced: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    color: colors.green700,
-    marginBottom: space.px8,
   },
 });

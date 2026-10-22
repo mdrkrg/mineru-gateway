@@ -6,13 +6,10 @@ import { LOCALES, locale, setLocale, t } from '@/i18n';
 import type { DictKey, Locale } from '@/i18n';
 import { useAuth } from '@/stores/auth-context';
 import { ROUTES } from '@/utils/constants';
-import {
-  colors,
-  fontSize,
-  lineHeight,
-  radius,
-  space,
-} from '@/styles/tokens.stylex';
+import { icons } from '@/styles/icons.stylex';
+import { layout } from '@/styles/layout.stylex';
+import { colors, radius, space } from '@/styles/tokens.stylex';
+import { typography } from '@/styles/typography.stylex';
 
 /** Switcher entries use native names — each locale shows its own name. */
 const LOCALE_LABELS: Record<Locale, string> = { en: 'English', 'zh-CN': '简体中文' };
@@ -56,24 +53,9 @@ const styles = stylex.create({
     paddingInline: space.px24,
   },
   title: {
-    fontSize: fontSize.px18,
-    lineHeight: lineHeight.px28,
-    fontWeight: 600,
     color: colors.gray800,
   },
-  actions: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: space.px16,
-  },
-  userName: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    color: colors.gray600,
-  },
   locale: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
     borderWidth: 1,
     borderStyle: 'solid',
     borderColor: colors.gray300,
@@ -87,8 +69,6 @@ const styles = stylex.create({
     display: 'flex',
     alignItems: 'center',
     gap: space.px6,
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
     color: colors.gray600,
     backgroundColor: 'transparent',
     borderWidth: 0,
@@ -100,10 +80,6 @@ const styles = stylex.create({
     opacity: {
       ':disabled': 0.5,
     },
-  },
-  logoutIcon: {
-    width: space.px16,
-    height: space.px16,
   },
 });
 
@@ -122,17 +98,17 @@ export default function Header() {
 
   return (
     <header {...stylex.attrs(styles.header)}>
-      <h1 {...stylex.attrs(styles.title)}>{title()}</h1>
+      <h1 {...stylex.attrs(typography.sectionHeading, styles.title)}>{title()}</h1>
 
-      <div {...stylex.attrs(styles.actions)}>
+      <div {...stylex.attrs(layout.rowCenter16)}>
         <Show when={auth.user()}>
-          <span {...stylex.attrs(styles.userName)}>{displayName()}</span>
+          <span {...stylex.attrs(typography.bodySecondary)}>{displayName()}</span>
         </Show>
         <select
           value={locale()}
           onChange={(e) => setLocale(e.currentTarget.value as Locale)}
           aria-label={t('nav.language')}
-          {...stylex.attrs(styles.locale)}
+          {...stylex.attrs(typography.body, styles.locale)}
         >
           <For each={LOCALES}>
             {(code) => <option value={code}>{LOCALE_LABELS[code]}</option>}
@@ -142,9 +118,9 @@ export default function Header() {
           type="button"
           onClick={handleLogout}
           disabled={auth.isLoading()}
-          {...stylex.attrs(styles.logout)}
+          {...stylex.attrs(typography.body, styles.logout)}
         >
-          <LogOut class={stylex.attrs(styles.logoutIcon).class} />
+          <LogOut class={stylex.attrs(icons.sm).class} />
           {t('nav.logout')}
         </button>
       </div>

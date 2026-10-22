@@ -16,7 +16,7 @@ export const badges = stylex.create({
     backgroundColor: colors.yellow100,
     color: colors.yellow700,
   },
-  processing: {
+  blue: {
     backgroundColor: colors.blue100,
     color: colors.blue700,
   },
@@ -24,7 +24,7 @@ export const badges = stylex.create({
     backgroundColor: colors.orange100,
     color: colors.orange700,
   },
-  completed: {
+  green: {
     backgroundColor: colors.green100,
     color: colors.green700,
   },
@@ -32,7 +32,7 @@ export const badges = stylex.create({
     backgroundColor: colors.red100,
     color: colors.red700,
   },
-  cancelled: {
+  gray: {
     backgroundColor: colors.gray100,
     color: colors.gray500,
   },
@@ -41,15 +41,6 @@ export const badges = stylex.create({
     color: colors.gray600,
   },
   inUse: {
-    backgroundColor: colors.blue100,
-    color: colors.blue700,
-  },
-  valid: {
-    backgroundColor: colors.green100,
-    color: colors.green700,
-  },
-  revoked: {
-    backgroundColor: colors.gray100,
-    color: colors.gray500,
+    marginInlineStart: space.px8,
   },
 });

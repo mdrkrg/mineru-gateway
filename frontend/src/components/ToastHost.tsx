@@ -4,14 +4,11 @@ import { CircleAlert, CircleCheck, Info, X } from 'lucide-solid';
 import { t } from '@/i18n';
 import { useToast } from '@/stores/toast-context';
 import type { ToastVariant } from '@/stores/toast';
-import {
-  colors,
-  fontSize,
-  lineHeight,
-  radius,
-  shadow,
-  space,
-} from '@/styles/tokens.stylex';
+import { controls } from '@/styles/controls.stylex';
+import { icons } from '@/styles/icons.stylex';
+import { layout } from '@/styles/layout.stylex';
+import { colors, radius, shadow, space } from '@/styles/tokens.stylex';
+import { typography } from '@/styles/typography.stylex';
 
 const styles = stylex.create({
   root: {
@@ -33,8 +30,6 @@ const styles = stylex.create({
     borderStyle: 'solid',
     paddingInline: space.px16,
     paddingBlock: space.px12,
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
     boxShadow: shadow.lg,
   },
   success: {
@@ -54,28 +49,9 @@ const styles = stylex.create({
   },
   icon: {
     marginTop: space.px2,
-    width: space.px16,
-    height: space.px16,
-    flexShrink: 0,
   },
   message: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: '0%',
     overflowWrap: 'break-word',
-  },
-  dismiss: {
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-    padding: 0,
-    color: colors.gray400,
-    ':hover': {
-      color: colors.gray600,
-    },
-  },
-  dismissIcon: {
-    width: space.px16,
-    height: space.px16,
   },
 });
 
@@ -104,16 +80,22 @@ export default function ToastHost() {
         {(toastItem) => {
           const Icon = VARIANT_ICON[toastItem.variant];
           return (
-            <div {...stylex.attrs(styles.item, VARIANT_STYLES[toastItem.variant])}>
-              <Icon class={stylex.attrs(styles.icon).class} />
-              <span {...stylex.attrs(styles.message)}>{toastItem.message}</span>
+            <div
+              {...stylex.attrs(
+                typography.body,
+                styles.item,
+                VARIANT_STYLES[toastItem.variant],
+              )}
+            >
+              <Icon class={stylex.attrs(icons.sm, layout.noShrink, styles.icon).class} />
+              <span {...stylex.attrs(layout.flex1, styles.message)}>{toastItem.message}</span>
               <button
                 type="button"
                 onClick={() => toast.dismiss(toastItem.id)}
                 aria-label={t('toast.dismiss')}
-                {...stylex.attrs(styles.dismiss)}
+                {...stylex.attrs(controls.iconButton)}
               >
-                <X class={stylex.attrs(styles.dismissIcon).class} />
+                <X class={stylex.attrs(icons.sm).class} />
               </button>
             </div>
           );

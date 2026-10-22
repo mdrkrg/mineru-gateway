@@ -1,5 +1,5 @@
 import * as stylex from '@stylexjs/stylex';
-import { colors, fontSize, lineHeight, radius, shadow, space } from './tokens.stylex';
+import { colors, fontSize, lineHeight, maxWidth, radius, shadow, space } from './tokens.stylex';
 
 export const table = stylex.create({
   card: {
@@ -43,8 +43,17 @@ export const table = stylex.create({
       ':hover': colors.gray50,
     },
   },
+  rowStatic: {
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: 'currentColor',
+  },
   lastRow: {
     borderBottomWidth: 0,
+  },
+  thEnd: {
+    paddingBlock: space.px8,
+    fontWeight: 500,
   },
   tdCheck: {
     paddingBlock: space.px8,
@@ -55,13 +64,8 @@ export const table = stylex.create({
     paddingBlock: space.px8,
     paddingInlineEnd: space.px16,
   },
-  link: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-  },
-  code: {
-    fontSize: fontSize.px12,
-    lineHeight: lineHeight.px16,
+  tdEnd: {
+    paddingBlock: space.px8,
   },
   truncate: {
     paddingBlock: space.px8,
@@ -71,36 +75,14 @@ export const table = stylex.create({
     whiteSpace: 'nowrap',
   },
   truncateNarrow: {
-    maxWidth: space.px192,
+    maxWidth: maxWidth.px192,
   },
   truncateWide: {
-    maxWidth: space.px256,
+    maxWidth: maxWidth.px256,
   },
   nowrap: {
     paddingBlock: space.px8,
     paddingInlineEnd: space.px16,
     whiteSpace: 'nowrap',
-  },
-});
-
-export const actionButton = stylex.create({
-  refresh: {
-    fontWeight: 400,
-    paddingInline: space.px12,
-    paddingBlock: space.px6,
-  },
-  danger: {
-    borderColor: colors.red300,
-    color: colors.red600,
-    backgroundColor: {
-      default: 'transparent',
-      ':enabled:hover': colors.red50,
-    },
-    paddingInline: space.px12,
-    paddingBlock: space.px6,
-    fontWeight: 400,
-    opacity: {
-      ':disabled': 0.4,
-    },
   },
 });

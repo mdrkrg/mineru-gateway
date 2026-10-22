@@ -25,16 +25,12 @@ import { formatFileSize } from '@/utils/format';
 import { validateUploadSize } from '@/utils/upload';
 import { env } from '@/env';
 import { controls } from '@/styles/controls.stylex';
-import {
-  breakpoint,
-  colors,
-  fontSize,
-  lineHeight,
-  maxWidth,
-  radius,
-  shadow,
-  space,
-} from '@/styles/tokens.stylex';
+import { feedback } from '@/styles/feedback.stylex';
+import { forms } from '@/styles/forms.stylex';
+import { icons } from '@/styles/icons.stylex';
+import { layout } from '@/styles/layout.stylex';
+import { breakpoint, colors, maxWidth, radius, shadow, space } from '@/styles/tokens.stylex';
+import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/upload')({
   component: UploadPage,
@@ -43,50 +39,6 @@ export const Route = createFileRoute('/_authenticated/upload')({
 const styles = stylex.create({
   root: {
     maxWidth: maxWidth.px768,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: space.px16,
-  },
-  successBox: {
-    backgroundColor: colors.green50,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: colors.green300,
-    borderRadius: radius.px8,
-    padding: space.px16,
-  },
-  successTitle: {
-    fontWeight: 600,
-    color: colors.green800,
-    marginBottom: space.px4,
-  },
-  successText: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    color: colors.green700,
-    marginBottom: space.px8,
-  },
-  successLink: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-  },
-  section: {
-    display: 'flex',
-    flexDirection: 'column',
-  },
-  sectionTitle: {
-    fontSize: fontSize.px18,
-    lineHeight: lineHeight.px28,
-    fontWeight: 600,
-    marginBottom: space.px12,
-  },
-  optionsTitle: {
-    fontSize: fontSize.px18,
-    lineHeight: lineHeight.px28,
-    fontWeight: 600,
-  },
-  optionsSection: {
-    gap: space.px16,
   },
   dropzone: {
     display: 'flex',
@@ -98,10 +50,6 @@ const styles = stylex.create({
     borderRadius: radius.px8,
     padding: space.px32,
     cursor: 'pointer',
-    transitionProperty:
-      'color, background-color, border-color, text-decoration-color, fill, stroke',
-    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
-    transitionDuration: '150ms',
   },
   dropzoneIdle: {
     borderColor: {
@@ -114,15 +62,8 @@ const styles = stylex.create({
     backgroundColor: colors.blue50,
   },
   fileIcon: {
-    width: space.px32,
-    height: space.px32,
     color: colors.gray400,
     marginBottom: space.px8,
-  },
-  dropzoneText: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    color: colors.gray500,
   },
   hidden: {
     display: 'none',
@@ -137,8 +78,6 @@ const styles = stylex.create({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
     backgroundColor: colors.gray50,
     borderRadius: radius.px4,
     paddingInline: space.px12,
@@ -149,23 +88,9 @@ const styles = stylex.create({
     marginLeft: space.px8,
   },
   removeButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-    padding: 0,
-    color: colors.gray400,
     ':hover': {
       color: colors.red600,
     },
-  },
-  removeIcon: {
-    width: space.px16,
-    height: space.px16,
-  },
-  sizeSummary: {
-    marginTop: space.px8,
-    fontSize: fontSize.px12,
-    lineHeight: lineHeight.px16,
-    color: colors.gray400,
   },
   optionsGrid: {
     display: 'grid',
@@ -186,11 +111,6 @@ const styles = stylex.create({
     display: 'inline-flex',
     cursor: 'help',
   },
-  helpIcon: {
-    width: space.px16,
-    height: space.px16,
-    color: colors.gray400,
-  },
   tooltip: {
     position: 'absolute',
     bottom: '100%',
@@ -209,13 +129,6 @@ const styles = stylex.create({
     columnGap: space.px16,
     rowGap: space.px6,
   },
-  checkboxLabel: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: space.px6,
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-  },
   optionsRow: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -229,18 +142,10 @@ const styles = stylex.create({
   codeTable: {
     backgroundColor: colors.gray900,
     color: colors.white,
-    fontSize: fontSize.px12,
-    lineHeight: lineHeight.px16,
     borderRadius: radius.px8,
     boxShadow: shadow.lg,
     padding: space.px12,
     width: space.px320,
-  },
-  codeTableInner: {
-    width: '100%',
-  },
-  codeTableHead: {
-    color: colors.gray400,
   },
   codeTableTh: {
     textAlign: 'left',
@@ -264,10 +169,10 @@ const styles = stylex.create({
 
 function LanguageCodeTable() {
   return (
-    <div {...stylex.attrs(styles.codeTable)}>
-      <table {...stylex.attrs(styles.codeTableInner)}>
+    <div {...stylex.attrs(typography.meta, styles.codeTable)}>
+      <table {...stylex.attrs(layout.fullWidth)}>
         <thead>
-          <tr {...stylex.attrs(styles.codeTableHead)}>
+          <tr {...stylex.attrs(typography.faint)}>
             <th {...stylex.attrs(styles.codeTableTh)}>{t('upload.langTableOption')}</th>
             <th {...stylex.attrs(styles.codeTableThLast)}>{t('upload.langTableCoverage')}</th>
           </tr>
@@ -401,7 +306,7 @@ function UploadPage() {
   }
 
   return (
-    <div {...stylex.attrs(styles.root)}>
+    <div {...stylex.attrs(layout.stack16, styles.root)}>
       <Show when={!apiKeyStore.activeKey()}>
         <NoActiveKey />
       </Show>
@@ -409,16 +314,16 @@ function UploadPage() {
       <Show when={apiKeyStore.activeKey()}>
         <Show when={submitted()}>
           {(s) => (
-            <div {...stylex.attrs(styles.successBox)}>
-              <h3 {...stylex.attrs(styles.successTitle)}>{t('upload.submitted')}</h3>
-              <p {...stylex.attrs(styles.successText)}>
+            <div {...stylex.attrs(feedback.successBox)}>
+              <h3 {...stylex.attrs(feedback.successTitle)}>{t('upload.submitted')}</h3>
+              <p {...stylex.attrs(feedback.successText, layout.mb8)}>
                 {t('upload.taskIdLabel')}
                 <code>{s().taskId}</code>
                 {t('upload.fileCount', { count: s().fileNames.length })}
               </p>
               <Link
                 to={ROUTES.taskDetail(s().taskId)}
-                class={stylex.attrs(controls.link, styles.successLink).class}
+                class={stylex.attrs(controls.link, typography.body).class}
               >
                 {t('upload.viewDetail')}
               </Link>
@@ -430,12 +335,15 @@ function UploadPage() {
           <p {...stylex.attrs(controls.alertError)}>{error()}</p>
         </Show>
 
-        <form onSubmit={handleSubmit} {...stylex.attrs(controls.form)}>
+        <form onSubmit={handleSubmit} {...stylex.attrs(layout.stack16)}>
           {/* File picker */}
-          <section {...stylex.attrs(controls.card, styles.section)}>
-            <h2 {...stylex.attrs(styles.sectionTitle)}>{t('upload.fileSection')}</h2>
+          <section {...stylex.attrs(controls.card, layout.column)}>
+            <h2 {...stylex.attrs(typography.sectionTitleTight)}>
+              {t('upload.fileSection')}
+            </h2>
             <label
               {...stylex.attrs(
+                layout.transitionColors,
                 styles.dropzone,
                 isDragging() ? styles.dropzoneDragging : styles.dropzoneIdle,
               )}
@@ -444,8 +352,8 @@ function UploadPage() {
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
             >
-              <FileUp class={stylex.attrs(styles.fileIcon).class} />
-              <span {...stylex.attrs(styles.dropzoneText)}>{t('upload.filePicker')}</span>
+              <FileUp class={stylex.attrs(icons.lg, styles.fileIcon).class} />
+              <span {...stylex.attrs(typography.bodyMuted)}>{t('upload.filePicker')}</span>
               <input
                 type="file"
                 multiple
@@ -462,7 +370,7 @@ function UploadPage() {
               <ul {...stylex.attrs(styles.fileList)}>
                 <For each={files()}>
                   {(file, index) => (
-                    <li {...stylex.attrs(styles.fileItem)}>
+                    <li {...stylex.attrs(typography.body, styles.fileItem)}>
                       <span>
                         {file.name}
                         <span {...stylex.attrs(styles.fileSize)}>
@@ -472,15 +380,15 @@ function UploadPage() {
                       <button
                         type="button"
                         onClick={() => removeFile(index())}
-                        {...stylex.attrs(styles.removeButton)}
+                        {...stylex.attrs(controls.iconButton, styles.removeButton)}
                       >
-                        <X class={stylex.attrs(styles.removeIcon).class} />
+                        <X class={stylex.attrs(icons.sm).class} />
                       </button>
                     </li>
                   )}
                 </For>
               </ul>
-              <p {...stylex.attrs(styles.sizeSummary)}>
+              <p {...stylex.attrs(typography.metaFaint, layout.mt8)}>
                 {t('upload.sizeSummary', {
                   count: files().length,
                   size: formatFileSize(totalSize()),
@@ -491,8 +399,10 @@ function UploadPage() {
           </section>
 
           {/* Parse options */}
-          <section {...stylex.attrs(controls.card, styles.section, styles.optionsSection)}>
-            <h2 {...stylex.attrs(styles.optionsTitle)}>{t('upload.optionsSection')}</h2>
+          <section {...stylex.attrs(controls.card, layout.stack16)}>
+            <h2 {...stylex.attrs(typography.sectionHeading)}>
+              {t('upload.optionsSection')}
+            </h2>
 
             <div {...stylex.attrs(styles.optionsGrid)}>
               <label {...stylex.attrs(controls.field)}>
@@ -537,7 +447,7 @@ function UploadPage() {
               <div {...stylex.attrs(controls.fieldLabel, styles.languageHeader)}>
                 {t('upload.language')}
                 <div {...stylex.attrs(styles.tooltipHost, stylex.defaultMarker())}>
-                  <CircleQuestionMark class={stylex.attrs(styles.helpIcon).class} />
+                  <CircleQuestionMark class={stylex.attrs(icons.sm, typography.faint).class} />
                   <div {...stylex.attrs(styles.tooltip)}>
                     <LanguageCodeTable />
                   </div>
@@ -546,7 +456,7 @@ function UploadPage() {
               <div {...stylex.attrs(styles.languageList)}>
                 <For each={MINERU_LANGUAGES}>
                   {(lang) => (
-                    <label {...stylex.attrs(styles.checkboxLabel)}>
+                    <label {...stylex.attrs(forms.checkboxLabel)}>
                       <input
                         type="checkbox"
                         checked={langList().has(lang)}
@@ -560,7 +470,7 @@ function UploadPage() {
             </div>
 
             <div {...stylex.attrs(styles.optionsRow)}>
-              <label {...stylex.attrs(styles.checkboxLabel)}>
+              <label {...stylex.attrs(forms.checkboxLabel)}>
                 <input
                   type="checkbox"
                   checked={formulaEnable()}
@@ -568,7 +478,7 @@ function UploadPage() {
                 />
                 {t('upload.formula')}
               </label>
-              <label {...stylex.attrs(styles.checkboxLabel)}>
+              <label {...stylex.attrs(forms.checkboxLabel)}>
                 <input
                   type="checkbox"
                   checked={tableEnable()}
@@ -576,7 +486,7 @@ function UploadPage() {
                 />
                 {t('upload.table')}
               </label>
-              <label {...stylex.attrs(styles.checkboxLabel)}>
+              <label {...stylex.attrs(forms.checkboxLabel)}>
                 <input
                   type="checkbox"
                   checked={imageAnalysis()}
@@ -584,7 +494,7 @@ function UploadPage() {
                 />
                 {t('upload.imageAnalysis')}
               </label>
-              <label {...stylex.attrs(styles.checkboxLabel)}>
+              <label {...stylex.attrs(forms.checkboxLabel)}>
                 <input
                   type="checkbox"
                   checked={responseZip()}

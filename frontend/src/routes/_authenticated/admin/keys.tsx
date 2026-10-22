@@ -18,12 +18,10 @@ import { useToast } from '@/stores/toast-context';
 import { requireSuperuser } from '@/stores/guard';
 import { errorMessage } from '@/utils/api-error';
 import { controls } from '@/styles/controls.stylex';
-import {
-  fontSize,
-  lineHeight,
-  maxWidth,
-  space,
-} from '@/styles/tokens.stylex';
+import { forms } from '@/styles/forms.stylex';
+import { layout } from '@/styles/layout.stylex';
+import { maxWidth } from '@/styles/tokens.stylex';
+import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/admin/keys')({
   beforeLoad: ({ context }) => {
@@ -35,24 +33,6 @@ export const Route = createFileRoute('/_authenticated/admin/keys')({
 const styles = stylex.create({
   root: {
     maxWidth: maxWidth.px896,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: space.px24,
-  },
-  sectionTitle: {
-    fontSize: fontSize.px18,
-    lineHeight: lineHeight.px28,
-    fontWeight: 600,
-    marginBottom: space.px16,
-  },
-  createForm: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'flex-end',
-    gap: space.px16,
-  },
-  labelInput: {
-    width: space.px224,
   },
 });
 
@@ -158,7 +138,7 @@ function AdminKeysContent() {
   }
 
   return (
-    <div {...stylex.attrs(styles.root)}>
+    <div {...stylex.attrs(layout.stack24, styles.root)}>
       <Show when={error()}>
         <p {...stylex.attrs(controls.alertError)}>{error()}</p>
       </Show>
@@ -168,15 +148,15 @@ function AdminKeysContent() {
       </Show>
 
       <section {...stylex.attrs(controls.card)}>
-        <h2 {...stylex.attrs(styles.sectionTitle)}>{t('adminKeys.issueTitle')}</h2>
-        <form onSubmit={handleCreate} {...stylex.attrs(styles.createForm)}>
+        <h2 {...stylex.attrs(typography.sectionTitle)}>{t('adminKeys.issueTitle')}</h2>
+        <form onSubmit={handleCreate} {...stylex.attrs(forms.row)}>
           <label {...stylex.attrs(controls.field)}>
             <span {...stylex.attrs(controls.fieldLabel)}>{t('adminKeys.label')}</span>
             <input
               type="text"
               value={label()}
               onInput={(e) => setLabel(e.currentTarget.value)}
-              {...stylex.attrs(controls.input, styles.labelInput)}
+              {...stylex.attrs(controls.input, forms.inputMedium)}
             />
           </label>
           <label {...stylex.attrs(controls.field)}>
@@ -199,7 +179,7 @@ function AdminKeysContent() {
       </section>
 
       <section {...stylex.attrs(controls.card)}>
-        <h2 {...stylex.attrs(styles.sectionTitle)}>{t('adminKeys.listTitle')}</h2>
+        <h2 {...stylex.attrs(typography.sectionTitle)}>{t('adminKeys.listTitle')}</h2>
         <ApiKeyTable
           keys={keys()}
           isLoading={isLoading()}

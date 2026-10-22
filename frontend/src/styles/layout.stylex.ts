@@ -1,5 +1,5 @@
 import * as stylex from '@stylexjs/stylex';
-import { colors, maxWidth, radius, shadow, space } from './tokens.stylex';
+import { colors, maxWidth, motion, radius, shadow, space } from './tokens.stylex';
 
 export const layout = stylex.create({
   centeredPage: {
@@ -91,9 +91,8 @@ export const layout = stylex.create({
     flexShrink: 0,
   },
   transitionColors: {
-    transitionProperty:
-      'color, background-color, border-color, text-decoration-color, fill, stroke',
-    transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
-    transitionDuration: '150ms',
+    transitionProperty: motion.colors,
+    transitionTimingFunction: motion.easing,
+    transitionDuration: motion.duration,
   },
 });

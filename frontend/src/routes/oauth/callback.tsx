@@ -4,44 +4,12 @@ import { Link, createFileRoute, useNavigate } from '@tanstack/solid-router';
 import { t } from '@/i18n';
 import { useAuth } from '@/stores/auth-context';
 import { ROUTES } from '@/utils/constants';
+import { auth as authStyles } from '@/styles/auth.stylex';
 import { controls } from '@/styles/controls.stylex';
 import { layout } from '@/styles/layout.stylex';
-import {
-  colors,
-  fontSize,
-  lineHeight,
-  space,
-} from '@/styles/tokens.stylex';
 
 export const Route = createFileRoute('/oauth/callback')({
   component: OAuthCallbackPage,
-});
-
-const styles = stylex.create({
-  panelCentered: {
-    textAlign: 'center',
-  },
-  title: {
-    fontSize: fontSize.px20,
-    lineHeight: lineHeight.px28,
-    fontWeight: 700,
-    marginBottom: space.px8,
-  },
-  text: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    color: colors.gray600,
-    marginBottom: space.px16,
-  },
-  error: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
-    color: colors.red600,
-    marginBottom: space.px16,
-  },
-  loading: {
-    color: colors.gray600,
-  },
 });
 
 /**
@@ -102,7 +70,7 @@ function OAuthCallbackPage() {
 
   return (
     <div {...stylex.attrs(layout.centeredPage)}>
-      <div {...stylex.attrs(layout.panel, styles.panelCentered)}>
+      <div {...stylex.attrs(layout.panel, layout.textCenter)}>
         <Show
           when={verifyState() === 'success'}
           fallback={
@@ -111,26 +79,26 @@ function OAuthCallbackPage() {
               fallback={
                 <Show
                   when={error()}
-                  fallback={<p {...stylex.attrs(styles.loading)}>{t('oauth.completing')}</p>}
+                  fallback={<p {...stylex.attrs(authStyles.oauthLoading)}>{t('oauth.completing')}</p>}
                 >
-                  <h1 {...stylex.attrs(styles.title)}>{t('oauth.failedTitle')}</h1>
-                  <p {...stylex.attrs(styles.error)}>{error()}</p>
+                  <h1 {...stylex.attrs(authStyles.oauthTitle)}>{t('oauth.failedTitle')}</h1>
+                  <p {...stylex.attrs(authStyles.oauthError)}>{error()}</p>
                   <Link to={ROUTES.login} class={stylex.attrs(controls.link).class}>
                     {t('oauth.backToLogin')}
                   </Link>
                 </Show>
               }
             >
-              <h1 {...stylex.attrs(styles.title)}>{t('oauth.verifyFailedTitle')}</h1>
-              <p {...stylex.attrs(styles.error)}>{t('oauth.verifyFailedBody')}</p>
+              <h1 {...stylex.attrs(authStyles.oauthTitle)}>{t('oauth.verifyFailedTitle')}</h1>
+              <p {...stylex.attrs(authStyles.oauthError)}>{t('oauth.verifyFailedBody')}</p>
               <Link to={ROUTES.login} class={stylex.attrs(controls.link).class}>
                 {t('oauth.backToLogin')}
               </Link>
             </Show>
           }
         >
-          <h1 {...stylex.attrs(styles.title)}>{t('oauth.verifySuccessTitle')}</h1>
-          <p {...stylex.attrs(styles.text)}>{t('oauth.verifySuccessBody')}</p>
+          <h1 {...stylex.attrs(authStyles.oauthTitle)}>{t('oauth.verifySuccessTitle')}</h1>
+          <p {...stylex.attrs(authStyles.oauthText)}>{t('oauth.verifySuccessBody')}</p>
           <Show
             when={auth.isAuthenticated()}
             fallback={

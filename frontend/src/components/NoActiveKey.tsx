@@ -4,14 +4,9 @@ import { KeyRound } from 'lucide-solid';
 import { t } from '@/i18n';
 import { ROUTES } from '@/utils/constants';
 import { controls } from '@/styles/controls.stylex';
-import {
-  colors,
-  fontSize,
-  lineHeight,
-  maxWidth,
-  radius,
-  space,
-} from '@/styles/tokens.stylex';
+import { icons } from '@/styles/icons.stylex';
+import { colors, maxWidth, radius, space } from '@/styles/tokens.stylex';
+import { typography } from '@/styles/typography.stylex';
 
 const styles = stylex.create({
   card: {
@@ -27,8 +22,6 @@ const styles = stylex.create({
     marginTop: space.px32,
   },
   icon: {
-    width: space.px32,
-    height: space.px32,
     color: colors.amber500,
     marginInline: 'auto',
     marginBottom: space.px12,
@@ -39,8 +32,6 @@ const styles = stylex.create({
     marginBottom: space.px8,
   },
   text: {
-    fontSize: fontSize.px14,
-    lineHeight: lineHeight.px20,
     color: colors.amber700,
     marginBottom: space.px16,
   },
@@ -56,9 +47,11 @@ const styles = stylex.create({
 export default function NoActiveKey() {
   return (
     <div {...stylex.attrs(styles.card)}>
-      <KeyRound class={stylex.attrs(styles.icon).class} />
+      <KeyRound class={stylex.attrs(icons.lg, styles.icon).class} />
       <h2 {...stylex.attrs(styles.title)}>{t('noActiveKey.title')}</h2>
-      <p {...stylex.attrs(styles.text)}>{t('noActiveKey.description')}</p>
+      <p {...stylex.attrs(typography.body, styles.text)}>
+        {t('noActiveKey.description')}
+      </p>
       <Link
         to={ROUTES.apiKeys}
         class={stylex.attrs(controls.button, controls.buttonAmber, styles.cta).class}

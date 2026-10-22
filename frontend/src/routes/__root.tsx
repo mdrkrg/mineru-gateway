@@ -7,21 +7,13 @@ import { t } from '@/i18n';
 import type { AuthStore } from '../stores/auth';
 import { controls } from '@/styles/controls.stylex';
 import { layout } from '@/styles/layout.stylex';
-import { colors, fontSize, lineHeight, space } from '@/styles/tokens.stylex';
+import { space } from '@/styles/tokens.stylex';
+import { typography } from '@/styles/typography.stylex';
 
 const styles = stylex.create({
-  pendingText: {
-    color: colors.gray500,
-  },
   notFound: {
     padding: space.px32,
     textAlign: 'center',
-  },
-  notFoundTitle: {
-    fontSize: fontSize.px24,
-    lineHeight: lineHeight.px32,
-    fontWeight: 700,
-    marginBottom: space.px16,
   },
 });
 
@@ -32,13 +24,15 @@ export const Route = createRootRoute({
   component: RootComponent,
   pendingComponent: () => (
     <div {...stylex.attrs(layout.centeredPage)}>
-      <p {...stylex.attrs(styles.pendingText)}>{t('common.loading')}</p>
+      <p {...stylex.attrs(typography.muted)}>{t('common.loading')}</p>
     </div>
   ),
   notFoundComponent: () => {
     return (
       <div {...stylex.attrs(styles.notFound)}>
-        <h1 {...stylex.attrs(styles.notFoundTitle)}>{t('root.notFound')}</h1>
+        <h1 {...stylex.attrs(typography.heroTitle, layout.mb16)}>
+          {t('root.notFound')}
+        </h1>
         <Link to="/" class={stylex.attrs(controls.link).class}>
           {t('root.goHome')}
         </Link>
