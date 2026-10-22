@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 from pydantic import (
     BaseModel,
     EmailStr,
+    Field,
     ValidationInfo,
     field_validator,
     model_validator,
@@ -112,6 +113,9 @@ class Settings(BaseSettings):
     )
 
     upstream_url: str = "http://127.0.0.1:8002"
+    # Read timeout for sync parses/result downloads; `/tasks` uses 30s (see
+    # `upstream/client.py`). Must cover MinerU's `wait_timeout` (default 300s).
+    upstream_timeout_read: float = Field(default=600.0, gt=0)
     database_url: str = "sqlite+aiosqlite:///./gateway.db"
     admin_token: str = "change-me"
     allow_anonymous: bool = False

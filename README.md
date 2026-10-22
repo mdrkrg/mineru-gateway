@@ -82,6 +82,7 @@ All settings use the `GATEWAY_` env prefix.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GATEWAY_UPSTREAM_URL` | `http://127.0.0.1:8002` | Upstream router/api address |
+| `GATEWAY_UPSTREAM_TIMEOUT_READ` | `600` | Upstream read timeout for sync parse/result, seconds (`/tasks` uses 30s) |
 | `GATEWAY_DATABASE_URL` | `sqlite+aiosqlite:///./gateway.db` | SQLite (default) or PostgreSQL |
 | `GATEWAY_ADMIN_TOKEN` | `change-me` | Token required to manage API keys — **set this** |
 | `GATEWAY_ALLOW_ANONYMOUS` | `false` | Allow keyless pure passthrough |

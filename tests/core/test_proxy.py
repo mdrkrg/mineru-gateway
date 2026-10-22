@@ -918,3 +918,63 @@ async def test_unhandled_exception_returns_500_json(app, api_key, sample_files):
             )
         assert resp.status_code == 500
         assert resp.json() == {"detail": "Internal server error"}
+
+
+async def test_upstream_timeout_returns_504(client, api_key, sample_files, monkeypatch):
+    """A timed-out upstream call is reported as 504 with Retry-After, not 500."""
+
+    async def _timeout(*_args, **_kwargs):
+        raise httpx.ReadTimeout(
+            "slow", request=httpx.Request("POST", "http://up/tasks")
+        )
+
+    monkeypatch.setattr(
+        "mineru_gateway.upstream.client.UpstreamClient.submit_task", _timeout
+    )
+
+    resp = await client.post(
+        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+    )
+    assert resp.status_code == 504
+    assert resp.json() == {"detail": "Upstream timeout"}
+    assert resp.headers["Retry-After"]
+
+
+async def test_pool_timeout_returns_503(client, api_key, sample_files, monkeypatch):
+    """Pool exhaustion is local capacity, not an upstream timeout."""
+
+    async def _pool(*_args, **_kwargs):
+        raise httpx.PoolTimeout(
+            "pool", request=httpx.Request("POST", "http://up/tasks")
+        )
+
+    monkeypatch.setattr(
+        "mineru_gateway.upstream.client.UpstreamClient.submit_task", _pool
+    )
+
+    resp = await client.post(
+        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+    )
+    assert resp.status_code == 503
+    assert resp.json() == {"detail": "Upstream connection pool exhausted"}
+    assert resp.headers["Retry-After"] == "30"
+
+
+async def test_connect_error_returns_502(client, api_key, sample_files, monkeypatch):
+    """An upstream connection failure is a 502, not an unhandled 500."""
+
+    async def _down(*_args, **_kwargs):
+        raise httpx.ConnectError(
+            "down", request=httpx.Request("POST", "http://up/tasks")
+        )
+
+    monkeypatch.setattr(
+        "mineru_gateway.upstream.client.UpstreamClient.submit_task", _down
+    )
+
+    resp = await client.post(
+        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+    )
+    assert resp.status_code == 502
+    assert resp.json() == {"detail": "Upstream request failed"}
+    assert resp.headers["Retry-After"] == "5"

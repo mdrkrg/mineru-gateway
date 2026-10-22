@@ -28,7 +28,7 @@ from .middleware import RequestLoggingMiddleware
 from .proxy.routes import router as proxy_router
 from .tasks.cache import FileCache
 from .tasks.routes import router as tasks_router
-from .upstream.client import UpstreamClient
+from .upstream.client import UpstreamClient, build_http_client, build_probe_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -85,11 +85,9 @@ def create_app(
         if create_tables:
             await db.create_all()
 
-        client = upstream_client or httpx.AsyncClient(
-            base_url=settings.upstream_url, timeout=30.0
-        )
+        client = upstream_client or build_http_client(settings)
 
-        upstream = UpstreamClient(client)
+        upstream = UpstreamClient(client, probe_timeout=build_probe_timeout(settings))
         limiter = MemoryTokenBucket(
             rate=settings.rate_limit_per_key,
             burst=max(settings.rate_limit_per_key * 3, 1),
@@ -169,6 +167,39 @@ def create_app(
         logger.exception("Unhandled exception: %s", exc)
         return JSONResponse(
             status_code=500, content={"detail": "Internal server error"}
+        )
+
+    @app.exception_handler(httpx.PoolTimeout)
+    async def _pool_timeout_handler(
+        _request: Request, exc: httpx.PoolTimeout
+    ) -> JSONResponse:
+        logger.warning("Upstream connection pool exhausted: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Upstream connection pool exhausted"},
+            headers={"Retry-After": "30"},
+        )
+
+    @app.exception_handler(httpx.TimeoutException)
+    async def _timeout_handler(
+        _request: Request, exc: httpx.TimeoutException
+    ) -> JSONResponse:
+        logger.warning("Upstream timeout: %s", type(exc).__name__)
+        return JSONResponse(
+            status_code=504,
+            content={"detail": "Upstream timeout"},
+            headers={"Retry-After": "5"},
+        )
+
+    @app.exception_handler(httpx.TransportError)
+    async def _transport_error_handler(
+        _request: Request, exc: httpx.TransportError
+    ) -> JSONResponse:
+        logger.warning("Upstream request failed: %s: %s", type(exc).__name__, exc)
+        return JSONResponse(
+            status_code=502,
+            content={"detail": "Upstream request failed"},
+            headers={"Retry-After": "5"},
         )
 
     # Section 6.3: always-registered routes
