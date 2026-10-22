@@ -53,52 +53,54 @@ export const colors = stylex.defineConsts({
   orange700: 'oklch(55.3% 0.195 38.402)',
 });
 
+// Values stay on the Wind4 scale, but use rem so browser font-size
+// preferences continue to scale the UI (the old UnoCSS classes did).
 export const space = stylex.defineConsts({
-  px2: '2px',
-  px4: '4px',
-  px6: '6px',
-  px8: '8px',
-  px10: '10px',
-  px12: '12px',
-  px14: '14px',
-  px16: '16px',
-  px20: '20px',
-  px24: '24px',
-  px28: '28px',
-  px32: '32px',
-  px40: '40px',
-  px48: '48px',
-  px56: '56px',
-  px64: '64px',
-  px80: '80px',
-  px96: '96px',
-  px128: '128px',
-  px192: '192px',
-  px224: '224px',
-  px256: '256px',
-  px320: '320px',
+  px2: '0.125rem',
+  px4: '0.25rem',
+  px6: '0.375rem',
+  px8: '0.5rem',
+  px10: '0.625rem',
+  px12: '0.75rem',
+  px14: '0.875rem',
+  px16: '1rem',
+  px20: '1.25rem',
+  px24: '1.5rem',
+  px28: '1.75rem',
+  px32: '2rem',
+  px40: '2.5rem',
+  px48: '3rem',
+  px56: '3.5rem',
+  px64: '4rem',
+  px80: '5rem',
+  px96: '6rem',
+  px128: '8rem',
+  px192: '12rem',
+  px224: '14rem',
+  px256: '16rem',
+  px320: '20rem',
 });
 
 export const fontSize = stylex.defineConsts({
-  px12: '12px',
-  px14: '14px',
-  px16: '16px',
-  px18: '18px',
-  px20: '20px',
-  px24: '24px',
+  px12: '0.75rem',
+  px14: '0.875rem',
+  px16: '1rem',
+  px18: '1.125rem',
+  px20: '1.25rem',
+  px24: '1.5rem',
 });
 
 export const lineHeight = stylex.defineConsts({
-  px16: '16px',
-  px20: '20px',
-  px24: '24px',
-  px28: '28px',
-  px32: '32px',
+  px16: '1rem',
+  px20: '1.25rem',
+  px24: '1.5rem',
+  px28: '1.75rem',
+  px32: '2rem',
 });
 
 export const radius = stylex.defineConsts({
-  px4: '4px',
-  px8: '8px',
+  px4: '0.25rem',
+  px8: '0.5rem',
 });
 
 export const shadow = stylex.defineConsts({
@@ -108,19 +110,19 @@ export const shadow = stylex.defineConsts({
 });
 
 export const maxWidth = stylex.defineConsts({
-  px192: '192px',
-  px256: '256px',
-  px384: '384px',
-  px448: '448px',
-  px512: '512px',
-  px576: '576px',
-  px672: '672px',
-  px768: '768px',
-  px896: '896px',
-  px1024: '1024px',
+  px192: '12rem',
+  px256: '16rem',
+  px384: '24rem',
+  px448: '28rem',
+  px512: '32rem',
+  px576: '36rem',
+  px672: '42rem',
+  px768: '48rem',
+  px896: '56rem',
+  px1024: '64rem',
 });
 
 export const breakpoint = stylex.defineConsts({
-  sm: '@media (min-width: 640px)',
-  lg: '@media (min-width: 1024px)',
+  sm: '@media (min-width: 40rem)',
+  lg: '@media (min-width: 64rem)',
 });

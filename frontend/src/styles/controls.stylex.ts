@@ -15,11 +15,13 @@ export const controls = stylex.create({
     borderRadius: radius.px4,
     paddingInline: space.px12,
     paddingBlock: space.px8,
-    outlineStyle: 'none',
-    boxShadow: {
-      default: null,
-      ':focus-visible': `0 0 0 2px ${colors.blue500}`,
+    outlineStyle: {
+      default: 'none',
+      ':focus-visible': 'solid',
     },
+    outlineWidth: 2,
+    outlineColor: colors.blue500,
+    outlineOffset: 0,
   },
   link: {
     color: colors.blue600,
@@ -45,7 +47,13 @@ export const controls = stylex.create({
       default: 'pointer',
       ':disabled': 'not-allowed',
     },
-    outlineStyle: 'none',
+    outlineStyle: {
+      default: 'none',
+      ':focus-visible': 'solid',
+    },
+    outlineWidth: 2,
+    outlineColor: colors.blue500,
+    outlineOffset: 0,
     textDecorationLine: 'none',
     transitionProperty:
       'color, background-color, border-color, text-decoration-color, fill, stroke',
@@ -54,29 +62,25 @@ export const controls = stylex.create({
     opacity: {
       ':disabled': 0.5,
     },
-    boxShadow: {
-      default: null,
-      ':focus-visible': `0 0 0 2px ${colors.blue500}`,
-    },
   },
   buttonPrimary: {
     backgroundColor: {
       default: colors.blue600,
-      ':enabled:hover': colors.blue700,
+      ':hover:not(:disabled)': colors.blue700,
     },
     color: colors.white,
   },
   buttonAmber: {
     backgroundColor: {
       default: colors.amber600,
-      ':enabled:hover': colors.amber700,
+      ':hover:not(:disabled)': colors.amber700,
     },
     color: colors.white,
   },
   buttonDanger: {
     backgroundColor: {
       default: colors.red600,
-      ':enabled:hover': colors.red700,
+      ':hover:not(:disabled)': colors.red700,
     },
     color: colors.white,
   },
@@ -85,7 +89,7 @@ export const controls = stylex.create({
     borderColor: colors.gray300,
     backgroundColor: {
       default: 'transparent',
-      ':enabled:hover': colors.gray50,
+      ':hover:not(:disabled)': colors.gray50,
     },
     color: colors.gray700,
   },
@@ -137,5 +141,8 @@ export const controls = stylex.create({
     borderRadius: radius.px4,
     paddingInline: space.px12,
     paddingBlock: space.px8,
+  },
+  alertSpacing: {
+    marginBottom: space.px16,
   },
 });
