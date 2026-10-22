@@ -35,7 +35,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       proxy: {
-        '^/api': {
+        '^/api/': {
           target: env.VITE_API_BASE,
           changeOrigin: true,
           secure: false,
