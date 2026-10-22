@@ -643,7 +643,7 @@ src/mineru_gateway/auth/
 ├── __init__.py
 ├── backend.py              # JWT 认证后端：鉴权策略、令牌签发与验证
 ├── dependencies.py         # [修改] 增加 get_user_db, get_user_manager, current_active_user
-├── manager.py              # UserManager（用户注册/登录回调）、FastAPIUsers 实例
+├── manager.py              # UserManager（用户注册/登录回调）
 ├── schemas.py              # UserRead, UserCreate, UserUpdate, 令牌响应 schemas
 ├── jwt_routes.py           # /auth/jwt/login, /auth/jwt/refresh, /auth/jwt/logout, /auth/register, /auth/users
 ├── user_routes.py          # /users/me (get_users_router)

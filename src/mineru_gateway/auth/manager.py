@@ -1,4 +1,4 @@
-"""UserManager and FastAPIUsers instance (Section 5.1, 5.2).
+"""UserManager (Section 5.2).
 
 Spec: user-management-and-oauth.md Section 5.2 (UserManager interfaces).
 """
@@ -11,13 +11,12 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 
 from fastapi import Depends, Request, Response
-from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin, exceptions
+from fastapi_users import BaseUserManager, UUIDIDMixin, exceptions
 from fastapi_users.db import SQLAlchemyUserDatabase
 
 from ..config import Settings
 from ..email import service as email_service
 from ..models import User
-from .backend import create_auth_backend
 from .dependencies import get_settings_dep, get_user_db
 
 logger = logging.getLogger(__name__)
@@ -92,16 +91,3 @@ async def get_user_manager(
     settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> AsyncGenerator[UserManager, None]:
     yield UserManager(user_db, settings)
-
-
-_fastapi_users: FastAPIUsers[User, uuid.UUID] | None = None
-
-
-def get_fastapi_users(settings: Settings) -> FastAPIUsers[User, uuid.UUID]:
-    """Lazily create the FastAPIUsers singleton bound to settings."""
-    global _fastapi_users
-    if _fastapi_users is None:
-        _fastapi_users = FastAPIUsers[User, uuid.UUID](
-            get_user_manager, [create_auth_backend(settings)]
-        )
-    return _fastapi_users

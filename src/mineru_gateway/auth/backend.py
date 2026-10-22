@@ -1,15 +1,11 @@
-"""JWT authentication backend (Section 5.2).
+"""JWT strategies and token operations (Section 5.2).
 
 Spec: user-management-and-oauth.md Section 5.2 (issue_token_pair, verify_refresh_token).
 """
 
 from __future__ import annotations
 
-from fastapi_users.authentication import (
-    AuthenticationBackend,
-    BearerTransport,
-    JWTStrategy,
-)
+from fastapi_users.authentication import JWTStrategy
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Settings
@@ -31,18 +27,6 @@ def get_refresh_jwt_strategy(settings: Settings) -> JWTStrategy:
         secret=settings.jwt_secret,
         lifetime_seconds=settings.jwt_refresh_lifetime_seconds,
         token_audience=["fastapi-users:refresh"],
-    )
-
-
-bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
-
-
-def create_auth_backend(settings: Settings) -> AuthenticationBackend:
-    """Section 5.1: JWT auth backend (bearer transport + strategy)."""
-    return AuthenticationBackend(
-        name="jwt",
-        transport=bearer_transport,
-        get_strategy=lambda: get_jwt_strategy(settings),
     )
 
 
