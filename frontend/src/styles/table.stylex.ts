@@ -22,7 +22,7 @@ export const table = stylex.create({
     color: colors.gray500,
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
-    borderBottomColor: 'currentColor',
+    borderBottomColor: colors.gray200,
   },
   thCheck: {
     paddingBlock: space.px8,
@@ -38,7 +38,7 @@ export const table = stylex.create({
   row: {
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
-    borderBottomColor: 'currentColor',
+    borderBottomColor: colors.gray200,
     backgroundColor: {
       ':hover': colors.gray50,
     },
@@ -46,7 +46,7 @@ export const table = stylex.create({
   rowStatic: {
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
-    borderBottomColor: 'currentColor',
+    borderBottomColor: colors.gray200,
   },
   lastRow: {
     borderBottomWidth: 0,
