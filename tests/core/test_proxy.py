@@ -9,6 +9,7 @@ Plan: Phase 1 — "POST /tasks (异步) + POST /file_parse (同步) 流式透传
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 
 from unittest.mock import AsyncMock, patch
@@ -978,3 +979,51 @@ async def test_connect_error_returns_502(client, api_key, sample_files, monkeypa
     assert resp.status_code == 502
     assert resp.json() == {"detail": "Upstream request failed"}
     assert resp.headers["Retry-After"] == "5"
+
+
+async def test_submit_releases_staged_upload_when_upstream_fails(
+    app, client, api_key, sample_files, monkeypatch
+):
+    """A failed submission must not leave the staged upload on disk."""
+
+    async def _down(*_args, **_kwargs):
+        raise httpx.ConnectError(
+            "down", request=httpx.Request("POST", "http://up/tasks")
+        )
+
+    monkeypatch.setattr(
+        "mineru_gateway.upstream.client.UpstreamClient.submit_task", _down
+    )
+
+    resp = await client.post(
+        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+    )
+    assert resp.status_code == 502
+    assert resp.json() == {"detail": "Upstream request failed"}
+
+    cache_dir = app.state.file_cache.base_dir
+    assert os.listdir(cache_dir) == []
+
+
+async def test_submit_releases_staged_upload_on_timeout(
+    app, client, api_key, sample_files, monkeypatch
+):
+    """A timed-out submission returns 504 and releases the staged upload."""
+
+    async def _timeout(*_args, **_kwargs):
+        raise httpx.ReadTimeout(
+            "slow", request=httpx.Request("POST", "http://up/tasks")
+        )
+
+    monkeypatch.setattr(
+        "mineru_gateway.upstream.client.UpstreamClient.submit_task", _timeout
+    )
+
+    resp = await client.post(
+        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+    )
+    assert resp.status_code == 504
+    assert resp.json() == {"detail": "Upstream timeout"}
+
+    cache_dir = app.state.file_cache.base_dir
+    assert os.listdir(cache_dir) == []

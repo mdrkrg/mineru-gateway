@@ -340,8 +340,12 @@ async def handle_task_submission(
     # then release the cache directory immediately (no record kept).
     # spec: streaming-upload.md sec 1.2
     if api_key is None:
-        _, files = await cache.restore(cache_dir)
-        upstream_resp = await upstream.submit_task(data, files)
+        try:
+            _, files = await cache.restore(cache_dir)
+            upstream_resp = await upstream.submit_task(data, files)
+        except Exception:
+            await cache.release(cache_dir)
+            raise
         await cache.release(cache_dir)
         return _relay_response(upstream_resp)
 
@@ -361,8 +365,14 @@ async def handle_task_submission(
                 headers={"Retry-After": "10"},
             )
 
-    _, files = await cache.restore(cache_dir)
-    upstream_resp = await upstream.submit_task(data, files)
+    try:
+        _, files = await cache.restore(cache_dir)
+        upstream_resp = await upstream.submit_task(data, files)
+    except Exception:
+        # The staged upload is kept in the task record on success, so it must
+        # be released whenever the submission never produced one.
+        await cache.release(cache_dir)
+        raise
     if upstream_resp.status_code != 202:
         await cache.release(cache_dir)
         return _relay_response(upstream_resp)
