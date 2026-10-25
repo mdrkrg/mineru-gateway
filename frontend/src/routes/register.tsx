@@ -7,7 +7,6 @@ import { errorMessage } from '@/utils/api-error';
 import { ROUTES } from '@/utils/constants';
 import { onMount } from 'solid-js';
 import { useAuth } from '@/stores/auth-context';
-import { auth as authStyles } from '@/styles/auth.stylex';
 import { controls } from '@/styles/controls.stylex';
 import { layout } from '@/styles/layout.stylex';
 import { typography } from '@/styles/typography.stylex';
@@ -69,7 +68,9 @@ function RegisterPage() {
           fallback={
             <>
               <h1 {...stylex.attrs(typography.heroTitle)}>{t('register.title')}</h1>
-              <p {...stylex.attrs(authStyles.heroSubtitle)}>MinerU Gateway</p>
+              <p {...stylex.attrs(typography.bodyMuted, layout.textCenter, layout.mb24)}>
+                MinerU Gateway
+              </p>
 
               <form onSubmit={handleSubmit} {...stylex.attrs(layout.stack16)}>
                 <label {...stylex.attrs(controls.field)}>
@@ -134,7 +135,7 @@ function RegisterPage() {
                 </button>
               </form>
 
-              <p {...stylex.attrs(authStyles.footer)}>
+              <p {...stylex.attrs(typography.bodyMuted, layout.textCenter, layout.mt16)}>
                 {t('register.hasAccount')}{' '}
                 <Link to={ROUTES.login} class={stylex.attrs(controls.link).class}>
                   {t('register.toLogin')}
@@ -146,7 +147,7 @@ function RegisterPage() {
           {(email) => (
             <div {...stylex.attrs(layout.textCenter)}>
               <h1 {...stylex.attrs(typography.heroTitle)}>{t('register.successTitle')}</h1>
-              <p {...stylex.attrs(authStyles.successBody)}>
+              <p {...stylex.attrs(typography.bodySecondary, layout.mb24)}>
                 {t('register.successPrefix')}
                 <span {...stylex.attrs(typography.emphasis)}>{email()}</span>
                 {t('register.successSuffix')}

@@ -7,6 +7,7 @@ import { ROUTES } from '@/utils/constants';
 import { auth as authStyles } from '@/styles/auth.stylex';
 import { controls } from '@/styles/controls.stylex';
 import { layout } from '@/styles/layout.stylex';
+import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/oauth/callback')({
   component: OAuthCallbackPage,
@@ -81,24 +82,24 @@ function OAuthCallbackPage() {
                   when={error()}
                   fallback={<p {...stylex.attrs(authStyles.oauthLoading)}>{t('oauth.completing')}</p>}
                 >
-                  <h1 {...stylex.attrs(authStyles.oauthTitle)}>{t('oauth.failedTitle')}</h1>
-                  <p {...stylex.attrs(authStyles.oauthError)}>{error()}</p>
+                  <h1 {...stylex.attrs(typography.pageTitle, layout.mb8)}>{t('oauth.failedTitle')}</h1>
+                  <p {...stylex.attrs(controls.errorText, layout.mb16)}>{error()}</p>
                   <Link to={ROUTES.login} class={stylex.attrs(controls.link).class}>
                     {t('oauth.backToLogin')}
                   </Link>
                 </Show>
               }
             >
-              <h1 {...stylex.attrs(authStyles.oauthTitle)}>{t('oauth.verifyFailedTitle')}</h1>
-              <p {...stylex.attrs(authStyles.oauthError)}>{t('oauth.verifyFailedBody')}</p>
+              <h1 {...stylex.attrs(typography.pageTitle, layout.mb8)}>{t('oauth.verifyFailedTitle')}</h1>
+              <p {...stylex.attrs(controls.errorText, layout.mb16)}>{t('oauth.verifyFailedBody')}</p>
               <Link to={ROUTES.login} class={stylex.attrs(controls.link).class}>
                 {t('oauth.backToLogin')}
               </Link>
             </Show>
           }
         >
-          <h1 {...stylex.attrs(authStyles.oauthTitle)}>{t('oauth.verifySuccessTitle')}</h1>
-          <p {...stylex.attrs(authStyles.oauthText)}>{t('oauth.verifySuccessBody')}</p>
+          <h1 {...stylex.attrs(typography.pageTitle, layout.mb8)}>{t('oauth.verifySuccessTitle')}</h1>
+          <p {...stylex.attrs(typography.bodySecondary, layout.mb16)}>{t('oauth.verifySuccessBody')}</p>
           <Show
             when={auth.isAuthenticated()}
             fallback={

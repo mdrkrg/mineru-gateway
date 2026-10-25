@@ -54,7 +54,9 @@ function LoginPage() {
     <div {...stylex.attrs(layout.centeredPage)}>
       <div {...stylex.attrs(layout.panel)}>
         <h1 {...stylex.attrs(typography.heroTitle)}>{t('login.title')}</h1>
-        <p {...stylex.attrs(authStyles.heroSubtitle)}>MinerU Gateway</p>
+        <p {...stylex.attrs(typography.bodyMuted, layout.textCenter, layout.mb24)}>
+          MinerU Gateway
+        </p>
 
         <form onSubmit={handleSubmit} {...stylex.attrs(layout.stack16)}>
           <label {...stylex.attrs(controls.field)}>
@@ -96,7 +98,7 @@ function LoginPage() {
 
         <Show when={providers().length > 0}>
           <div {...stylex.attrs(layout.mt16)}>
-            <div {...stylex.attrs(authStyles.divider)}>
+            <div {...stylex.attrs(layout.rowCenter8, layout.mb12)}>
               <div {...stylex.attrs(authStyles.dividerLine)} />
               <span {...stylex.attrs(typography.metaFaint)}>{t('login.oauthDivider')}</span>
               <div {...stylex.attrs(authStyles.dividerLine)} />
@@ -121,7 +123,7 @@ function LoginPage() {
           </div>
         </Show>
 
-        <p {...stylex.attrs(authStyles.footer)}>
+        <p {...stylex.attrs(typography.bodyMuted, layout.textCenter, layout.mt16)}>
           {t('login.noAccount')}{' '}
           <Link to={ROUTES.register} class={stylex.attrs(controls.link).class}>
             {t('login.toRegister')}
