@@ -29,7 +29,7 @@ import { feedback } from '@/styles/feedback.stylex';
 import { forms } from '@/styles/forms.stylex';
 import { icons } from '@/styles/icons.stylex';
 import { layout } from '@/styles/layout.stylex';
-import { breakpoint, colors, maxWidth, radius, shadow, space } from '@/styles/tokens.stylex';
+import { breakpoint, colors, radius, shadow, space } from '@/styles/tokens.stylex';
 import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/upload')({
@@ -37,9 +37,6 @@ export const Route = createFileRoute('/_authenticated/upload')({
 });
 
 const styles = stylex.create({
-  root: {
-    maxWidth: maxWidth.px768,
-  },
   dropzone: {
     display: 'flex',
     flexDirection: 'column',
@@ -306,7 +303,7 @@ function UploadPage() {
   }
 
   return (
-    <div {...stylex.attrs(layout.stack16, styles.root)}>
+    <div {...stylex.attrs(layout.stack16, layout.pageWidth768)}>
       <Show when={!apiKeyStore.activeKey()}>
         <NoActiveKey />
       </Show>

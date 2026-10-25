@@ -20,7 +20,6 @@ import { errorMessage } from '@/utils/api-error';
 import { controls } from '@/styles/controls.stylex';
 import { forms } from '@/styles/forms.stylex';
 import { layout } from '@/styles/layout.stylex';
-import { maxWidth } from '@/styles/tokens.stylex';
 import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/admin/keys')({
@@ -28,12 +27,6 @@ export const Route = createFileRoute('/_authenticated/admin/keys')({
     requireSuperuser((context as { auth: AuthStore }).auth);
   },
   component: AdminKeysPage,
-});
-
-const styles = stylex.create({
-  root: {
-    maxWidth: maxWidth.px896,
-  },
 });
 
 function AdminKeysPage() {
@@ -138,7 +131,7 @@ function AdminKeysContent() {
   }
 
   return (
-    <div {...stylex.attrs(layout.stack24, styles.root)}>
+    <div {...stylex.attrs(layout.stack24, layout.pageWidth896)}>
       <Show when={error()}>
         <p {...stylex.attrs(controls.alertError)}>{error()}</p>
       </Show>

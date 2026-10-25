@@ -17,7 +17,7 @@ import type { TaskStatus } from '@/api/schemas/tasks';
 import { controls } from '@/styles/controls.stylex';
 import { icons } from '@/styles/icons.stylex';
 import { layout } from '@/styles/layout.stylex';
-import { breakpoint, fontSize, lineHeight, maxWidth, space } from '@/styles/tokens.stylex';
+import { breakpoint, fontSize, lineHeight, space } from '@/styles/tokens.stylex';
 import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/')({
@@ -31,9 +31,6 @@ interface StatCard {
 }
 
 const styles = stylex.create({
-  root: {
-    maxWidth: maxWidth.px1024,
-  },
   statusGrid: {
     display: 'grid',
     gridTemplateColumns: {
@@ -129,7 +126,7 @@ function DashboardPage() {
   };
 
   return (
-    <div {...stylex.attrs(layout.stack24, styles.root)}>
+    <div {...stylex.attrs(layout.stack24, layout.pageWidth1024)}>
       <div {...stylex.attrs(layout.rowBetween)}>
         <h2 {...stylex.attrs(typography.pageTitle)}>
           {t('dashboard.welcome', {

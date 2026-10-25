@@ -8,7 +8,7 @@ import { errorMessage } from '@/utils/api-error';
 import { formatDateTime } from '@/utils/format';
 import { controls } from '@/styles/controls.stylex';
 import { layout } from '@/styles/layout.stylex';
-import { maxWidth, space } from '@/styles/tokens.stylex';
+import { space } from '@/styles/tokens.stylex';
 import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/profile')({
@@ -16,9 +16,6 @@ export const Route = createFileRoute('/_authenticated/profile')({
 });
 
 const styles = stylex.create({
-  root: {
-    maxWidth: maxWidth.px672,
-  },
   infoGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
@@ -75,7 +72,7 @@ function ProfilePage() {
   }
 
   return (
-    <div {...stylex.attrs(layout.stack16, styles.root)}>
+    <div {...stylex.attrs(layout.stack16, layout.pageWidth672)}>
       <section {...stylex.attrs(controls.card)}>
         <h2 {...stylex.attrs(typography.sectionTitle)}>{t('profile.accountInfo')}</h2>
         <dl {...stylex.attrs(typography.body, styles.infoGrid)}>

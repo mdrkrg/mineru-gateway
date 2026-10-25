@@ -14,7 +14,6 @@ import { controls } from '@/styles/controls.stylex';
 import { feedback } from '@/styles/feedback.stylex';
 import { forms } from '@/styles/forms.stylex';
 import { layout } from '@/styles/layout.stylex';
-import { maxWidth } from '@/styles/tokens.stylex';
 import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/admin/users')({
@@ -22,12 +21,6 @@ export const Route = createFileRoute('/_authenticated/admin/users')({
     requireSuperuser((context as { auth: AuthStore }).auth);
   },
   component: AdminUsersPage,
-});
-
-const styles = stylex.create({
-  root: {
-    maxWidth: maxWidth.px576,
-  },
 });
 
 function AdminUsersPage() {
@@ -86,7 +79,7 @@ function AdminUsersContent() {
   }
 
   return (
-    <div {...stylex.attrs(layout.stack16, styles.root)}>
+    <div {...stylex.attrs(layout.stack16, layout.pageWidth576)}>
       <Show when={error()}>
         <p {...stylex.attrs(controls.alertError)}>{error()}</p>
       </Show>

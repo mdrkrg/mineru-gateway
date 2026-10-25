@@ -20,7 +20,7 @@ import { actions } from '@/styles/actions.stylex';
 import { controls } from '@/styles/controls.stylex';
 import { icons } from '@/styles/icons.stylex';
 import { layout } from '@/styles/layout.stylex';
-import { breakpoint, colors, maxWidth, radius, space } from '@/styles/tokens.stylex';
+import { breakpoint, colors, radius, space } from '@/styles/tokens.stylex';
 import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/tasks/$id')({
@@ -28,9 +28,6 @@ export const Route = createFileRoute('/_authenticated/tasks/$id')({
 });
 
 const styles = stylex.create({
-  root: {
-    maxWidth: maxWidth.px768,
-  },
   backLink: {
     display: 'flex',
     alignItems: 'center',
@@ -171,7 +168,7 @@ function TaskDetailPage() {
   }
 
   return (
-    <div {...stylex.attrs(layout.stack16, styles.root)}>
+    <div {...stylex.attrs(layout.stack16, layout.pageWidth768)}>
       <Link
         to={ROUTES.tasks}
         class={stylex.attrs(typography.bodySecondary, styles.backLink).class}

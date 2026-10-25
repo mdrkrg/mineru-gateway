@@ -18,6 +18,21 @@ export const layout = stylex.create({
     boxShadow: shadow.base,
     padding: space.px32,
   },
+  pageWidth576: {
+    maxWidth: maxWidth.px576,
+  },
+  pageWidth672: {
+    maxWidth: maxWidth.px672,
+  },
+  pageWidth768: {
+    maxWidth: maxWidth.px768,
+  },
+  pageWidth896: {
+    maxWidth: maxWidth.px896,
+  },
+  pageWidth1024: {
+    maxWidth: maxWidth.px1024,
+  },
   stack8: {
     display: 'flex',
     flexDirection: 'column',

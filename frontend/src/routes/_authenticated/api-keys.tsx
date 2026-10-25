@@ -21,7 +21,7 @@ import { controls } from '@/styles/controls.stylex';
 import { forms } from '@/styles/forms.stylex';
 import { icons } from '@/styles/icons.stylex';
 import { layout } from '@/styles/layout.stylex';
-import { colors, maxWidth, radius, space } from '@/styles/tokens.stylex';
+import { colors, radius, space } from '@/styles/tokens.stylex';
 import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/api-keys')({
@@ -29,9 +29,6 @@ export const Route = createFileRoute('/_authenticated/api-keys')({
 });
 
 const styles = stylex.create({
-  root: {
-    maxWidth: maxWidth.px896,
-  },
   notSet: {
     color: colors.amber600,
   },
@@ -143,7 +140,7 @@ function ApiKeysPage() {
   }
 
   return (
-    <div {...stylex.attrs(layout.stack24, styles.root)}>
+    <div {...stylex.attrs(layout.stack24, layout.pageWidth896)}>
       <Show when={error()}>
         <p {...stylex.attrs(controls.alertError)}>{error()}</p>
       </Show>
