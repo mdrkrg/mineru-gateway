@@ -14,6 +14,7 @@ from asgi_lifespan import LifespanManager
 
 from mineru_gateway.config import OIDCProviderConfig, Settings
 from mineru_gateway.main import create_app
+from tests.user.oauth_patch import patch_oauth
 
 if TYPE_CHECKING:
     from httpx import AsyncClient, Response
@@ -305,16 +306,6 @@ async def _client_for(app):
         yield c
 
 
-def _patch_oauth(monkeypatch, mock_oauth_client):
-    from mineru_gateway.auth.oauth import base
-
-    monkeypatch.setattr(
-        base,
-        "get_oauth_client",
-        lambda name: mock_oauth_client if name == "keycloak" else None,
-    )
-
-
 @pytest.fixture
 async def smtp_app(smtp_settings, upstream_client, email_sender):
     async with _build_app(smtp_settings, upstream_client) as app:
@@ -367,7 +358,7 @@ async def gated_smtp_client(gated_smtp_app):
 async def smtp_oidc_app(
     smtp_oidc_settings, upstream_client, monkeypatch, mock_oauth_client, email_sender
 ):
-    _patch_oauth(monkeypatch, mock_oauth_client)
+    patch_oauth(monkeypatch, mock_oauth_client)
     async with _build_app(smtp_oidc_settings, upstream_client) as app:
         yield app
 
@@ -386,7 +377,7 @@ async def gated_smtp_oidc_app(
     mock_oauth_client,
     email_sender,
 ):
-    _patch_oauth(monkeypatch, mock_oauth_client)
+    patch_oauth(monkeypatch, mock_oauth_client)
     async with _build_app(gated_smtp_oidc_settings, upstream_client) as app:
         yield app
 

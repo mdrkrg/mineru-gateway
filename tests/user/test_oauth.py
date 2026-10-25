@@ -20,6 +20,7 @@ from sqlalchemy import func, select
 from mineru_gateway.config import OIDCProviderConfig, Settings
 from mineru_gateway.models import OAuthAccount, User
 from mineru_gateway.main import create_app
+from tests.user.oauth_patch import patch_oauth
 
 TEST_OIDC_PROVIDER = OIDCProviderConfig(
     name="keycloak",
@@ -53,13 +54,7 @@ def oauth_settings(settings):
 
 @pytest.fixture
 async def oauth_app(oauth_settings, upstream_client, monkeypatch, mock_oauth_client):
-    from mineru_gateway.auth.oauth import base
-
-    monkeypatch.setattr(
-        base,
-        "get_oauth_client",
-        lambda name: mock_oauth_client if name == "keycloak" else None,
-    )
+    patch_oauth(monkeypatch, mock_oauth_client)
     application = create_app(settings=oauth_settings, upstream_client=upstream_client)
     async with LifespanManager(application):
         yield application
@@ -85,13 +80,7 @@ def frontend_redirect_settings(oauth_settings):
 async def frontend_redirect_app(
     frontend_redirect_settings, upstream_client, monkeypatch, mock_oauth_client
 ):
-    from mineru_gateway.auth.oauth import base
-
-    monkeypatch.setattr(
-        base,
-        "get_oauth_client",
-        lambda name: mock_oauth_client if name == "keycloak" else None,
-    )
+    patch_oauth(monkeypatch, mock_oauth_client)
     application = create_app(
         settings=frontend_redirect_settings, upstream_client=upstream_client
     )
@@ -113,13 +102,7 @@ async def two_provider_client(
     oauth_settings, upstream_client, monkeypatch, mock_oauth_client
 ):
     """Client with both `keycloak` and `github` OIDC providers configured."""
-    from mineru_gateway.auth.oauth import base
-
-    monkeypatch.setattr(
-        base,
-        "get_oauth_client",
-        lambda name: mock_oauth_client if name in {"keycloak", "github"} else None,
-    )
+    patch_oauth(monkeypatch, mock_oauth_client, providers=("keycloak", "github"))
     settings = oauth_settings.model_copy(
         update={"oidc_providers": [TEST_OIDC_PROVIDER, OTHER_OIDC_PROVIDER]}
     )
@@ -133,6 +116,22 @@ async def two_provider_client(
 
 
 # ===== Helper =====
+
+
+async def _stored_oauth_account(client, **updates):
+    """Return the stored OAuthAccount, applying ``updates`` before reading."""
+    app = client._transport.app
+    async with app.state.db.session_factory() as session:
+        oauth_acc = (
+            await session.execute(
+                select(OAuthAccount).where(OAuthAccount.oauth_name == "keycloak")
+            )
+        ).scalar_one()
+        for field, value in updates.items():
+            setattr(oauth_acc, field, value)
+        if updates:
+            await session.commit()
+        return oauth_acc
 
 
 async def _oauth_flow(client, code="test-code"):
@@ -178,6 +177,14 @@ async def test_authorize_nonexistent_provider_returns_404(oauth_client):
     assert resp.status_code == 404
 
 
+async def test_callback_nonexistent_provider_returns_404(oauth_client):
+    """Section 9.7 / 4.5: GET /auth/oauth/{unknown}/callback -> 404."""
+    resp = await oauth_client.get(
+        "/auth/oauth/nonexistent/callback?code=test-code&state=fake-state"
+    )
+    assert resp.status_code == 404
+
+
 # ===== Section 4.5 / 9.7: Callback - success cases =====
 
 
@@ -216,16 +223,10 @@ async def test_callback_existing_oauth_account_updates_tokens(
     assert second.json()["access_token"]
 
     # Verify the OAuthAccount row was updated with the new provider tokens.
-    app = oauth_client._transport.app
-    async with app.state.db.session_factory() as session:
-        oauth_acc = (
-            await session.execute(
-                select(OAuthAccount).where(OAuthAccount.oauth_name == "keycloak")
-            )
-        ).scalar_one()
-        assert oauth_acc.access_token == "oidc-access-token-rotated"
-        assert oauth_acc.refresh_token == "oidc-refresh-rotated"
-        assert oauth_acc.expires_at == 9999
+    oauth_acc = await _stored_oauth_account(oauth_client)
+    assert oauth_acc.access_token == "oidc-access-token-rotated"
+    assert oauth_acc.refresh_token == "oidc-refresh-rotated"
+    assert oauth_acc.expires_at == 9999
 
 
 async def test_callback_existing_oauth_account_keeps_unreported_tokens(oauth_client):
@@ -237,28 +238,16 @@ async def test_callback_existing_oauth_account_keeps_unreported_tokens(oauth_cli
     first = await _oauth_flow(oauth_client)
     assert first.status_code == 200
 
-    app = oauth_client._transport.app
-    async with app.state.db.session_factory() as session:
-        oauth_acc = (
-            await session.execute(
-                select(OAuthAccount).where(OAuthAccount.oauth_name == "keycloak")
-            )
-        ).scalar_one()
-        oauth_acc.refresh_token = "stored-refresh"
-        oauth_acc.expires_at = 4711
-        await session.commit()
+    await _stored_oauth_account(
+        oauth_client, refresh_token="stored-refresh", expires_at=4711
+    )
 
     second = await _oauth_flow(oauth_client)
     assert second.status_code == 200
 
-    async with app.state.db.session_factory() as session:
-        oauth_acc = (
-            await session.execute(
-                select(OAuthAccount).where(OAuthAccount.oauth_name == "keycloak")
-            )
-        ).scalar_one()
-        assert oauth_acc.refresh_token == "stored-refresh"
-        assert oauth_acc.expires_at == 4711
+    oauth_acc = await _stored_oauth_account(oauth_client)
+    assert oauth_acc.refresh_token == "stored-refresh"
+    assert oauth_acc.expires_at == 4711
 
 
 async def test_callback_existing_oauth_account_ignores_email_verified_false(
@@ -751,13 +740,7 @@ async def test_authorize_normalises_trailing_slash_in_redirect_base(
     a configured base ending in ``/`` would produce a double slash that no
     longer matches the redirect URI registered with the OIDC provider.
     """
-    from mineru_gateway.auth.oauth import base
-
-    monkeypatch.setattr(
-        base,
-        "get_oauth_client",
-        lambda name: mock_oauth_client if name == "keycloak" else None,
-    )
+    patch_oauth(monkeypatch, mock_oauth_client)
     settings = oauth_settings.model_copy(
         update={"oauth_redirect_base_url": "http://testserver/"}
     )
@@ -836,3 +819,38 @@ async def test_on_after_register_logs_persisted_user_id(oauth_client, caplog):
         for r in caplog.records
         if r.name == "mineru_gateway.auth.manager"
     ]
+
+
+def test_get_oauth_client_uses_passed_settings_and_separates_configs():
+    """Clients must follow the injected settings, not the process default.
+
+    Two apps with the same provider name but different credentials must not
+    share a client, and each app's cache must keep reusing its own client.
+    """
+    from mineru_gateway.auth.oauth import base
+
+    provider_a = OIDCProviderConfig(
+        name="tenant-a",
+        client_id="client-a",
+        client_secret="secret-a",
+        authorization_endpoint="https://idp.example.com/authorize",
+        token_endpoint="https://idp.example.com/token",
+    )
+    provider_b = provider_a.model_copy(
+        update={"client_id": "client-b", "client_secret": "secret-b"}
+    )
+    settings_a = Settings(admin_token="test", oidc_providers=[provider_a])
+    settings_b = Settings(admin_token="test", oidc_providers=[provider_b])
+    cache_a: dict = {}
+    cache_b: dict = {}
+
+    client_a = base.get_oauth_client("tenant-a", settings_a, cache_a)
+    client_b = base.get_oauth_client("tenant-a", settings_b, cache_b)
+
+    assert client_a is not None
+    assert client_b is not None
+    assert client_a is not client_b
+    assert client_a.client_id == "client-a"
+    assert client_b.client_id == "client-b"
+    assert base.get_oauth_client("tenant-a", settings_a, cache_a) is client_a
+    assert base.get_oauth_client("missing", settings_a, cache_a) is None

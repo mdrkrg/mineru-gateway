@@ -101,6 +101,7 @@ def create_app(
         app.state.upstream = upstream
         app.state.rate_limiter = limiter
         app.state.file_cache = file_cache
+        app.state.oauth_clients = {}
 
         tasks: list[asyncio.Task] = []
         if settings.enable_background:

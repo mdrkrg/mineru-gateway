@@ -19,6 +19,7 @@ from asgi_lifespan import LifespanManager
 
 from mineru_gateway.config import OIDCProviderConfig
 from mineru_gateway.main import create_app
+from tests.user.oauth_patch import patch_oauth
 
 
 def _make_id_token(payload: dict) -> str:
@@ -73,13 +74,7 @@ def fallback_settings(settings):
 async def fallback_app(
     fallback_settings, upstream_client, monkeypatch, mock_oauth_client
 ):
-    from mineru_gateway.auth.oauth import base
-
-    monkeypatch.setattr(
-        base,
-        "get_oauth_client",
-        lambda name: mock_oauth_client if name == "keycloak" else None,
-    )
+    patch_oauth(monkeypatch, mock_oauth_client)
     application = create_app(
         settings=fallback_settings, upstream_client=upstream_client
     )
@@ -111,13 +106,7 @@ def no_fallback_domain_settings(settings):
 async def no_fallback_app(
     no_fallback_domain_settings, upstream_client, monkeypatch, mock_oauth_client
 ):
-    from mineru_gateway.auth.oauth import base
-
-    monkeypatch.setattr(
-        base,
-        "get_oauth_client",
-        lambda name: mock_oauth_client if name == "keycloak" else None,
-    )
+    patch_oauth(monkeypatch, mock_oauth_client)
     application = create_app(
         settings=no_fallback_domain_settings, upstream_client=upstream_client
     )

@@ -679,7 +679,7 @@ src/mineru_gateway/auth/
 
 | 接口 | 输入 | 输出 | 行为 |
 |------|------|------|------|
-| `get_oauth_client(name)` | `name: str`（提供商标识） | `OAuthClient | None` | 从 `GATEWAY_OIDC_PROVIDERS` 配置中按名称查找并返回 OIDC 客户端；不存在时返回 `None` |
+| `get_oauth_client(name, settings, cache)` | `name: str`（提供商标识）、`settings: Settings`（显式传入以支持依赖注入与测试隔离）、`cache: dict[str, OAuthClient]`（`app.state.oauth_clients`，按 app 隔离） | `OAuthClient | None` | 从传入的 `settings.oidc_providers` 中按名称查找：命中 `cache` 直接返回，否则构造客户端并写入后再返回；不存在时返回 `None` |
 
 `OAuthClient` 必须提供以下方法（httpx-oauth 的 `OpenID` 类满足此契约）：
 

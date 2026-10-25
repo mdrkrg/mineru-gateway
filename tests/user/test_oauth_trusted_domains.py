@@ -18,6 +18,7 @@ from asgi_lifespan import LifespanManager
 
 from mineru_gateway.config import OIDCProviderConfig
 from mineru_gateway.main import create_app
+from tests.user.oauth_patch import patch_oauth
 
 
 # ===== Fixtures =====
@@ -68,13 +69,7 @@ def trusted_fallback_settings(settings):
 async def trusted_app(
     trusted_settings, upstream_client, monkeypatch, mock_oauth_client
 ):
-    from mineru_gateway.auth.oauth import base
-
-    monkeypatch.setattr(
-        base,
-        "get_oauth_client",
-        lambda name: mock_oauth_client if name == "keycloak" else None,
-    )
+    patch_oauth(monkeypatch, mock_oauth_client)
     application = create_app(settings=trusted_settings, upstream_client=upstream_client)
     async with LifespanManager(application):
         yield application
@@ -84,13 +79,7 @@ async def trusted_app(
 async def trusted_fallback_app(
     trusted_fallback_settings, upstream_client, monkeypatch, mock_oauth_client
 ):
-    from mineru_gateway.auth.oauth import base
-
-    monkeypatch.setattr(
-        base,
-        "get_oauth_client",
-        lambda name: mock_oauth_client if name == "keycloak" else None,
-    )
+    patch_oauth(monkeypatch, mock_oauth_client)
     application = create_app(
         settings=trusted_fallback_settings, upstream_client=upstream_client
     )

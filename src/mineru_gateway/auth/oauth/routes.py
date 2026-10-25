@@ -5,31 +5,33 @@ Spec: user-management-and-oauth.md Section 4.5.
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import hmac
-import json as jsonlib
 import logging
 import secrets
+from typing import Annotated
 from urllib.parse import urlencode
 
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from starlette.responses import JSONResponse, RedirectResponse
 from fastapi_users import exceptions as fu_exceptions
-from fastapi_users.db import SQLAlchemyUserDatabase
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import JSONResponse, RedirectResponse
 
 from ...config import OIDCProviderConfig, Settings
 from ...models import OAuthAccount, User
 from ..backend import issue_token_pair
 from ..dependencies import get_session, get_settings_dep
-from ..manager import UserManager
+from ..manager import UserManager, get_user_manager
 from ..schemas import TokenPair
 from . import base
 
 logger = logging.getLogger(__name__)
+
+# Section 7.2: CSRF state cookie lifetime.
+_STATE_TTL_SECONDS = 600
 
 router = APIRouter(prefix="/auth/oauth", tags=["oauth"])
 
@@ -67,20 +69,14 @@ def _get_provider_config(
 
 
 def _decode_id_token(id_token: str) -> dict:
-    """Section 4.5 step 3a: base64-decode JWT payload without signature
-    verification."""
-    parts = id_token.split(".")
-    if len(parts) < 2:
-        return {}
-    payload = parts[1]
-    padded = payload + "=" * (4 - len(payload) % 4)
+    """Section 4.5 step 3a: decode the id_token payload, unverified.
+
+    The token arrives over TLS from the provider's token endpoint, so the
+    signature is not re-checked here; a malformed token yields no claims.
+    """
     try:
-        decoded = base64.urlsafe_b64decode(padded)
-    except Exception:
-        return {}
-    try:
-        return jsonlib.loads(decoded)
-    except Exception:
+        return jwt.decode(id_token, options={"verify_signature": False})
+    except jwt.PyJWTError:
         return {}
 
 
@@ -150,13 +146,6 @@ def _extract_state_from_cookie(
     return None
 
 
-async def _get_user_manager(
-    session: AsyncSession, settings: Settings
-) -> tuple[SQLAlchemyUserDatabase, UserManager]:
-    user_db = SQLAlchemyUserDatabase(session, User, OAuthAccount)
-    return user_db, UserManager(user_db, settings)
-
-
 @router.get("/providers", response_model=OAuthProvidersResponse)
 async def providers(
     settings: Settings = Depends(get_settings_dep),
@@ -171,11 +160,10 @@ async def providers(
 async def authorize(
     provider: str,
     request: Request,
-    response: Response,
     settings: Settings = Depends(get_settings_dep),
 ) -> Response:
     """Section 4.5: 302 redirect to OIDC provider + set CSRF state cookie."""
-    client = base.get_oauth_client(provider)
+    client = base.get_oauth_client(provider, settings, request.app.state.oauth_clients)
     if client is None:
         raise HTTPException(status_code=404, detail="Unknown OAuth provider")
 
@@ -183,16 +171,15 @@ async def authorize(
     redirect_uri = f"{_get_redirect_base_url(settings)}/auth/oauth/{provider}/callback"
     auth_url = await client.get_authorization_url(redirect_uri, state)
 
+    response = RedirectResponse(auth_url, status_code=status.HTTP_302_FOUND)
     response.set_cookie(
         key=_cookie_name(provider),
         value=_sign_state(f"{provider}:{state}", settings),
         httponly=True,
         samesite="lax",
         secure=_is_secure(settings),
-        max_age=600,
+        max_age=_STATE_TTL_SECONDS,
     )
-    response.status_code = status.HTTP_302_FOUND
-    response.headers["location"] = auth_url
     return response
 
 
@@ -202,11 +189,12 @@ async def callback(
     request: Request,
     code: str,
     state: str,
+    user_manager: Annotated[UserManager, Depends(get_user_manager)],
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings_dep),
 ):
     """Section 4.5: exchange code, upsert User + OAuthAccount, issue tokens."""
-    client = base.get_oauth_client(provider)
+    client = base.get_oauth_client(provider, settings, request.app.state.oauth_clients)
     if client is None:
         raise HTTPException(status_code=404, detail="Unknown OAuth provider")
 
@@ -230,7 +218,8 @@ async def callback(
     try:
         token_data = await client.get_access_token(code, redirect_uri)
     except Exception:
-        raise HTTPException(status_code=400, detail="Code exchange failed")
+        logger.exception("OAuth code exchange failed for provider %s", provider)
+        raise HTTPException(status_code=400, detail="Code exchange failed") from None
 
     oidc_access_token = token_data.get("access_token")
     refresh_token = token_data.get("refresh_token")
@@ -248,7 +237,10 @@ async def callback(
         try:
             userinfo_claims = await client.get_profile(oidc_access_token)
         except Exception:
-            raise HTTPException(status_code=400, detail="Userinfo request failed")
+            logger.exception("OIDC userinfo request failed for provider %s", provider)
+            raise HTTPException(
+                status_code=400, detail="Userinfo request failed"
+            ) from None
 
     # 3c: Merge, userinfo overrides id_token
     claims = {**id_token_claims, **userinfo_claims}
@@ -295,8 +287,6 @@ async def callback(
 
     if not sub:
         raise HTTPException(status_code=400, detail="OIDC profile missing sub")
-
-    _, user_manager = await _get_user_manager(session, settings)
 
     # Step 4: Lookup existing OAuthAccount by (oauth_name, account_id)
     existing_oauth = (

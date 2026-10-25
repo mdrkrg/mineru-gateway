@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 from httpx_oauth.oauth2 import BaseOAuth2
 
-from ...config import OIDCProviderConfig, get_settings
+from ...config import OIDCProviderConfig, Settings
 
 
 class ManualOIDCClient(BaseOAuth2[dict[str, Any]]):
@@ -95,26 +95,26 @@ def _build_oauth_client(provider: OIDCProviderConfig) -> OpenID | ManualOIDCClie
     )
 
 
-# One client per configured provider. ``OpenID.__init__`` issues a synchronous
-# OIDC discovery request, so constructing a fresh client on every /authorize and
-# /callback call would block the event loop (single worker) and re-fetch the
-# discovery document on every request. Keyed by provider name: get_settings()
-# is lru_cached, so provider objects are stable for the process lifetime.
-_CLIENT_CACHE: dict[str, OpenID | ManualOIDCClient] = {}
+# ``OpenID.__init__`` issues a synchronous OIDC discovery request, so building a
+# client per request would block the event loop (single worker) and re-fetch the
+# discovery document; clients are therefore cached per provider, per app.
 
 
-def get_oauth_client(name: str) -> OpenID | ManualOIDCClient | None:
-    """Section 5.2: lookup OIDC client by provider name in config.
+def get_oauth_client(
+    name: str,
+    settings: Settings,
+    cache: dict[str, OpenID | ManualOIDCClient],
+) -> OpenID | ManualOIDCClient | None:
+    """Section 5.2: lookup OIDC client by provider name in settings.
 
-    Returns None if provider not found. Clients are cached per provider
-    configuration so the synchronous discovery fetch happens at most once.
+    Returns None if provider not found. ``cache`` is ``app.state.oauth_clients``;
+    it is filled lazily so an unreachable provider cannot fail app startup.
     """
-    settings = get_settings()
     for provider in settings.oidc_providers:
         if provider.name == name:
-            client = _CLIENT_CACHE.get(name)
+            client = cache.get(name)
             if client is None:
                 client = _build_oauth_client(provider)
-                _CLIENT_CACHE[name] = client
+                cache[name] = client
             return client
     return None
