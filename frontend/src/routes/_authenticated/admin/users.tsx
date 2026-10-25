@@ -98,7 +98,7 @@ function AdminUsersContent() {
       </Show>
 
       <section {...stylex.attrs(controls.card)}>
-        <h2 {...stylex.attrs(typography.sectionTitle)}>{t('adminUsers.createTitle')}</h2>
+        <h2 {...stylex.attrs(typography.sectionHeading, layout.mb16)}>{t('adminUsers.createTitle')}</h2>
         <form onSubmit={handleCreate} {...stylex.attrs(layout.stack16)}>
           <label {...stylex.attrs(controls.field)}>
             <span {...stylex.attrs(controls.fieldLabel)}>{t('adminUsers.email')}</span>

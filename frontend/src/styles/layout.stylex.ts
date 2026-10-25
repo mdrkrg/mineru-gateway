@@ -93,6 +93,9 @@ export const layout = stylex.create({
   mb8: {
     marginBottom: space.px8,
   },
+  mb12: {
+    marginBottom: space.px12,
+  },
   mb16: {
     marginBottom: space.px16,
   },

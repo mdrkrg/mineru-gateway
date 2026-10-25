@@ -74,7 +74,7 @@ function ProfilePage() {
   return (
     <div {...stylex.attrs(layout.stack16, layout.pageWidth672)}>
       <section {...stylex.attrs(controls.card)}>
-        <h2 {...stylex.attrs(typography.sectionTitle)}>{t('profile.accountInfo')}</h2>
+        <h2 {...stylex.attrs(typography.sectionHeading, layout.mb16)}>{t('profile.accountInfo')}</h2>
         <dl {...stylex.attrs(typography.body, styles.infoGrid)}>
           <div>
             <dt {...stylex.attrs(typography.metaMuted, layout.mb2)}>
@@ -104,7 +104,7 @@ function ProfilePage() {
       </section>
 
       <section {...stylex.attrs(controls.card)}>
-        <h2 {...stylex.attrs(typography.sectionTitle)}>{t('profile.editTitle')}</h2>
+        <h2 {...stylex.attrs(typography.sectionHeading, layout.mb16)}>{t('profile.editTitle')}</h2>
 
         <Show when={error()}>
           <p {...stylex.attrs(controls.alertError, layout.mb16)}>{error()}</p>

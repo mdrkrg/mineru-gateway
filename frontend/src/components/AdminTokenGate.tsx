@@ -41,7 +41,8 @@ export default function AdminTokenGate(props: { children: JSX.Element }) {
           <h2
             {...stylex.attrs(
               layout.rowCenter8,
-              typography.sectionTitleCompact,
+              typography.sectionHeading,
+              layout.mb8,
             )}
           >
             <ShieldCheck class={stylex.attrs(icons.md).class} />

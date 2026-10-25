@@ -157,7 +157,7 @@ function ApiKeysPage() {
 
       {/* Create form */}
       <section {...stylex.attrs(controls.card)}>
-        <h2 {...stylex.attrs(typography.sectionTitle)}>{t('apiKeys.createTitle')}</h2>
+        <h2 {...stylex.attrs(typography.sectionHeading, layout.mb16)}>{t('apiKeys.createTitle')}</h2>
         <form onSubmit={handleCreate} {...stylex.attrs(forms.row)}>
           <label {...stylex.attrs(controls.field)}>
             <span {...stylex.attrs(controls.fieldLabel)}>{t('apiKeys.label')}</span>
@@ -190,7 +190,7 @@ function ApiKeysPage() {
 
       {/* Key list */}
       <section {...stylex.attrs(controls.card)}>
-        <h2 {...stylex.attrs(typography.sectionTitle)}>{t('apiKeys.listTitle')}</h2>
+        <h2 {...stylex.attrs(typography.sectionHeading, layout.mb16)}>{t('apiKeys.listTitle')}</h2>
         <ApiKeyTable
           keys={keys()}
           isLoading={isLoading()}
@@ -206,7 +206,8 @@ function ApiKeysPage() {
         <h2
           {...stylex.attrs(
             layout.rowCenter8,
-            typography.sectionTitleCompact,
+            typography.sectionHeading,
+            layout.mb8,
           )}
         >
           <KeyRound class={stylex.attrs(icons.md).class} />

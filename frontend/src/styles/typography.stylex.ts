@@ -53,24 +53,6 @@ export const typography = stylex.create({
     lineHeight: lineHeight.px28,
     fontWeight: 600,
   },
-  sectionTitle: {
-    fontSize: fontSize.px18,
-    lineHeight: lineHeight.px28,
-    fontWeight: 600,
-    marginBottom: space.px16,
-  },
-  sectionTitleCompact: {
-    fontSize: fontSize.px18,
-    lineHeight: lineHeight.px28,
-    fontWeight: 600,
-    marginBottom: space.px8,
-  },
-  sectionTitleTight: {
-    fontSize: fontSize.px18,
-    lineHeight: lineHeight.px28,
-    fontWeight: 600,
-    marginBottom: space.px12,
-  },
   subsectionTitle: {
     fontSize: fontSize.px14,
     lineHeight: lineHeight.px20,

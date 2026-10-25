@@ -141,7 +141,7 @@ function AdminKeysContent() {
       </Show>
 
       <section {...stylex.attrs(controls.card)}>
-        <h2 {...stylex.attrs(typography.sectionTitle)}>{t('adminKeys.issueTitle')}</h2>
+        <h2 {...stylex.attrs(typography.sectionHeading, layout.mb16)}>{t('adminKeys.issueTitle')}</h2>
         <form onSubmit={handleCreate} {...stylex.attrs(forms.row)}>
           <label {...stylex.attrs(controls.field)}>
             <span {...stylex.attrs(controls.fieldLabel)}>{t('adminKeys.label')}</span>
@@ -172,7 +172,7 @@ function AdminKeysContent() {
       </section>
 
       <section {...stylex.attrs(controls.card)}>
-        <h2 {...stylex.attrs(typography.sectionTitle)}>{t('adminKeys.listTitle')}</h2>
+        <h2 {...stylex.attrs(typography.sectionHeading, layout.mb16)}>{t('adminKeys.listTitle')}</h2>
         <ApiKeyTable
           keys={keys()}
           isLoading={isLoading()}

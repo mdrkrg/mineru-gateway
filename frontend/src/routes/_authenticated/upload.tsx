@@ -335,7 +335,7 @@ function UploadPage() {
         <form onSubmit={handleSubmit} {...stylex.attrs(layout.stack16)}>
           {/* File picker */}
           <section {...stylex.attrs(controls.card, layout.column)}>
-            <h2 {...stylex.attrs(typography.sectionTitleTight)}>
+            <h2 {...stylex.attrs(typography.sectionHeading, layout.mb12)}>
               {t('upload.fileSection')}
             </h2>
             <label
