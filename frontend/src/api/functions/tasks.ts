@@ -33,6 +33,13 @@ import {
  */
 const TASK_SUBMIT_TIMEOUT_MS = 10 * 60_000;
 
+/**
+ * Result generation and result-zip builds can take much longer than ky's 10s
+ * default. Use the same generous bound as submission until the zip path gets
+ * its own server-side budget.
+ */
+export const TASK_RESULT_TIMEOUT_MS = 10 * 60_000;
+
 export interface TaskSubmissionOptions {
   apiKey?: string;
   idempotencyKey?: string;
@@ -192,6 +199,7 @@ export function getTaskResult(
 ): ResultAsync<BlobResult, ApiError<HttpError<number, unknown>>> {
   return request(`tasks/${taskId}/result`, {
     headers: { 'X-API-Key': apiKey },
+    timeout: TASK_RESULT_TIMEOUT_MS,
   }).andThen(parseBlob);
 }
 
@@ -213,6 +221,7 @@ export function downloadResultZip(
     method: 'POST',
     json: validated.value,
     headers: { 'X-API-Key': apiKey },
+    timeout: TASK_RESULT_TIMEOUT_MS,
   }) as ResultAsync<
     BlobResult,
     ApiError<HttpError<409, NonDownloadableError> | HttpError<404, { detail: string }>>
