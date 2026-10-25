@@ -404,6 +404,21 @@ async def handle_task_submission(
     except IntegrityError:
         await session.rollback()
         await cache.release(cache_dir)
+        # The loser may already have submitted to upstream; its task has no
+        # record, so surface it instead of leaving it silent.
+        orphan_upstream_task_id = payload.get("task_id")
+        if orphan_upstream_task_id:
+            logger.warning(
+                "Idempotency conflict; orphan upstream task %s "
+                "(idempotency key %s, api_key_id %s, upstream %s, "
+                "backend %s, files %s)",
+                orphan_upstream_task_id,
+                idempotency_key,
+                api_key_id,
+                settings.upstream_url,
+                data.get("backend", "hybrid-engine"),
+                file_names,
+            )
         if api_key_id is None or idempotency_key is None:
             raise
         existing = await task_service.get_by_idempotency_key(
