@@ -358,6 +358,8 @@ DELETE /tasks/{task_id}:
 
 健康聚合、状态轮询与取消转发使用固定 10s 读超时（不超过上述配置），避免拖住 `status_sync`/`/health`。`504` 不表示上游未受理：重试 `POST /tasks` 应带 `X-Idempotency-Key`（见 `specs/idempotent-submission.md`），否则可能重复建任务。
 
+客户端重试时机与提交超时要求见 `specs/idempotent-submission.md` §4.5；不要在第一次请求仍在飞行时用同一 key 重试。
+
 ---
 
 ## 6. 核心模块设计

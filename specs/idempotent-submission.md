@@ -186,7 +186,9 @@ X-Idempotency-Key-Replayed: true
 3. 在新事务中重新查询 `SELECT * FROM tasks WHERE api_key_id = <X> AND idempotency_key = <Y>`。
 4. 此时已有记录（由第一个请求创建），按幂等命中返回：`202` + 重构响应 + `X-Idempotency-Key-Replayed: true`。
 
-**孤儿上游任务**：第二个请求在冲突前可能已成功提交到上游，获得了 `upstream_task_id`。该上游任务不会被网关追踪（无对应 `TaskRecord` 引用），但无实际危害——上游有其自身的 TTL 清理机制。
+**孤儿上游任务**：第二个请求在冲突前可能已成功提交到上游，获得了 `upstream_task_id`。该任务没有 `TaskRecord` 引用，网关无法轮询或下载它；恢复流程会记录该 id（warning 日志）以便排查，任务最终由上游 TTL 清理。不在这里取消：任务可能已开始处理，取消请求也会拖慢 replay 响应。
+
+**客户端重试时机**：幂等 pre-check 发生在 `TaskRecord` 创建之前。客户端必须等第一次 `POST /tasks` 结束后再重试；如果客户端在网关仍在提交上游时用同一 key 重试，第二次请求会通过 pre-check 并再次提交上游。前端 `submitTask` 的超时必须覆盖 multipart 上传时间 + 网关固定的 30s `/tasks` 控制面超时，不能继承 ky 的 10s 默认值（见 `specs/mvp-implementation.md` §5.4）。
 
 ### 4.6 幂等键生命周期
 
@@ -277,7 +279,7 @@ T1 创建任务后，手动将该任务的 `created_at` 修改为超过 `task_re
 | 文件 | 变更类型 | 变更说明 |
 |------|----------|----------|
 | `src/mineru_gateway/models.py` | 修改 | `TaskRecord` 新增 `idempotency_key` 字段与 `UniqueConstraint` |
-| `src/mineru_gateway/proxy/handler.py` | 修改 | `handle_task_submission` 新增幂等检查逻辑（认证后、限流前）；新增 `IntegrityError` 并发冲突处理 |
+| `src/mineru_gateway/proxy/handler.py` | 修改 | `handle_task_submission` 新增幂等检查逻辑（认证后、限流前）；新增 `IntegrityError` 并发冲突处理；记录孤儿上游任务 id |
 | `src/mineru_gateway/proxy/routes.py` | 修改 | 从请求头提取 `X-Idempotency-Key`，传入 handler |
 | `alembic/versions/` | 新增 | 一个新 migration 文件，添加列与唯一约束 |
 | `tests/core/test_proxy.py` | 修改 | 新增 T1-T13 测试场景 |
