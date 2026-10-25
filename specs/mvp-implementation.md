@@ -343,6 +343,21 @@ DELETE /tasks/{task_id}:
     message: str
 ```
 
+### 5.4 上游超时
+
+`GATEWAY_UPSTREAM_TIMEOUT_READ`（默认 600s）作用于 `/file_parse` 与结果下载——同步解析完成前不发送字节。异步 `POST /tasks` 使用固定 30s 读超时（上游队列无界，正常立即返回 202）。
+
+| 端点 | 上游超时的响应 |
+|------|---------------|
+| `POST /tasks`、`POST /file_parse`、`GET /tasks/{id}/result` | `504 {"detail": "Upstream timeout"}` + `Retry-After: 5` |
+| `GET /health` | 不变：聚合后返回 `503` + `status: "degraded"` |
+| `POST /tasks/result-zip` | 不变：该条记入 `_manifest.json` 的 `skipped`（`reason: "upstream_error"`），不整体失败 |
+| `DELETE /tasks/{id}`、`POST /tasks/cancel` | 不变：转发上游失败被忽略，仍按本地状态返回 |
+
+连接失败（`httpx.TransportError`，如 `ConnectError`）→ `502 {"detail": "Upstream request failed"}` + `Retry-After: 5`；连接池耗尽（`httpx.PoolTimeout`）→ `503 {"detail": "Upstream connection pool exhausted"}` + `Retry-After: 30`。`POST /file_parse` 的 health 预检失败直接 503，不进入 504。
+
+健康聚合、状态轮询与取消转发使用固定 10s 读超时（不超过上述配置），避免拖住 `status_sync`/`/health`。`504` 不表示上游未受理：重试 `POST /tasks` 应带 `X-Idempotency-Key`（见 `specs/idempotent-submission.md`），否则可能重复建任务。
+
 ---
 
 ## 6. 核心模块设计
@@ -605,6 +620,7 @@ volumes:
 | 环境变量 | 默认 | 说明 |
 |---------|------|------|
 | `GATEWAY_UPSTREAM_URL` | - | 上游 router/api 地址 |
+| `GATEWAY_UPSTREAM_TIMEOUT_READ` | `600` | 同步解析/结果下载的上游读超时（秒）；异步 `/tasks` 固定 30s |
 | `GATEWAY_DATABASE_URL` | `sqlite+aiosqlite:///./gateway.db` | 支持切 PG |
 | `GATEWAY_ADMIN_TOKEN` | - | 签发/管理 Key 所需，**必须设置** |
 | `GATEWAY_ALLOW_ANONYMOUS` | `false` | 是否允许无 Key 纯透传 |
