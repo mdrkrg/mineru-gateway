@@ -408,16 +408,24 @@ async def handle_task_submission(
         # record, so surface it instead of leaving it silent.
         orphan_upstream_task_id = payload.get("task_id")
         if orphan_upstream_task_id:
+            reason = (
+                "Idempotency conflict"
+                if idempotency_key is not None
+                else "Task record insert conflict"
+            )
             logger.warning(
-                "Idempotency conflict; orphan upstream task %s "
-                "(idempotency key %s, api_key_id %s, upstream %s, "
-                "backend %s, files %s)",
+                "%s; orphan upstream task %s",
+                reason,
                 orphan_upstream_task_id,
-                idempotency_key,
-                api_key_id,
-                settings.upstream_url,
-                data.get("backend", "hybrid-engine"),
-                file_names,
+                extra={
+                    "orphan_upstream_task_id": str(orphan_upstream_task_id),
+                    "idempotency_key": idempotency_key,
+                    "api_key_id": str(api_key_id) if api_key_id else None,
+                    "upstream_url": settings.upstream_url,
+                    "backend": data.get("backend", "hybrid-engine"),
+                    "file_names": file_names[:10],
+                    "file_count": len(file_names),
+                },
             )
         if api_key_id is None or idempotency_key is None:
             raise

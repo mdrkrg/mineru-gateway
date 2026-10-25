@@ -717,7 +717,7 @@ async def test_t15_file_parse_unchanged(client, api_key):
 # ---------------------------------------------------------------------------
 
 
-async def test_t11_idempotency_conflict_releases_cache(client, api_key):
+async def test_t11_idempotency_conflict_releases_cache(client, api_key, caplog):
     """Two concurrent requests with same idempotency key: the losing
     request cleans up its cache directory and returns replay."""
     import asyncio
@@ -726,6 +726,8 @@ async def test_t11_idempotency_conflict_releases_cache(client, api_key):
     from mineru_gateway.tasks import service as task_service
 
     from mineru_gateway.tasks.cache import FileCache
+
+    caplog.set_level(logging.WARNING, logger="mineru_gateway.proxy.handler")
 
     idem_key = "t11-conflict-key"
     headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
@@ -773,6 +775,22 @@ async def test_t11_idempotency_conflict_releases_cache(client, api_key):
     assert not isinstance(r1, Exception), f"r1 raised {r1}"
     assert not isinstance(r2, Exception), f"r2 raised {r2}"
     assert mock_release.call_count == 1
+
+    conflicts = [
+        record
+        for record in caplog.records
+        if record.name == "mineru_gateway.proxy.handler"
+        and record.getMessage().startswith(
+            ("Idempotency conflict", "Task record insert conflict")
+        )
+    ]
+    assert len(conflicts) == 1
+    warning = conflicts[0]
+    assert warning.orphan_upstream_task_id.startswith("up-")
+    assert warning.idempotency_key == idem_key
+    assert warning.api_key_id
+    assert warning.file_names == ["doc.pdf"]
+    assert warning.file_count == 1
 
     replayed = [
         r for r in [r1, r2] if r.headers.get("X-Idempotency-Key-Replayed") == "true"
