@@ -9,7 +9,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi_users import exceptions
-from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Settings
@@ -19,20 +18,12 @@ from .dependencies import (
     current_active_user,
     get_session,
     get_settings_dep,
-    get_user_db,
     require_admin_token,
 )
-from .manager import UserManager
+from .manager import UserManager, get_user_manager
 from .schemas import LoginRequest, RefreshTokenRequest, TokenPair, UserCreate, UserRead
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-async def get_user_manager_dep(
-    user_db: Annotated[SQLAlchemyUserDatabase, Depends(get_user_db)],
-    settings: Annotated[Settings, Depends(get_settings_dep)],
-) -> UserManager:
-    return UserManager(user_db, settings)
 
 
 async def _send_verification_email_after_create(
@@ -84,7 +75,7 @@ async def _create_user(
 async def login(
     body: LoginRequest,
     request: Request,
-    user_manager: Annotated[UserManager, Depends(get_user_manager_dep)],
+    user_manager: Annotated[UserManager, Depends(get_user_manager)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> TokenPair:
     """Section 4.1: email + password -> {access, refresh, token_type}."""
@@ -139,7 +130,7 @@ async def logout(
 async def register(
     body: UserCreate,
     request: Request,
-    user_manager: Annotated[UserManager, Depends(get_user_manager_dep)],
+    user_manager: Annotated[UserManager, Depends(get_user_manager)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> UserRead:
     """Section 4.2: public registration, gated by OPEN_REGISTRATION."""
@@ -157,7 +148,7 @@ async def register(
 async def admin_create_user(
     body: UserCreate,
     request: Request,
-    user_manager: Annotated[UserManager, Depends(get_user_manager_dep)],
+    user_manager: Annotated[UserManager, Depends(get_user_manager)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> UserRead:
     """Section 4.2: admin creates user (X-Admin-Token, not gated by OPEN_REGISTRATION)."""
