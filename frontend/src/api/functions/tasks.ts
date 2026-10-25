@@ -26,6 +26,13 @@ import {
 
 // ===== Proxy: Task Submission =====
 
+/**
+ * ky defaults to a 10s timeout, which aborts slow uploads and fires long
+ * before the gateway's 30s `/tasks` control-plane timeout. Submission covers
+ * the multipart upload plus that upstream call, so use a generous bound.
+ */
+const TASK_SUBMIT_TIMEOUT_MS = 10 * 60_000;
+
 export interface TaskSubmissionOptions {
   apiKey?: string;
   idempotencyKey?: string;
@@ -43,6 +50,7 @@ export function submitTask(options: TaskSubmissionOptions) {
     body: createParseFormData(options.parseFields),
     headers,
     signal: options.signal,
+    timeout: TASK_SUBMIT_TIMEOUT_MS,
   })
     .andThen(parseJson)
     .andThen(validateSuccess(TaskSubmitResponseSchema));
