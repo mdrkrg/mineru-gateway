@@ -22,6 +22,7 @@ import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
 import { ROUTES } from '@/utils/constants';
 import { formatFileSize } from '@/utils/format';
+import { newIdempotencyKey } from '@/utils/idempotency';
 import { validateUploadSize } from '@/utils/upload';
 import { env } from '@/env';
 import { controls } from '@/styles/controls.stylex';
@@ -205,6 +206,13 @@ function UploadPage() {
   const [isSubmitting, setIsSubmitting] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [submitted, setSubmitted] = createSignal<TaskSubmitResponse | null>(null);
+  // One idempotency key per form payload: a retry after a failed submit
+  // reuses it, while any input change starts a new submission.
+  let submissionKey: string | null = null;
+
+  function resetSubmissionKey() {
+    submissionKey = null;
+  }
 
   function addFiles(list: FileList | File[] | null) {
     if (!list) return;
@@ -220,6 +228,7 @@ function UploadPage() {
 
     setError(null);
     setFiles(next);
+    resetSubmissionKey();
   }
 
   // dragenter/dragleave fire on child elements too, so track nesting depth to
@@ -249,12 +258,20 @@ function UploadPage() {
 
   function removeFile(index: number) {
     setFiles(files().filter((_, i) => i !== index));
+    resetSubmissionKey();
+  }
+
+  // Any option that contributes to the multipart body invalidates the key.
+  function updateOption<T>(setter: (value: T) => void, value: T) {
+    resetSubmissionKey();
+    setter(value);
   }
 
   function toggleLang(lang: MineruLanguage, checked: boolean) {
     const next = new Set(langList());
     if (checked) next.add(lang);
     else next.delete(lang);
+    resetSubmissionKey();
     setLangList(next);
   }
 
@@ -272,34 +289,44 @@ function UploadPage() {
       return;
     }
 
+    // Generate before flipping isSubmitting: a throwing key generator must
+    // not leave the submit button disabled forever. The error path keeps the
+    // key so a retry of the same payload is idempotent.
+    const idempotencyKey = (submissionKey ??= newIdempotencyKey());
+
     setIsSubmitting(true);
     setError(null);
     setSubmitted(null);
 
-    const result = await submitTask({
-      apiKey: key,
-      parseFields: {
-        files: files(),
-        backend: backend(),
-        langList: [...langList()],
-        effort: effort(),
-        parseMethod: parseMethod(),
-        formulaEnable: formulaEnable(),
-        tableEnable: tableEnable(),
-        imageAnalysis: imageAnalysis(),
-        returnImages: true,
-        responseFormat: responseZip() ? 'zip' : 'json',
-      },
-    });
-    setIsSubmitting(false);
+    try {
+      const result = await submitTask({
+        apiKey: key,
+        idempotencyKey,
+        parseFields: {
+          files: files(),
+          backend: backend(),
+          langList: [...langList()],
+          effort: effort(),
+          parseMethod: parseMethod(),
+          formulaEnable: formulaEnable(),
+          tableEnable: tableEnable(),
+          imageAnalysis: imageAnalysis(),
+          returnImages: true,
+          responseFormat: responseZip() ? 'zip' : 'json',
+        },
+      });
 
-    if (result.isErr()) {
-      setError(errorMessage(result.error));
-      return;
+      if (result.isErr()) {
+        setError(errorMessage(result.error));
+        return;
+      }
+      setSubmitted(result.value);
+      setFiles([]);
+      resetSubmissionKey();
+      toast.show(t('upload.submitted'), 'success');
+    } finally {
+      setIsSubmitting(false);
     }
-    setSubmitted(result.value);
-    setFiles([]);
-    toast.show(t('upload.submitted'), 'success');
   }
 
   return (
@@ -406,7 +433,12 @@ function UploadPage() {
                 <span {...stylex.attrs(controls.fieldLabel)}>{t('upload.backend')}</span>
                 <select
                   value={backend()}
-                  onChange={(e) => setBackend(e.currentTarget.value as ServerOnlyMineruBackend)}
+                  onChange={(e) =>
+                    updateOption(
+                      setBackend,
+                      e.currentTarget.value as ServerOnlyMineruBackend,
+                    )
+                  }
                   {...stylex.attrs(controls.input)}
                 >
                   <For each={MINERU_SERVER_BACKENDS}>
@@ -418,7 +450,12 @@ function UploadPage() {
                 <span {...stylex.attrs(controls.fieldLabel)}>{t('upload.parseMethod')}</span>
                 <select
                   value={parseMethod()}
-                  onChange={(e) => setParseMethod(e.currentTarget.value as MineruParseMethod)}
+                  onChange={(e) =>
+                    updateOption(
+                      setParseMethod,
+                      e.currentTarget.value as MineruParseMethod,
+                    )
+                  }
                   {...stylex.attrs(controls.input)}
                 >
                   <For each={MINERU_PARSE_METHODS}>
@@ -430,7 +467,9 @@ function UploadPage() {
                 <span {...stylex.attrs(controls.fieldLabel)}>{t('upload.effort')}</span>
                 <select
                   value={effort()}
-                  onChange={(e) => setEffort(e.currentTarget.value as MineruEffort)}
+                  onChange={(e) =>
+                    updateOption(setEffort, e.currentTarget.value as MineruEffort)
+                  }
                   {...stylex.attrs(controls.input)}
                 >
                   <For each={MINERU_EFFORTS}>
@@ -471,7 +510,7 @@ function UploadPage() {
                 <input
                   type="checkbox"
                   checked={formulaEnable()}
-                  onChange={(e) => setFormulaEnable(e.currentTarget.checked)}
+                  onChange={(e) => updateOption(setFormulaEnable, e.currentTarget.checked)}
                 />
                 {t('upload.formula')}
               </label>
@@ -479,7 +518,7 @@ function UploadPage() {
                 <input
                   type="checkbox"
                   checked={tableEnable()}
-                  onChange={(e) => setTableEnable(e.currentTarget.checked)}
+                  onChange={(e) => updateOption(setTableEnable, e.currentTarget.checked)}
                 />
                 {t('upload.table')}
               </label>
@@ -487,7 +526,7 @@ function UploadPage() {
                 <input
                   type="checkbox"
                   checked={imageAnalysis()}
-                  onChange={(e) => setImageAnalysis(e.currentTarget.checked)}
+                  onChange={(e) => updateOption(setImageAnalysis, e.currentTarget.checked)}
                 />
                 {t('upload.imageAnalysis')}
               </label>
@@ -495,7 +534,7 @@ function UploadPage() {
                 <input
                   type="checkbox"
                   checked={responseZip()}
-                  onChange={(e) => setResponseZip(e.currentTarget.checked)}
+                  onChange={(e) => updateOption(setResponseZip, e.currentTarget.checked)}
                 />
                 {t('upload.zipDownload')}
               </label>
