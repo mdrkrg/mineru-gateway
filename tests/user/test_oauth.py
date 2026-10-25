@@ -228,6 +228,39 @@ async def test_callback_existing_oauth_account_updates_tokens(
         assert oauth_acc.expires_at == 9999
 
 
+async def test_callback_existing_oauth_account_keeps_unreported_tokens(oauth_client):
+    """A provider that omits refresh_token/expires_at must not wipe them.
+
+    Many providers only return an access_token on re-consent; overwriting the
+    stored values with "" / None would silently lose the refresh token.
+    """
+    first = await _oauth_flow(oauth_client)
+    assert first.status_code == 200
+
+    app = oauth_client._transport.app
+    async with app.state.db.session_factory() as session:
+        oauth_acc = (
+            await session.execute(
+                select(OAuthAccount).where(OAuthAccount.oauth_name == "keycloak")
+            )
+        ).scalar_one()
+        oauth_acc.refresh_token = "stored-refresh"
+        oauth_acc.expires_at = 4711
+        await session.commit()
+
+    second = await _oauth_flow(oauth_client)
+    assert second.status_code == 200
+
+    async with app.state.db.session_factory() as session:
+        oauth_acc = (
+            await session.execute(
+                select(OAuthAccount).where(OAuthAccount.oauth_name == "keycloak")
+            )
+        ).scalar_one()
+        assert oauth_acc.refresh_token == "stored-refresh"
+        assert oauth_acc.expires_at == 4711
+
+
 async def test_callback_existing_oauth_account_ignores_email_verified_false(
     oauth_client, mock_oauth_client
 ):

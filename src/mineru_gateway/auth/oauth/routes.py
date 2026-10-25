@@ -9,6 +9,7 @@ import base64
 import hashlib
 import hmac
 import json as jsonlib
+import logging
 import secrets
 from urllib.parse import urlencode
 
@@ -27,6 +28,8 @@ from ..dependencies import get_session, get_settings_dep
 from ..manager import UserManager
 from ..schemas import TokenPair
 from . import base
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth/oauth", tags=["oauth"])
 
@@ -229,20 +232,14 @@ async def callback(
     except Exception:
         raise HTTPException(status_code=400, detail="Code exchange failed")
 
-    oidc_access_token = (
-        token_data.get("access_token")
-        if isinstance(token_data, dict)
-        else getattr(token_data, "access_token", None)
-    )
+    oidc_access_token = token_data.get("access_token")
+    refresh_token = token_data.get("refresh_token")
+    expires_at = token_data.get("expires_at")
 
     # Step 3: Claim fallback chain (Section 4.5 step 3a-3g)
 
     # 3a: Decode id_token if present
-    raw_id_token = (
-        token_data.get("id_token")
-        if isinstance(token_data, dict)
-        else getattr(token_data, "id_token", None)
-    )
+    raw_id_token = token_data.get("id_token")
     id_token_claims = _decode_id_token(raw_id_token) if raw_id_token else {}
 
     # 3b: Call userinfo if configured
@@ -312,25 +309,27 @@ async def callback(
     ).scalar_one_or_none()
 
     if existing_oauth is not None:
-        # Existing OAuthAccount -> update tokens, use existing User
-        existing_oauth.access_token = oidc_access_token or ""
-        refresh = (
-            token_data.get("refresh_token")
-            if isinstance(token_data, dict)
-            else getattr(token_data, "refresh_token", None)
-        )
-        existing_oauth.refresh_token = refresh or ""
-        expires_at = (
-            token_data.get("expires_at")
-            if isinstance(token_data, dict)
-            else getattr(token_data, "expires_at", None)
-        )
-        existing_oauth.expires_at = expires_at
-        existing_oauth.account_email = email
-        await session.commit()
+        # Existing OAuthAccount -> reuse the user, refresh the stored tokens
         user = await session.get(User, existing_oauth.user_id)
+        if user is None:
+            # Unreachable unless the cascade FK was bypassed: server fault.
+            logger.error(
+                "OAuthAccount %s references missing user %s",
+                existing_oauth.id,
+                existing_oauth.user_id,
+            )
+            raise HTTPException(status_code=500, detail="User is missing")
         if not user.is_active:
             raise HTTPException(status_code=400, detail="User is inactive")
+
+        existing_oauth.access_token = oidc_access_token or ""
+        # Providers may omit these on re-consent; keep the stored values.
+        if refresh_token:
+            existing_oauth.refresh_token = refresh_token
+        if expires_at is not None:
+            existing_oauth.expires_at = expires_at
+        existing_oauth.account_email = email
+        await session.commit()
     else:
         # No existing OAuthAccount -> lookup User by email
         try:
@@ -372,21 +371,11 @@ async def callback(
             await user_manager.on_after_register(user, request=request)
 
         # Step 5: Create OAuthAccount
-        refresh = (
-            token_data.get("refresh_token")
-            if isinstance(token_data, dict)
-            else getattr(token_data, "refresh_token", None)
-        )
-        expires_at = (
-            token_data.get("expires_at")
-            if isinstance(token_data, dict)
-            else getattr(token_data, "expires_at", None)
-        )
         oauth_account = OAuthAccount(
             user_id=user.id,
             oauth_name=provider,
             access_token=oidc_access_token or "",
-            refresh_token=refresh or "",
+            refresh_token=refresh_token or "",
             expires_at=expires_at,
             account_id=sub,
             account_email=email,
