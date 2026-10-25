@@ -9,7 +9,7 @@ import { controls } from '@/styles/controls.stylex';
 import { forms } from '@/styles/forms.stylex';
 import { icons } from '@/styles/icons.stylex';
 import { layout } from '@/styles/layout.stylex';
-import { colors, maxWidth, space } from '@/styles/tokens.stylex';
+import { maxWidth, space } from '@/styles/tokens.stylex';
 import { typography } from '@/styles/typography.stylex';
 
 const styles = stylex.create({
@@ -18,7 +18,6 @@ const styles = stylex.create({
   },
   clear: {
     marginLeft: space.px8,
-    color: colors.red500,
   },
 });
 
@@ -87,7 +86,7 @@ export default function AdminTokenGate(props: { children: JSX.Element }) {
           <button
             type="button"
             onClick={() => store.clearToken()}
-            {...stylex.attrs(actions.clear, styles.clear)}
+            {...stylex.attrs(actions.clear, actions.textDanger, styles.clear)}
           >
             {t('common.clear')}
           </button>

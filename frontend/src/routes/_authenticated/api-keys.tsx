@@ -40,7 +40,6 @@ const styles = stylex.create({
   },
   clear: {
     marginLeft: space.px12,
-    color: colors.red600,
   },
 });
 
@@ -231,7 +230,7 @@ function ApiKeysPage() {
             <button
               type="button"
               onClick={() => apiKeyStore.clearActiveKey()}
-              {...stylex.attrs(actions.clear, styles.clear)}
+              {...stylex.attrs(actions.clear, actions.textDanger, styles.clear)}
             >
               {t('common.clear')}
             </button>
