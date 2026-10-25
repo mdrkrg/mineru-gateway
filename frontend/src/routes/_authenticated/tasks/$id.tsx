@@ -187,7 +187,7 @@ function TaskDetailPage() {
           fallback={<p {...stylex.attrs(typography.muted)}>{t('common.loading')}</p>}
         >
           <Show when={error()}>
-            <p {...stylex.attrs(controls.alertError)}>{error()}</p>
+            <p {...stylex.attrs(controls.alert, controls.alertError)}>{error()}</p>
           </Show>
 
           <Show when={task()}>
@@ -242,7 +242,7 @@ function TaskDetailPage() {
                 </div>
 
                 <Show when={task().status === 'failed' && task().hasResult}>
-                  <p {...stylex.attrs(controls.alertWarning)}>
+                  <p {...stylex.attrs(controls.alert, controls.alertWarning)}>
                     {t('taskDetail.partialResultHint')}
                   </p>
                 </Show>

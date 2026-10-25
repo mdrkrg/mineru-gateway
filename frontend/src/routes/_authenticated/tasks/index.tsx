@@ -244,7 +244,7 @@ function TaskListPage() {
         </form>
 
         <Show when={error()}>
-          <p {...stylex.attrs(controls.alertError)}>{error()}</p>
+          <p {...stylex.attrs(controls.alert, controls.alertError)}>{error()}</p>
         </Show>
 
         {/* Batch actions */}

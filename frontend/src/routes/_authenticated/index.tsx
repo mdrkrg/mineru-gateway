@@ -154,7 +154,7 @@ function DashboardPage() {
           fallback={<p {...stylex.attrs(typography.muted)}>{t('common.loading')}</p>}
         >
           <Show when={error()}>
-            <p {...stylex.attrs(controls.alertError)}>{error()}</p>
+            <p {...stylex.attrs(controls.alert, controls.alertError)}>{error()}</p>
           </Show>
 
           <Show when={stats()}>

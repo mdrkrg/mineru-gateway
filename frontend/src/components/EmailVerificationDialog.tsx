@@ -105,12 +105,12 @@ export default function EmailVerificationDialog() {
           <p {...stylex.attrs(typography.bodySecondary, layout.mb16)}>{t('emailVerification.body')}</p>
 
           <Show when={sent()}>
-            <p {...stylex.attrs(controls.alertSuccess, layout.mb16)}>
+            <p {...stylex.attrs(controls.alert, controls.alertSuccess, layout.mb16)}>
               {t('emailVerification.sent')}
             </p>
           </Show>
           <Show when={error()}>
-            <p {...stylex.attrs(controls.alertError, layout.mb16)}>{error()}</p>
+            <p {...stylex.attrs(controls.alert, controls.alertError, layout.mb16)}>{error()}</p>
           </Show>
 
           <div {...stylex.attrs(layout.stack8)}>

@@ -142,7 +142,7 @@ function ApiKeysPage() {
   return (
     <div {...stylex.attrs(layout.stack24, layout.pageWidth896)}>
       <Show when={error()}>
-        <p {...stylex.attrs(controls.alertError)}>{error()}</p>
+        <p {...stylex.attrs(controls.alert, controls.alertError)}>{error()}</p>
       </Show>
 
       {/* Newly created key — shown once */}

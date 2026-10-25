@@ -329,7 +329,7 @@ function UploadPage() {
         </Show>
 
         <Show when={error()}>
-          <p {...stylex.attrs(controls.alertError)}>{error()}</p>
+          <p {...stylex.attrs(controls.alert, controls.alertError)}>{error()}</p>
         </Show>
 
         <form onSubmit={handleSubmit} {...stylex.attrs(layout.stack16)}>

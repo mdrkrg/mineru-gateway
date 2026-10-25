@@ -141,7 +141,7 @@ function ResultDownloadPage() {
         <p {...stylex.attrs(typography.bodyMuted)}>{t('download.description')}</p>
 
         <Show when={error()}>
-          <p {...stylex.attrs(controls.alertError)}>{error()}</p>
+          <p {...stylex.attrs(controls.alert, controls.alertError)}>{error()}</p>
         </Show>
 
         <div {...stylex.attrs(layout.rowCenter12)}>

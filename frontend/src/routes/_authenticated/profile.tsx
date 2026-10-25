@@ -107,10 +107,10 @@ function ProfilePage() {
         <h2 {...stylex.attrs(typography.sectionHeading, layout.mb16)}>{t('profile.editTitle')}</h2>
 
         <Show when={error()}>
-          <p {...stylex.attrs(controls.alertError, layout.mb16)}>{error()}</p>
+          <p {...stylex.attrs(controls.alert, controls.alertError, layout.mb16)}>{error()}</p>
         </Show>
         <Show when={saved()}>
-          <p {...stylex.attrs(controls.alertSuccess, layout.mb16)}>
+          <p {...stylex.attrs(controls.alert, controls.alertSuccess, layout.mb16)}>
             {t('profile.saved')}
           </p>
         </Show>
