@@ -217,9 +217,6 @@ function TaskDetailPage() {
                         return started ? formatDuration(started, task().completedAt) : '—';
                       })()}
                     </Field>
-                    <Show when={task().queuedAhead !== null}>
-                      <Field label={t('taskDetail.queuedAhead')}>{task().queuedAhead}</Field>
-                    </Show>
                   </dl>
 
                   <div {...stylex.attrs(layout.mt16)}>

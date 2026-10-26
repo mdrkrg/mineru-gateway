@@ -149,7 +149,6 @@ export const en = {
   'taskDetail.startedAt': 'Started At',
   'taskDetail.completedAt': 'Completed At',
   'taskDetail.elapsed': 'Elapsed',
-  'taskDetail.queuedAhead': 'Tasks Queued Ahead',
   'taskDetail.fileList': 'Files',
   'taskDetail.error': 'Error',
   'taskDetail.cancel': 'Cancel Task',

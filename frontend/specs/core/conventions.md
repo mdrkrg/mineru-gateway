@@ -62,7 +62,7 @@
 本仓库后端（`src/mineru_gateway/`）所有响应字段使用 **snake_case**。全仓 grep 不到 `alias_generator` / `to_camel` / `populate_by_name` 等 Pydantic 别名配置。证据：
 
 - `src/mineru_gateway/schemas.py`：`key_id`、`api_key_prefix`、`created_at`、`last_used_at`、`expires_at`、`is_active`、`task_id`、`status_url`、`result_url`、`file_names` — 全是 snake_case。
-- `src/mineru_gateway/tasks/schemas.py`：`task_id`、`file_names`、`created_at`、`started_at`、`completed_at`、`retry_count`、`queued_ahead`、`page_size`、`file_count`、`today_completed`、`today_failed`、`total_bytes`、`avg_duration_ms`、`non_downloadable`、`cancelled_count`、`cancelled_ids`、`current_status` — 全是 snake_case。
+- `src/mineru_gateway/tasks/schemas.py`：`task_id`、`file_names`、`created_at`、`started_at`、`completed_at`、`retry_count`、`page_size`、`file_count`、`today_completed`、`today_failed`、`total_bytes`、`avg_duration_ms`、`non_downloadable`、`cancelled_count`、`cancelled_ids`、`current_status` — 全是 snake_case。
 - `src/mineru_gateway/proxy/handler.py` 的 `handle_task_submission` 构造的 `JSONResponse` content 键名也是 snake_case。
 
 ### 双向映射策略

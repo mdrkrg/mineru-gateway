@@ -17,6 +17,7 @@ from ..db import Database
 from ..tasks import service
 from ..tasks.cache import FileCache
 from ..upstream.client import UpstreamClient
+from ..upstream.schemas import UpstreamTaskPayload
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,12 @@ async def sync_once(
         try:
             resp = await upstream.get_task_status(str(task.upstream_task_id))
             resp.raise_for_status()
-            upstream_status = resp.json()
+            payload = UpstreamTaskPayload.model_validate(resp.json())
+            if payload.task_id != task.upstream_task_id:
+                raise ValueError(
+                    "upstream status response task_id does not match the request"
+                )
+            upstream_status = payload.model_dump()
         except Exception:
             new_failures = task.consecutive_poll_failures + 1
             async with db.session_factory() as session:

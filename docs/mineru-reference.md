@@ -38,7 +38,6 @@
 
 - `partial` 是**终态**：部分文件成功，结果可下载；`has_result=true`。
 - `partial` / `failed` 的文件级错误从上游 `files[].error.message` 提取到 `error`/`upstream_error`。
-- 4.0 不再提供排队位置，`queued_ahead` 恒为 `null`。
 - 取消：`DELETE /tasks/{id}` 与批量取消允许 `pending` 和 `processing`（4.0 支持取消 queued/running）。
 
 ## 响应
@@ -51,7 +50,6 @@
   "status": "pending",
   "tier": "standard",
   "file_names": ["document.pdf"],
-  "queued_ahead": null,
   "created_at": "…",
   "status_url": "http://gateway/tasks/…",
   "result_url": "http://gateway/tasks/…/result",
@@ -64,6 +62,9 @@
 
 - `tier` 是 upstream 返回的实际档位；同步历史记录在未显式指定且响应为二进制时可能为 `null`。
 - 匿名透传模式原样返回上游 4.0 响应（`files[]`、`links` 等）。
+- `/file_parse` 的等待预算耗尽并返回 202 时，认证请求会转为可查询的
+  Gateway 任务：保存 upstream 映射、重写 `task_id`/任务链接并保留上传缓存供
+  故障重提。同步返回的 `partial`、`failed`、`canceled` 也按实际终态记入历史。
 
 ### 结果
 
