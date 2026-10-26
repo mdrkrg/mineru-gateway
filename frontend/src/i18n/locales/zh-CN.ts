@@ -326,6 +326,11 @@ export const zhCN: Dict = {
   // Dashboard
   'dashboard.welcome': '欢迎，{{name}}',
   'dashboard.statusSection': '任务状态',
+  'dashboard.resultsAvailable': '结果可用',
+  'dashboard.allStatuses': '全部状态',
+  'dashboard.retryPendingHint': '其中 {{count}} 个等待重试',
+  'dashboard.partialHint': '其中 {{count}} 个部分完成',
+  'dashboard.failedBadge': '{{count}} 个失败',
   'dashboard.overviewSection': '概览',
   'dashboard.todayCompleted': '今日完成',
   'dashboard.todayFailed': '今日失败',

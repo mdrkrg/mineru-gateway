@@ -333,6 +333,11 @@ export const en = {
   // Dashboard
   'dashboard.welcome': 'Welcome, {{name}}',
   'dashboard.statusSection': 'Task Status',
+  'dashboard.resultsAvailable': 'Results Available',
+  'dashboard.allStatuses': 'All Statuses',
+  'dashboard.retryPendingHint': '{{count}} waiting to retry',
+  'dashboard.partialHint': '{{count}} partially completed',
+  'dashboard.failedBadge': '{{count}} failed',
   'dashboard.overviewSection': 'Overview',
   'dashboard.todayCompleted': 'Completed Today',
   'dashboard.todayFailed': 'Failed Today',
