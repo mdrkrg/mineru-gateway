@@ -1,5 +1,5 @@
 import * as stylex from '@stylexjs/stylex';
-import { Show, createEffect, createSignal } from 'solid-js';
+import { Show, createMemo, createSignal } from 'solid-js';
 import { MailCheck, RefreshCw, X } from 'lucide-solid';
 import { requestVerifyToken } from '@/api/functions/auth';
 import { t } from '@/i18n';
@@ -40,21 +40,23 @@ const styles = stylex.create({
 export default function EmailVerificationDialog() {
   const auth = useAuth();
 
-  const [open, setOpen] = createSignal(false);
+  const [dismissedForUserId, setDismissedForUserId] = createSignal<string | null>(null);
   const [sending, setSending] = createSignal(false);
   const [sent, setSent] = createSignal(false);
   const [checking, setChecking] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
-  createEffect(() => {
+  const open = createMemo(() => {
     const user = auth.user();
-    if (user && !user.isVerified) {
-      setOpen(true);
-    } else if (!user || user.isVerified) {
-      // Verified elsewhere (e.g. email link in another tab) or logged out.
-      setOpen(false);
-    }
+    return Boolean(
+      user && !user.isVerified && dismissedForUserId() !== user.id,
+    );
   });
+
+  function handleDismiss() {
+    const user = auth.user();
+    if (user) setDismissedForUserId(user.id);
+  }
 
   async function handleSend() {
     const user = auth.user();
@@ -80,7 +82,6 @@ export default function EmailVerificationDialog() {
 
     if (auth.user()?.isVerified) {
       setSent(false);
-      setOpen(false);
       return;
     }
     setError(t('emailVerification.errNotVerified'));
@@ -94,7 +95,7 @@ export default function EmailVerificationDialog() {
             <h2 {...stylex.attrs(typography.sectionHeading)}>{t('emailVerification.title')}</h2>
             <button
               type="button"
-              onClick={() => setOpen(false)}
+              onClick={handleDismiss}
               aria-label={t('common.close')}
               {...stylex.attrs(controls.iconButton)}
             >
