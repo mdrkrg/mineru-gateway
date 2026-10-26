@@ -27,14 +27,14 @@ async def _store_via_writer(cache: FileCache, data: dict, files: list) -> str:
 
 async def test_store_returns_existing_dir(tmp_path):
     cache = FileCache(str(tmp_path))
-    cache_dir = await _store_via_writer(cache, {"backend": "pipeline"}, _files())
+    cache_dir = await _store_via_writer(cache, {"tier": "basic"}, _files())
     assert os.path.isdir(cache_dir)
     assert cache_dir.startswith(str(tmp_path))
 
 
 async def test_restore_roundtrips_form_and_files(tmp_path):
     cache = FileCache(str(tmp_path))
-    data = {"backend": "pipeline", "formula_enable": "true"}
+    data = {"tier": "basic", "ocr_mode": "ocr"}
     cache_dir = await _store_via_writer(cache, data, _files())
 
     restored_data, restored_files = await cache.restore(cache_dir)

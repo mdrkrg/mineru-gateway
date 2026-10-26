@@ -29,7 +29,7 @@ async def test_full_lifecycle_real_http(mock_control, mock_upstream_url, tmp_pat
     3. POST /tasks with key + multipart file -> 202 with task_id,
        status_url, result_url, file_names.
     4. GET /tasks -> the submitted task appears in the owner list.
-    5. GET /tasks/{id} -> returns pending status, backend, file info.
+    5. GET /tasks/{id} -> returns pending status, tier, file info.
     6. Set mock upstream task_status to "completed" -> the background
        status-sync loop will pick up the change (interval=0.5s).
        Poll until the task status transitions to "completed".
@@ -63,7 +63,7 @@ async def test_full_lifecycle_real_http(mock_control, mock_upstream_url, tmp_pat
                 "/tasks",
                 headers=headers,
                 files=files,
-                data={"backend": "pipeline"},
+                data={"tier": "basic"},
             )
             assert submit.status_code == 202
             body = submit.json()

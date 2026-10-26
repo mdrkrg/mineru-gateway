@@ -29,7 +29,7 @@ async def test_full_lifecycle(client, admin_headers, app, upstream_client):
     # 2. Submit an async task.
     files = [("files", ("doc.pdf", b"%PDF-1.4 e2e", "application/pdf"))]
     submit = await client.post(
-        "/tasks", headers=headers, files=files, data={"backend": "pipeline"}
+        "/tasks", headers=headers, files=files, data={"tier": "basic"}
     )
     assert submit.status_code == 202
     task_id = submit.json()["task_id"]

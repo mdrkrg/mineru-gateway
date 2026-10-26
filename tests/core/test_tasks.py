@@ -44,6 +44,23 @@ async def test_get_task_detail_returns_db_state(client, api_key):
     assert body["file_count"] == 1
     assert "created_at" in body
     assert body["retry_count"] == 0
+    assert body["tier"] == "standard"
+
+
+async def test_task_responses_surface_upstream_file_error(client, api_key):
+    task_id = await _submit(client, api_key)
+    db = client._transport.app.state.db
+    async with db.session_factory() as session:
+        task = await session.get(models.TaskRecord, uuid.UUID(task_id))
+        task.status = "partial"
+        task.upstream_error = "page 2 failed"
+        await session.commit()
+
+    detail = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+    listing = await client.get("/tasks", headers={"X-API-Key": api_key})
+
+    assert detail.json()["error"] == "page 2 failed"
+    assert listing.json()["items"][0]["error"] == "page 2 failed"
 
 
 async def test_get_task_detail_unknown_id_404(client, api_key):
@@ -104,12 +121,12 @@ async def test_list_filter_by_status(client, api_key):
     assert resp.json()["total"] == 1
 
 
-async def test_list_filter_by_backend(client, api_key):
-    """§5.3: 支持按 backend 筛选."""
-    await _submit(client, api_key, data={"backend": "pipeline"})
-    await _submit(client, api_key, data={"backend": "vlm"})
+async def test_list_filter_by_tier(client, api_key):
+    """§5.3: 支持按 MinerU 4.0 tier 筛选."""
+    await _submit(client, api_key, data={"tier": "basic"})
+    await _submit(client, api_key, data={"tier": "advanced"})
     resp = await client.get(
-        "/tasks", headers={"X-API-Key": api_key}, params={"backend": "vlm"}
+        "/tasks", headers={"X-API-Key": api_key}, params={"tier": "advanced"}
     )
     assert resp.json()["total"] == 1
 
@@ -223,6 +240,20 @@ async def test_get_result_streams_from_upstream(client, api_key):
     resp = await client.get(f"/tasks/{task_id}/result", headers={"X-API-Key": api_key})
     assert resp.status_code == 200
     assert "result content" in resp.text
+
+
+async def test_get_result_honors_native_zip_output(client, api_key):
+    task_id = await _submit(client, api_key, data={"output_formats": "markdown,zip"})
+    db = client._transport.app.state.db
+    async with db.session_factory() as session:
+        task = await session.get(models.TaskRecord, uuid.UUID(task_id))
+        task.status = "completed"
+        await session.commit()
+
+    resp = await client.get(f"/tasks/{task_id}/result", headers={"X-API-Key": api_key})
+
+    assert resp.status_code == 200
+    assert mock_state.result_requests[-1]["response_format"] == "zip"
 
 
 async def test_get_result_enforces_ownership(client, admin_headers, api_key):
@@ -371,16 +402,13 @@ async def test_get_result_409_for_pending_task_with_upstream_id(
     assert "status=pending" in result_resp.json()["detail"]
 
 
-async def test_get_result_409_for_failed_task_without_upstream_id(client, api_key):
-    """§3.7: Terminal task without upstream_task_id -> 409 naming the status."""
-    tid, _ = await _submit_and_set_status(client, api_key, "completed")
-    db = client._transport.app.state.db
-    async with db.session_factory() as session:
-        task = await session.get(models.TaskRecord, uuid.UUID(tid))
-        task.status = "failed"
-        task.upstream_task_id = None
-        task.error_message = "boom"
-        await session.commit()
+async def test_get_result_409_for_failed_task_with_upstream_id(client, api_key):
+    """MinerU 4.0 failed jobs are terminal but have no result payload."""
+    tid, upstream_id = await _submit_and_set_status(client, api_key, "failed")
+    assert upstream_id is not None
+
+    detail = await client.get(f"/tasks/{tid}", headers={"X-API-Key": api_key})
+    assert detail.json()["has_result"] is False
 
     resp = await client.get(f"/tasks/{tid}/result", headers={"X-API-Key": api_key})
     assert resp.status_code == 409
@@ -516,8 +544,13 @@ async def test_result_download_no_filenames_keeps_upstream_disposition(client, a
 
 
 async def test_result_download_json_response_untouched(client, api_key):
-    """JSON 响应 (response_format_zip=false 场景) 不添加 Content-Disposition."""
+    """JSON output (no zip in recorded formats) gets no Content-Disposition."""
     tid, _ = await _submit_and_set_status(client, api_key, "completed")
+    db = client._transport.app.state.db
+    async with db.session_factory() as session:
+        task = await session.get(models.TaskRecord, uuid.UUID(tid))
+        task.parse_params = {"output_formats": ["markdown"]}
+        await session.commit()
     mock_state.result_content_type = "application/json"
     mock_state.result_content_disposition = None
 
@@ -864,7 +897,10 @@ async def test_batch_cancel_all_pending(client, api_key):
 
 
 async def test_batch_cancel_mixed_statuses(client, api_key):
-    """§2.5 C2: 1 pending, 1 processing, 1 completed -> cancelled_count=1, 2 errors."""
+    """§2.5 C2: MinerU 4.0 can cancel queued and running jobs, not terminal ones.
+
+    pending + processing -> cancelled; completed -> not_cancellable.
+    """
     tid_pe, _ = await _submit_and_set_status(client, api_key, "pending")
     tid_pr, _ = await _submit_and_set_status(client, api_key, "processing")
     tid_co, _ = await _submit_and_set_status(client, api_key, "completed")
@@ -876,13 +912,11 @@ async def test_batch_cancel_mixed_statuses(client, api_key):
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["cancelled_count"] == 1
-    assert body["cancelled_ids"] == [tid_pe]
-    assert len(body["errors"]) == 2
+    assert body["cancelled_count"] == 2
+    assert body["cancelled_ids"] == [tid_pe, tid_pr]
+    assert len(body["errors"]) == 1
 
     error_map = {e["task_id"]: e for e in body["errors"]}
-    assert error_map[tid_pr]["reason"] == "not_cancellable"
-    assert error_map[tid_pr]["current_status"] == "processing"
     assert error_map[tid_co]["reason"] == "not_cancellable"
     assert error_map[tid_co]["current_status"] == "completed"
 
@@ -1219,9 +1253,9 @@ async def test_result_zip_duplicate_entry_names_deduplicated(client, api_key):
 # ===== has_result / partial-result downloads =====
 
 
-async def test_detail_has_result_for_failed_task_with_upstream_id(client, api_key):
-    """A failed task that mapped to upstream still exposes a (partial) result."""
-    task_id, upstream_id = await _submit_and_set_status(client, api_key, "failed")
+async def test_detail_has_result_for_partial_task(client, api_key):
+    """MinerU 4.0 partial jobs expose their successfully parsed files."""
+    task_id, upstream_id = await _submit_and_set_status(client, api_key, "partial")
     assert upstream_id is not None
 
     resp = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
@@ -1252,7 +1286,7 @@ async def test_detail_has_no_result_without_upstream_id(client, api_key):
 
 async def test_list_has_result_filter(client, api_key):
     """has_result=true/false partition result-bearing tasks from the rest."""
-    tid_ok, _ = await _submit_and_set_status(client, api_key, "failed")
+    tid_ok, _ = await _submit_and_set_status(client, api_key, "partial")
     await _submit_and_set_status(client, api_key, "pending")
 
     resp = await client.get("/tasks?has_result=true", headers={"X-API-Key": api_key})
@@ -1278,9 +1312,9 @@ async def test_list_items_expose_has_result(client, api_key):
     assert resp.json()["items"][0]["has_result"] is True
 
 
-async def test_result_zip_allows_failed_task_with_result(client, api_key):
-    """Failed tasks with an upstream mapping can be zipped (partial results)."""
-    tid, _ = await _submit_and_set_status(client, api_key, "failed")
+async def test_result_zip_allows_partial_task(client, api_key):
+    """Partial tasks can package their successfully parsed files."""
+    tid, _ = await _submit_and_set_status(client, api_key, "partial")
 
     resp = await client.post(
         "/tasks/result-zip",

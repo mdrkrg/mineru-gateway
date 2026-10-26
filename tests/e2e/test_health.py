@@ -25,20 +25,16 @@ async def test_health_aggregates_upstream_fields(e2e_client):
 
     1. GET /health -> 200.
     2. Response includes top-level fields (status, gateway) AND a nested
-       ``upstream`` object with upstream-level fields (version, free_slots,
-       queued_tasks, processing_tasks).
-    3. free_slots is non-negative when upstream reports healthy.
+       ``upstream`` object with the 4.0 capability payload (version, features).
     """
     resp = await e2e_client.get("/health")
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "healthy"
     upstream = body["upstream"]
-    assert "version" in upstream
-    assert "free_slots" in upstream
-    assert "queued_tasks" in upstream
-    assert "processing_tasks" in upstream
-    assert upstream["free_slots"] >= 0
+    assert isinstance(upstream["version"], str)
+    assert isinstance(upstream["features"], dict)
+    assert "output_formats" in upstream["features"]
 
 
 # ---------------------------------------------------------------------------

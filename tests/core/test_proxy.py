@@ -59,11 +59,10 @@ async def test_submit_records_parse_parameters(client, api_key, sample_files):
         headers={"X-API-Key": api_key},
         files=sample_files,
         data={
-            "backend": "pipeline",
-            "formula_enable": "true",
-            "table_enable": "0",
-            "start_page_id": "2",
-            "lang_list": "en,ch",
+            "tier": "basic",
+            "ocr_mode": "ocr",
+            "page_range": "3-6",
+            "output_formats": "middle_json",
         },
     )
     assert resp.status_code == 202
@@ -73,11 +72,13 @@ async def test_submit_records_parse_parameters(client, api_key, sample_files):
 
     async with client._transport.app.state.db.session_factory() as session:
         task = await session.get(TaskRecord, uuid.UUID(task_id))
-        assert task.backend == "pipeline"
-        assert task.parse_params["formula_enable"] is True
-        assert task.parse_params["table_enable"] is False
-        assert task.parse_params["start_page_id"] == 2
-        assert task.parse_params["lang_list"] == ["en", "ch"]
+        assert task.tier == "basic"
+        assert task.parse_params == {
+            "tier": "basic",
+            "ocr_mode": "ocr",
+            "page_range": "3-6",
+            "output_formats": ["middle_json", "zip"],
+        }
 
 
 async def test_submit_rejects_when_total_exceeds_max_size(
@@ -126,12 +127,10 @@ async def test_submit_upstream_non_json_202_returns_502(client, api_key, sample_
         assert count == 0
 
 
-async def test_submit_accepted_when_upstream_full(client, api_key, sample_files):
-    """arch-design s3.4 / mvp s3.5: async POST /tasks does not check upstream
-    free_slots before submission (no health gating). Gateway relies on per-key
-    rate limiting and max_concurrent_tasks for backpressure. Submission
-    succeeds (202) even when upstream has no free slots."""
-    mock_state.processing = mock_state.max_concurrent
+async def test_submit_accepted_when_upstream_degraded(client, api_key, sample_files):
+    """Async POST /tasks never probes upstream health; 4.0 only reports
+    reachability, so a degraded upstream still accepts the submission."""
+    mock_state.status = "degraded"
     resp = await client.post(
         "/tasks", headers={"X-API-Key": api_key}, files=sample_files
     )
@@ -144,7 +143,7 @@ async def test_file_parse_authenticated_relays_result(client, api_key, sample_fi
         "/file_parse", headers={"X-API-Key": api_key}, files=sample_files
     )
     assert resp.status_code == 200
-    assert resp.json()["markdown"] == "# parsed"
+    assert resp.json()["files"][0]["content"]["markdown"] == "# parsed"
 
 
 async def test_file_parse_authenticated_records_task(
@@ -174,14 +173,13 @@ async def test_file_parse_requires_key_when_anonymous_disabled(client, sample_fi
     assert resp.status_code == 401
 
 
-async def test_file_parse_503_when_no_free_slots(client, api_key, sample_files):
-    """§3.5: /file_parse 也受健康门控约束 — 无空闲 slot → 503 + Retry-After."""
-    mock_state.processing = mock_state.max_concurrent
+async def test_file_parse_relays_upstream_503(client, api_key, sample_files):
+    """4.0 has no queue-depth gate; an engine-dead upstream 503 is relayed."""
+    mock_state.parse_status = 503
     resp = await client.post(
         "/file_parse", headers={"X-API-Key": api_key}, files=sample_files
     )
     assert resp.status_code == 503
-    assert resp.headers.get("Retry-After") == "5"
 
 
 async def test_file_parse_rejects_when_total_exceeds_max_size(client, api_key):
@@ -269,7 +267,7 @@ async def test_anonymous_file_parse_passthrough_no_record(tmp_path):
             files = [("files", ("a.pdf", b"data", "application/pdf"))]
             resp = await c.post("/file_parse", files=files)
             assert resp.status_code == 200
-            assert resp.json()["markdown"] == "# parsed"
+            assert resp.json()["files"][0]["content"]["markdown"] == "# parsed"
 
         from sqlalchemy import func, select
 
@@ -280,11 +278,8 @@ async def test_anonymous_file_parse_passthrough_no_record(tmp_path):
             assert count == 0
 
 
-async def test_queued_ahead_captured_and_relayed(client, api_key, sample_files):
-    """§3.7: 上游 queued_ahead 被捕获, 在 detail 和 list 中都返回."""
-    from tests.mock_upstream import state as mock_state
-
-    mock_state.queued_ahead = 5
+async def test_queued_ahead_is_null_for_v1_jobs(client, api_key, sample_files):
+    """MinerU 4.0 no longer reports a queue position; the field stays null."""
     resp = await client.post(
         "/tasks", headers={"X-API-Key": api_key}, files=sample_files
     )
@@ -293,12 +288,7 @@ async def test_queued_ahead_captured_and_relayed(client, api_key, sample_files):
 
     detail = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
     assert detail.status_code == 200
-    assert detail.json()["queued_ahead"] == 5
-
-    list_resp = await client.get(
-        "/tasks", headers={"X-API-Key": api_key}, params={"status": "pending"}
-    )
-    assert list_resp.json()["items"][0]["queued_ahead"] == 5
+    assert detail.json()["queued_ahead"] is None
 
 
 # --- Idempotent submission (spec: idempotent-submission.md) ---
@@ -418,7 +408,7 @@ async def test_idempotent_repeat_after_task_completed(client, api_key, sample_fi
     assert body["started_at"] is None
     assert body["completed_at"] is None
     assert body["error"] is None
-    assert isinstance(body["backend"], str)
+    assert body["tier"] == "standard"
     assert isinstance(body["file_names"], list)
     assert isinstance(body["created_at"], str)
     assert body["status_url"].endswith(f"/tasks/{task_id}")
@@ -457,7 +447,7 @@ async def test_idempotent_repeat_after_task_failed(client, api_key, sample_files
     assert body["started_at"] is None
     assert body["completed_at"] is None
     assert body["error"] is None
-    assert isinstance(body["backend"], str)
+    assert body["tier"] == "standard"
     assert isinstance(body["file_names"], list)
     assert isinstance(body["created_at"], str)
     assert body["status_url"].endswith(f"/tasks/{task_id}")
@@ -821,28 +811,25 @@ async def test_idempotent_blank_keys_do_not_collide(client, api_key, sample_file
         assert count == 2
 
 
-async def test_idempotent_replay_still_accepted_when_upstream_full(
+async def test_idempotent_replay_still_accepted_when_upstream_degraded(
     client, api_key, sample_files
 ):
-    """arch-design s3.4 / mvp s3.5: idempotent replay for async POST /tasks
-    succeeds even when upstream has no free slots, because the health gate
-    was removed from the /tasks path. Both fresh submissions and replays
-    are accepted (202)."""
+    """Async /tasks never probes upstream health, so both fresh submissions
+    and idempotent replays are accepted (202) while upstream is degraded."""
     idem_key = "t12b-health-key"
     headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
 
     resp1 = await client.post("/tasks", headers=headers, files=sample_files)
     assert resp1.status_code == 202
 
-    mock_state.processing = mock_state.max_concurrent
+    mock_state.status = "degraded"
 
     resp2 = await client.post("/tasks", headers=headers, files=sample_files)
     assert resp2.status_code == 202
     assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
 
     # Control: a fresh submission with a different idempotency key
-    # is also accepted (202) since async /tasks no longer checks
-    # upstream free_slots.
+    # is also accepted (202): async /tasks never probes upstream health.
     resp3 = await client.post(
         "/tasks",
         headers={
@@ -893,12 +880,12 @@ async def test_file_parse_ignores_idempotency_key(client, api_key, sample_files)
     resp1 = await client.post("/file_parse", headers=headers, files=sample_files)
     assert resp1.status_code == 200
     assert "X-Idempotency-Key-Replayed" not in resp1.headers
-    assert resp1.json()["markdown"] == "# parsed"
+    assert resp1.json()["files"][0]["content"]["markdown"] == "# parsed"
 
     resp2 = await client.post("/file_parse", headers=headers, files=sample_files)
     assert resp2.status_code == 200
     assert "X-Idempotency-Key-Replayed" not in resp2.headers
-    assert resp2.json()["markdown"] == "# parsed"
+    assert resp2.json()["files"][0]["content"]["markdown"] == "# parsed"
 
 
 async def test_unhandled_exception_returns_500_json(app, api_key, sample_files):

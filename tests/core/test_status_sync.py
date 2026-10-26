@@ -53,6 +53,7 @@ async def test_sync_updates_status_from_upstream(app, upstream_client):
     async with db.session_factory() as session:
         refreshed = await service.get(session, task_id)
         assert refreshed.status == "completed"
+        assert refreshed.tier == "standard"
 
 
 async def test_sync_increments_poll_failures_on_error(app, upstream_client):
@@ -160,7 +161,7 @@ async def test_sync_releases_cache_on_terminal_state(app, upstream_client, tmp_p
     cache = FileCache(str(tmp_path))
     writer = cache.create_streaming_cache()
     await writer.write_file_chunk("files", "a.pdf", "application/pdf", b"%PDF-1.4 data")
-    cache_dir = await writer.finish({"backend": "pipeline"})
+    cache_dir = await writer.finish({"tier": "basic"})
     assert os.path.isdir(cache_dir)
 
     async with db.session_factory() as session:
@@ -194,3 +195,38 @@ async def test_sync_sets_completed_at_on_upstream_cancelled(app, upstream_client
         refreshed = await service.get(session, task_id)
         assert refreshed.status == "cancelled"
         assert refreshed.completed_at is not None
+
+
+async def test_sync_maps_partial_and_extracts_file_error(
+    app, upstream_client, tmp_path
+):
+    """4.0 can finish partially: cache is released and the file error is kept."""
+    import os
+
+    db = app.state.db
+    upstream = UpstreamClient(upstream_client)
+    cache = FileCache(str(tmp_path))
+    writer = cache.create_streaming_cache()
+    await writer.write_file_chunk("files", "a.pdf", "application/pdf", b"%PDF-1.4 data")
+    cache_dir = await writer.finish({"tier": "basic"})
+
+    async with db.session_factory() as session:
+        key_id = await _seed_key(session)
+        task = await _make_task(session, key_id, cache_dir=cache_dir)
+        task_id = task.id
+
+    mock_state.task_status = "partial"
+    mock_state.task_error = {
+        "type": "parse_error",
+        "code": "page_failed",
+        "message": "page 2 failed",
+    }
+    await status_sync.sync_once(db, upstream, poll_failure_threshold=3, cache=cache)
+
+    assert not os.path.exists(cache_dir)
+    async with db.session_factory() as session:
+        refreshed = await service.get(session, task_id)
+        assert refreshed.status == "partial"
+        assert refreshed.upstream_error == "page 2 failed"
+        assert refreshed.completed_at is not None
+        assert refreshed.cache_dir is None

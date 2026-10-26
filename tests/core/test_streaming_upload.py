@@ -91,9 +91,13 @@ def _mock_boundary_request(boundary: bytes) -> AsyncMock:
 
 
 async def _make_streaming_app(
-    tmp_path, *, max_upload_size: int, allow_anonymous: bool = False
+    tmp_path,
+    *,
+    max_upload_size: int,
+    max_file_size: int = 209_715_200,
+    allow_anonymous: bool = False,
 ):
-    """Create a test app + httpx client with a configurable max_upload_size."""
+    """Create a test app + httpx client with configurable size limits."""
     settings = Settings(
         upstream_url="http://mock-upstream",
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'stream.db'}",
@@ -101,6 +105,7 @@ async def _make_streaming_app(
         allow_anonymous=allow_anonymous,
         gateway_url="http://testserver",
         max_upload_size=max_upload_size,
+        max_file_size=max_file_size,
         file_cache_dir=str(tmp_path / "cache"),
         enable_background=False,
         json_logs=False,
@@ -208,9 +213,10 @@ async def test_t3_form_fields_passthrough(client, api_key):
         headers={"X-API-Key": api_key},
         files=_example_files(),
         data={
-            "backend": "pipeline",
-            "parse_method": "auto",
-            "return_md": "true",
+            "tier": "basic",
+            "ocr_mode": "auto",
+            "page_range": "1-3",
+            "output_formats": "markdown",
         },
     )
     assert resp.status_code == 202
@@ -218,22 +224,76 @@ async def test_t3_form_fields_passthrough(client, api_key):
 
     async with client._transport.app.state.db.session_factory() as session:
         task = await session.get(TaskRecord, task_id)
-        assert task.backend == "pipeline"
-        assert task.parse_params.get("parse_method") == "auto"
-        assert task.parse_params.get("return_md") is True
+        assert task.tier == "basic"
+        assert task.parse_params == {
+            "tier": "basic",
+            "ocr_mode": "auto",
+            "page_range": "1-3",
+            "output_formats": ["markdown", "zip"],
+        }
         cache_dir = task.cache_dir
 
     form = _read_form_json(cache_dir)
-    assert form.get("backend") == "pipeline"
-    assert form.get("parse_method") == "auto"
-    assert form.get("return_md") == "true"
+    assert form == {
+        "tier": "basic",
+        "ocr_mode": "auto",
+        "page_range": "1-3",
+        "output_formats": "markdown",
+    }
 
-    # Verify upstream received the same form fields (spec sec 6.1 S3)
+    # Native form fields are forwarded as validated V1 query parameters.
     assert len(mock_state.submitted) == 1
-    upstream_form = mock_state.submitted[0]["form"]
-    assert upstream_form.get("backend") == "pipeline"
-    assert upstream_form.get("parse_method") == "auto"
-    assert upstream_form.get("return_md") == "true"
+    upstream_params = mock_state.submitted[0]["params"]
+    assert upstream_params["tier"] == "basic"
+    assert upstream_params["ocr_mode"] == "auto"
+    assert "markdown" in upstream_params["output_formats"]
+    assert "zip" in upstream_params["output_formats"]
+
+
+async def test_repeated_output_formats_are_accumulated(client, api_key):
+    resp = await client.post(
+        "/tasks",
+        headers={"X-API-Key": api_key},
+        files=[
+            *_example_files(),
+            ("output_formats", (None, "markdown")),
+            ("output_formats", (None, "middle_json")),
+        ],
+    )
+
+    assert resp.status_code == 202
+    assert mock_state.submitted[0]["params"]["output_formats"] == [
+        "markdown",
+        "middle_json",
+        "zip",
+    ]
+
+
+async def test_non_v1_file_field_is_rejected(client, api_key):
+    cache_base = client._transport.app.state.settings.file_cache_dir
+
+    resp = await client.post(
+        "/tasks",
+        headers={"X-API-Key": api_key},
+        files=[("upload", ("doc.pdf", b"%PDF-1.4", "application/pdf"))],
+    )
+
+    assert resp.status_code == 400
+    assert _count_cache_dirs(cache_base) == 0
+
+
+async def test_invalid_parse_options_release_finalized_cache(client, api_key):
+    cache_base = client._transport.app.state.settings.file_cache_dir
+
+    resp = await client.post(
+        "/tasks",
+        headers={"X-API-Key": api_key},
+        files=_example_files(),
+        data={"tier": "invalid"},
+    )
+
+    assert resp.status_code == 400
+    assert _count_cache_dirs(cache_base) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +395,7 @@ async def test_t5_streaming_parser_uses_request_stream(tmp_path):
 
     cache = FileCache(str(tmp_path / "t5-cache"))
 
-    await _extract_multipart_streaming(request, 10_000_000, cache)
+    await _extract_multipart_streaming(request, 10_000_000, 10_000_000, cache)
 
     request.form.assert_not_called()
 
@@ -513,7 +573,7 @@ async def test_t9b_finish_failure_calls_cancel(tmp_path):
         _FailFinishWriter, "cancel", new_callable=AsyncMock
     ) as mock_cancel:
         with pytest.raises(OSError, match="disk full during finish"):
-            await _extract_multipart_streaming(request, 100_000, cache)
+            await _extract_multipart_streaming(request, 100_000, 100_000, cache)
 
     mock_cancel.assert_called_once()
 
@@ -547,7 +607,7 @@ async def test_t9c_cancel_failure_does_not_mask_original_error(tmp_path, caplog)
 
     with caplog.at_level(logging.WARNING, logger="mineru_gateway.proxy.handler"):
         with pytest.raises(OSError, match="disk full during finish"):
-            await _extract_multipart_streaming(request, 100_000, cache)
+            await _extract_multipart_streaming(request, 100_000, 100_000, cache)
 
     assert any("failed to cancel" in r.getMessage().lower() for r in caplog.records), (
         "a failed cache cancel must be logged"
@@ -676,11 +736,11 @@ async def test_t14_restore_streaming_cache(tmp_path):
     writer = cache.create_streaming_cache()
     await writer.write_file_chunk("files", "a.pdf", "application/pdf", b"hello")
     await writer.write_file_chunk("files", "b.txt", "text/plain", b"world")
-    cache_dir = await writer.finish({"backend": "pipeline", "parse_method": "auto"})
+    cache_dir = await writer.finish({"tier": "basic", "ocr_mode": "auto"})
 
     data, files = await cache.restore(cache_dir)
-    assert data["backend"] == "pipeline"
-    assert data["parse_method"] == "auto"
+    assert data["tier"] == "basic"
+    assert data["ocr_mode"] == "auto"
     assert len(files) == 2
     assert files[0][0] == "files"
     assert files[0][1] == ("a.pdf", b"hello", "application/pdf")
@@ -689,7 +749,7 @@ async def test_t14_restore_streaming_cache(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# T15 -- file_parse behaviour unchanged (uses old _extract_multipart)
+# T15 -- file_parse uses native V1 options through the buffered parser
 # spec: streaming-upload.md sec 6.6 S15
 # ---------------------------------------------------------------------------
 
@@ -701,10 +761,10 @@ async def test_t15_file_parse_unchanged(client, api_key):
         "/file_parse",
         headers={"X-API-Key": api_key},
         files=_example_files(),
-        data={"backend": "pipeline"},
+        data={"tier": "basic"},
     )
     assert resp.status_code == 200
-    assert resp.json()["markdown"] == "# parsed"
+    assert resp.json()["files"][0]["content"]["markdown"] == "# parsed"
 
     async with client._transport.app.state.db.session_factory() as session:
         count = await session.scalar(select(func.count()).select_from(TaskRecord))
@@ -885,7 +945,7 @@ async def test_t18_interleaved_file_form_parts(tmp_path):
             ("files", ("first.pdf", b"111", "application/pdf")),
             ("files", ("second.pdf", b"222", "application/pdf")),
         ]
-        data = {"backend": "pipeline", "parse_method": "auto"}
+        data = {"tier": "basic", "ocr_mode": "auto"}
         resp = await client.post(
             "/tasks",
             headers={"X-API-Key": api_key},
@@ -900,7 +960,7 @@ async def test_t18_interleaved_file_form_parts(tmp_path):
         async with app.state.db.session_factory() as session:
             task = await session.get(TaskRecord, task_id)
             assert task.file_count == 2
-            assert task.parse_params.get("parse_method") == "auto"
+            assert task.parse_params["ocr_mode"] == "auto"
 
 
 # ---------------------------------------------------------------------------
@@ -941,3 +1001,37 @@ async def test_t19_duplicate_filename_parts_kept_distinct(tmp_path):
         )
         assert detail.status_code == 200
         assert detail.json()["file_count"] == 2
+
+
+# ---------------------------------------------------------------------------
+# T8b -- Per-file limit (MinerU 4.0 caps each file at 200 MiB)
+# ---------------------------------------------------------------------------
+
+
+async def test_t8b_per_file_limit_rejected(tmp_path):
+    total_limit = 100_000
+    file_limit = 10_000
+    gen = _make_streaming_app(
+        tmp_path, max_upload_size=total_limit, max_file_size=file_limit
+    )
+    async for client, app, settings in gen:
+        r = await client.post(
+            "/auth/keys",
+            json={"label": "t8b"},
+            headers={"X-Admin-Token": "test-admin-token"},
+        )
+        api_key = r.json()["api_key"]
+
+        files = [
+            ("files", ("big.bin", b"x" * (file_limit + 1), "application/octet-stream"))
+        ]
+        resp = await client.post("/tasks", headers={"X-API-Key": api_key}, files=files)
+        assert resp.status_code == 413
+        detail = resp.json().get("detail", "")
+        assert str(file_limit) in detail
+
+        from sqlalchemy import func, select
+
+        async with app.state.db.session_factory() as session:
+            count = await session.scalar(select(func.count()).select_from(TaskRecord))
+            assert count == 0
