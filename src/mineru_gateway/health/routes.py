@@ -28,14 +28,7 @@ async def health(request: Request):
     upstream_payload: dict = {
         "status": up.status,
         "version": up.version or None,
-        "protocol_version": up.protocol_version,
-        "max_concurrent_requests": up.max_concurrent,
-        "queued_tasks": up.queued,
-        "processing_tasks": up.processing,
-        "completed_tasks": up.completed,
-        "failed_tasks": up.failed,
-        "processing_window_size": up.processing_window_size,
-        "free_slots": up.free_slots,
+        "features": up.features,
     }
     gateway_status = "healthy" if up.status == "healthy" else "degraded"
     http_status = 200 if up.status == "healthy" else 503
