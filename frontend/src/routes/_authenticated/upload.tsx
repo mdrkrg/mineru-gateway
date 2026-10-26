@@ -99,6 +99,8 @@ const styles = stylex.create({
   },
 });
 
+const MAX_TASK_FILES = 100;
+
 function UploadPage() {
   const apiKeyStore = useApiKey();
   const toast = useToast();
@@ -125,7 +127,11 @@ function UploadPage() {
     if (incoming.length === 0) return;
 
     const next = [...files(), ...incoming];
-    const check = validateUploadSize(next, env.maxUploadSizeBytes);
+    const check = validateUploadSize(next, {
+      maxTotalBytes: env.maxUploadSizeBytes,
+      maxFileBytes: env.maxFileSizeBytes,
+      maxFiles: MAX_TASK_FILES,
+    });
     if (!check.ok) {
       setError(check.message);
       return;
@@ -178,11 +184,6 @@ function UploadPage() {
     if (!key) return;
     if (files().length === 0) {
       setError(t('upload.errNoFile'));
-      return;
-    }
-    const sizeCheck = validateUploadSize(files(), env.maxUploadSizeBytes);
-    if (!sizeCheck.ok) {
-      setError(sizeCheck.message);
       return;
     }
 
