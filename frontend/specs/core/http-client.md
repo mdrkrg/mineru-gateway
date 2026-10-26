@@ -140,6 +140,7 @@ function passthrough(response: RawResponse): Result<RawResponse, ApiError<never>
 ### `prefix`
 
 - 从 Vite 环境变量读取：`import.meta.env.VITE_API_PREFIX`，默认 `''`（同源，适用于反向代理或 Vite dev server proxy 场景）。
+- 子路径部署时使用浏览器可见前缀（例如 `/mineru/api`）；反向代理负责在转发给 Gateway 前移除该前缀。
 - 调用点的 `url` 一律为相对路径（如 `'auth/jwt/login'`、`'tasks'`），base 由 `prefix` 提供。
 
 ### `hooks.beforeRequest`

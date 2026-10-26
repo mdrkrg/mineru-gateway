@@ -180,6 +180,8 @@ All settings use the `GATEWAY_` env prefix. Full table is in `README.md` and
 
 - `GATEWAY_UPSTREAM_URL` - the MinerU 4.0 router/api to proxy to.
 - `GATEWAY_UPSTREAM_API_KEY` - Bearer token when the upstream runs with `--api-key`.
+- `GATEWAY_ROOT_PATH` - public API prefix when a reverse proxy strips the path
+  before forwarding; keeps OpenAPI/docs URLs correct.
 - `GATEWAY_MAX_FILE_SIZE` - per-file limit (default 200 MiB, MinerU 4.0's cap).
 - `GATEWAY_ADMIN_TOKEN` - required to issue/revoke API keys. **Set this in any
   non-test environment.**
