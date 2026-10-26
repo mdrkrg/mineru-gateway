@@ -1000,6 +1000,16 @@ async def test_result_zip_empty_ids(client, api_key):
     assert resp.status_code == 422
 
 
+async def test_result_zip_rejects_duplicate_ids(client, api_key):
+    task_id = str(uuid.uuid4())
+    resp = await client.post(
+        "/v1/tasks/result-zip",
+        json={"task_ids": [task_id, task_id]},
+        headers={"X-API-Key": api_key},
+    )
+    assert resp.status_code == 422
+
+
 async def test_result_zip_requires_auth(client):
     """§1.2 step 1 review: no API key -> 401."""
     resp = await client.post(
@@ -1152,6 +1162,16 @@ async def test_batch_cancel_too_many_ids(client, api_key):
     resp = await client.post(
         "/v1/tasks/cancel",
         json={"task_ids": fake_ids},
+        headers={"X-API-Key": api_key},
+    )
+    assert resp.status_code == 422
+
+
+async def test_batch_cancel_rejects_duplicate_ids(client, api_key):
+    task_id = str(uuid.uuid4())
+    resp = await client.post(
+        "/v1/tasks/cancel",
+        json={"task_ids": [task_id, task_id]},
         headers={"X-API-Key": api_key},
     )
     assert resp.status_code == 422

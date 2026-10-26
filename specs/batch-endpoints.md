@@ -30,12 +30,13 @@ Content-Type: application/json
 }
 ```
 
-- `task_ids` — 至少 1 个，至多 200 个 UUID。为空或超过上限均返回 `422`。
+- `task_ids` — 至少 1 个、至多 200 个互不重复的 UUID。为空、重复或超过
+  上限均返回 `422`。
 
 ### 1.2 处理
 
 1. **认证**：`require_api_key` 依赖项验证 `X-API-Key`。无效或缺失 → `401`。
-2. **输入校验**：`task_ids` 长度 = 0 或 > 200 → `422`。
+2. **输入校验**：`task_ids` 长度 = 0、> 200 或包含重复值 → `422`。
 3. **所有权批量校验**：遍历 `task_ids`，每个 task 执行 `get_owned`（同时校验 `id` 存在 + `api_key_id` 匹配）。
    - 若任意 task 不属于当前 Key → **`404`**（整请求拒绝，不区分单个与全部）。
    - 原因：若允许跳过无权限 task，则此端点将成为他人的 task 所有权探测泄露源。
@@ -95,7 +96,7 @@ HTTP body 为完整 zip。客户端应将其视为标准 zip 下载。zip 最后
 | `401` | 未提供有效 API Key | `{"detail": "API key required"}` |
 | `404` | 任一 task_id 不存在或不属于当前 Key | `{"detail": "Task not found for one or more task_ids"}` |
 | `409` | 提交的 tasks 中存在非 completed/partial 或缺少 upstream_task_id 的 task | `{"detail": "One or more tasks are not available for download", "non_downloadable": [{"task_id": "..", "status": "..", "reason": "not_completed"\|"missing_upstream_task_id"}]}` |
-| `422` | `task_ids` 为空数组，或长度 > 200 | FastAPI 自动校验的 ValidationError |
+| `422` | `task_ids` 为空数组、包含重复值或长度 > 200 | FastAPI 自动校验的 ValidationError |
 
 #### 构建 zip 时的上游异常
 
@@ -158,6 +159,9 @@ Key-A 创建 task-1。Key-B 提交 `{"task_ids": [task-1.id]}`。
 
 验证：HTTP `200`。zip 含 2 个 result entry（非 1 个），各自内容完整独立。manifest `included` 含 2 条，`entry` 不同。
 
+**Z12 — 重复 task ID**
+提交同一个 `task_id` 两次。验证 HTTP `422`，且不向上游重复下载结果。
+
 ---
 
 ## 2. `POST /v1/tasks/cancel` — 批量取消
@@ -180,12 +184,12 @@ Content-Type: application/json
 }
 ```
 
-- `task_ids` — 至少 1 个，至多 200 个 UUID。
+- `task_ids` — 至少 1 个、至多 200 个互不重复的 UUID。
 
 ### 2.2 处理
 
 1. **认证**：`require_api_key` 依赖项验证 `X-API-Key`。无效或缺失 → `401`。
-2. **输入校验**：`task_ids` 为空 → `422`；长度 > 200 → `422`。
+2. **输入校验**：`task_ids` 为空、包含重复值或长度 > 200 → `422`。
 3. **逐 task 处理**（各 task 之间独立，一个失败不影响其他）：
    a. 按 `task_id` + `api_key_id` 查询 task（`get_owned`）
    b. 若 task 不存在或不属于当前 Key → 记录错误（`"not_found"`），不创建 `TaskRecord` 操作，继续下一个
@@ -234,7 +238,7 @@ Content-Type: application/json
 | 状态码 | 条件 | 响应体 |
 |:---:|------|--------|
 | `401` | 未提供有效 API Key | `{"detail": "API key required"}` |
-| `422` | `task_ids` 为空或 > 200 | FastAPI 自动校验的 ValidationError |
+| `422` | `task_ids` 为空、包含重复值或 > 200 | FastAPI 自动校验的 ValidationError |
 
 ### 2.4 与 `DELETE /v1/tasks/{id}` 的一致性
 
@@ -258,6 +262,9 @@ Content-Type: application/json
 
 **C5 — 空 task_ids**
 提交 `{"task_ids": []}`。验证 HTTP 状态码 `422`。
+
+**C6 — 重复 task ID**
+提交同一个 `task_id` 两次。验证 HTTP `422`，且不重复执行取消。
 
 ---
 
