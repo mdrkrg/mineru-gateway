@@ -139,10 +139,10 @@ async def _extract_multipart_streaming(
     from python_multipart.multipart import MultipartParser, parse_options_header
 
     content_type = request.headers.get("content-type", "")
-    if "boundary=" not in content_type:
+    _, content_type_params = parse_options_header(content_type.encode("latin-1"))
+    boundary = content_type_params.get(b"boundary")
+    if not boundary:
         raise HTTPException(status_code=400, detail="Missing multipart boundary")
-
-    boundary = content_type.rsplit("boundary=", 1)[-1].strip().strip('"')
     writer = cache.create_streaming_cache()
 
     data: dict = {}
@@ -161,7 +161,8 @@ async def _extract_multipart_streaming(
     current_file_bytes = 0
     file_count = 0
     current_form_buf = bytearray()
-    header_field = ""
+    header_field_buf = bytearray()
+    header_value_buf = bytearray()
 
     def on_part_begin() -> None:
         nonlocal current_field, current_filename, current_content_type
@@ -176,16 +177,24 @@ async def _extract_multipart_streaming(
         current_file_bytes = 0
         current_form_buf = bytearray()
 
+    def on_header_begin() -> None:
+        nonlocal header_field_buf, header_value_buf
+        header_field_buf = bytearray()
+        header_value_buf = bytearray()
+
     def on_header_field(data: bytes, start: int, end: int) -> None:
-        nonlocal header_field
-        header_field = data[start:end].decode("latin-1").lower()
+        header_field_buf.extend(data[start:end])
 
     def on_header_value(data: bytes, start: int, end: int) -> None:
-        nonlocal header_field, current_field, current_filename
+        header_value_buf.extend(data[start:end])
+
+    def on_header_end() -> None:
+        nonlocal current_field, current_filename
         nonlocal current_content_type, current_is_file
-        value = data[start:end].decode("latin-1")
+        header_field = header_field_buf.decode("latin-1").lower()
+        value = bytes(header_value_buf)
         if header_field == "content-disposition":
-            _, params = parse_options_header(data[start:end])
+            _, params = parse_options_header(value)
             name = params.get(b"name")
             current_field = name.decode("utf-8") if name else None
             fn = params.get(b"filename")
@@ -197,8 +206,8 @@ async def _extract_multipart_streaming(
                     )
                 current_filename = fn.decode("utf-8")
                 current_is_file = True
-        elif header_field == "content-type" and current_is_file:
-            current_content_type = value
+        elif header_field == "content-type":
+            current_content_type = value.decode("latin-1")
 
     def on_part_data(data: bytes, start: int, end: int) -> None:
         nonlocal total_bytes, form_bytes, current_file_bytes, current_file_part_started
@@ -267,11 +276,13 @@ async def _extract_multipart_streaming(
         "on_part_begin": on_part_begin,
         "on_part_data": on_part_data,
         "on_part_end": on_part_end,
+        "on_header_begin": on_header_begin,
         "on_header_field": on_header_field,
         "on_header_value": on_header_value,
+        "on_header_end": on_header_end,
     }
 
-    parser = MultipartParser(boundary.encode(), callbacks, max_size=float("inf"))
+    parser = MultipartParser(boundary, callbacks, max_size=float("inf"))
 
     try:
         async for chunk in request.stream():
