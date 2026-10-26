@@ -4,7 +4,7 @@
 > 不提供队列容量，因此网关不执行提交前健康门控。
 > 当前契约以 `docs/mineru-reference.md` 为准；本文件保留为历史 MVP 规约。
 >
-> **MVP 阶段已完成。** 本规约作为实现参考冻结，除非有逻辑错误，不再修改。未包含在 MVP 中但已后续实现的能力（幂等提交、`/tasks/stats`、用户体系/OAuth、流式上传等）见对应 `specs/` 文档。
+> **MVP 阶段已完成。** 本规约作为实现参考冻结，除非有逻辑错误，不再修改。未包含在 MVP 中但已后续实现的能力（幂等提交、`/v1/tasks/stats`、用户体系/OAuth、流式上传等）见对应 `specs/` 文档。
 
 > 本文件是 **MVP 阶段**的实现规约（数据模型、接口、模块设计、配置），是 `architecture-design.md` 的精简收敛版。
 > - 分阶段实现计划见 `plans/mvp-implementation-plan.md`
@@ -14,7 +14,7 @@
 
 **目标**：在 mineru-api / mineru-router 前提供一个**单实例、单 worker** 的网关，做到：
 
-1. 透明代理旧 API（`POST /file_parse` 同步、`POST /tasks` 异步），请求/响应格式与上游一致。
+1. 透明代理旧 API（`POST /v1/file_parse` 同步、`POST /v1/tasks` 异步），请求/响应格式与上游一致。
 2. 以 **API Key** 为鉴权主体（默认禁止匿名），记录任务元数据并做所有权隔离。
 3. 任务元数据持久化 + 上游状态同步 + 上游崩溃后简单重提（基础容灾）。
 4. 健康感知门控、按 Key 内存限流、文件大小限制等基础保护。
@@ -23,7 +23,7 @@
 
 - 用户体系（email/password/注册登录）——用 API Key + Admin Token 代替。
 - Redis、消息队列、多实例水平扩展。
-- 幂等键、磁盘配额、`/tasks/stats`、可配置重试状态机。
+- 幂等键、磁盘配额、`/v1/tasks/stats`、可配置重试状态机。
 - Web UI、断点续传、结果预取到对象存储。
 
 ---
@@ -94,10 +94,10 @@
 
 | 功能 | 端点 | 认证要求 | 说明 |
 |------|------|:------:|------|
-| 任务列表 | `GET /tasks` | API Key | 分页、按状态/日期/文件名筛选，按日期排序 |
-| 任务详情 | `GET /tasks/{task_id}` | API Key | 返回状态、文件列表、时间戳（先校验所有权） |
-| 取消任务 | `DELETE /tasks/{task_id}` | API Key | 仅限 `pending`；若上游可连通则尝试转发取消 |
-| 获取结果 | `GET /tasks/{task_id}/result` | API Key | 从上游流式透传 |
+| 任务列表 | `GET /v1/tasks` | API Key | 分页、按状态/日期/文件名筛选，按日期排序 |
+| 任务详情 | `GET /v1/tasks/{task_id}` | API Key | 返回状态、文件列表、时间戳（先校验所有权） |
+| 取消任务 | `DELETE /v1/tasks/{task_id}` | API Key | 仅限 `pending`；若上游可连通则尝试转发取消 |
+| 获取结果 | `GET /v1/tasks/{task_id}/result` | API Key | 从上游流式透传 |
 
 ### 3.3 透明代理（兼容旧 API）
 
@@ -106,11 +106,11 @@
 
 | 功能 | 端点 | 认证要求 | 说明 |
 |------|------|:------:|------|
-| 同步解析 | `POST /file_parse` | 必需¹ | 记录任务并透传 |
-| 异步提交 | `POST /tasks` | 必需¹ | 返回 Gateway 的 task_id |
-| 任务状态（旧） | `GET /tasks/{task_id}` | 必需¹ | 校验所有权后返回 DB 镜像状态 |
-| 任务结果（旧） | `GET /tasks/{task_id}/result` | 必需¹ | 流式透传上游结果 |
-| 健康检查 | `GET /health` | 无 | 聚合上游健康 + Gateway 自身状态 |
+| 同步解析 | `POST /v1/file_parse` | 必需¹ | 记录任务并透传 |
+| 异步提交 | `POST /v1/tasks` | 必需¹ | 返回 Gateway 的 task_id |
+| 任务状态（旧） | `GET /v1/tasks/{task_id}` | 必需¹ | 校验所有权后返回 DB 镜像状态 |
+| 任务结果（旧） | `GET /v1/tasks/{task_id}/result` | 必需¹ | 流式透传上游结果 |
+| 健康检查 | `GET /v1/health` | 无 | 聚合上游健康 + Gateway 自身状态 |
 
 > ¹ 当 `GATEWAY_ALLOW_ANONYMOUS=true` 时降级为「可选」。
 
@@ -127,7 +127,7 @@
 
 | 功能 | 说明 |
 |------|------|
-| 健康感知提交门控（`/file_parse`） | 仅同步端点：读取上游 `/health`，计算 `free_slots = max_concurrent_requests - queued_tasks - processing_tasks`，不足 1 → 503 + `Retry-After`。异步 `POST /tasks` 不走此门控——MinerU 始终接受（无界 `asyncio.Queue`），Gateway 依赖按 Key 限流 + 全局并发上限提供背压。 |
+| 健康感知提交门控（`/v1/file_parse`） | 仅同步端点：读取上游 `/v1/health`，计算 `free_slots = max_concurrent_requests - queued_tasks - processing_tasks`，不足 1 → 503 + `Retry-After`。异步 `POST /v1/tasks` 不走此门控——MinerU 始终接受（无界 `asyncio.Queue`），Gateway 依赖按 Key 限流 + 全局并发上限提供背压。 |
 | 按 Key 内存限流 | 进程内令牌桶，可配置每 Key 每秒请求数（单实例单 worker 有效） |
 | 全局并发限制 | DB 中 `pending + processing + retry_pending` 上限，超出 503（`retry_pending` 为待重提的在制任务，同样占用额度）|
 | 文件大小限制 | 单文件最大 `MAX_UPLOAD_SIZE`（默认 500MB） |
@@ -137,7 +137,7 @@
 | 功能 | 说明 |
 |------|------|
 | 结构化日志 | JSON 日志，含 `task_id`、`api_key_id`、`duration_ms` 等字段。请求级访问日志由 ASGI 中间件（`middleware.py`）逐请求产生，含 `request_id`/`method`/`path`/`status_code`/`duration_ms`，认证请求附带 `api_key_id`；响应回填 `X-Request-Id` 头 |
-| 健康检查 | Gateway `/health` + 聚合上游状态 |
+| 健康检查 | Gateway `/v1/health` + 聚合上游状态 |
 
 ### 3.7 与上游 mineru-router 的差异（v3.4.0 实测）
 
@@ -145,18 +145,18 @@ Gateway 定位为认证/持久化/容灾层，以下行为与真实 router 不�
 
 | 差异 | 真实 router | Gateway | 状态 |
 |------|-----------|---------|:----:|
-| `/health` 当 upstream 不健康时 | 返回 `503` | 返回 `503` + aggregated payload | ✓ 已对齐 |
-| `/health` 响应字段 | 含 `version` / `protocol_version` / `completed_tasks` / `failed_tasks` / `processing_window_size` / `servers[]` | 透传 `version` / `protocol_version` / `completed_tasks` / `failed_tasks` / `processing_window_size` / `free_slots`（`servers[]` 为路由拓扑，不适用） | ✓ 已对齐 |
-| `DELETE /tasks/{id}` | **不存在** | 存在，仅限 `pending` 任务 | Gateway 扩展 |
+| `/v1/health` 当 upstream 不健康时 | 返回 `503` | 返回 `503` + aggregated payload | ✓ 已对齐 |
+| `/v1/health` 响应字段 | 含 `version` / `protocol_version` / `completed_tasks` / `failed_tasks` / `processing_window_size` / `servers[]` | 透传 `version` / `protocol_version` / `completed_tasks` / `failed_tasks` / `processing_window_size` / `free_slots`（`servers[]` 为路由拓扑，不适用） | ✓ 已对齐 |
+| `DELETE /v1/tasks/{id}` | **不存在** | 存在，仅限 `pending` 任务 | Gateway 扩展 |
 | 任务状态流转 | 仅 `pending` / `processing` / `completed` / `failed` | 增加 `cancelled` / `retry_pending` | Gateway 扩展 |
-| `GET /tasks/{id}/result` 非终态 | 返回 `202` + 状态体 | 返回 `409` | MVP 简化（从 DB 镜像判断，不额外查询上游） |
-| `POST /tasks` 响应体 | 含 `started_at` / `completed_at` / `error`（null 时仍出现） | 已补齐 `started_at` / `completed_at` / `error`（均 null） | ✓ 已对齐 |
-| `POST /tasks` 提交前上游健康检查 | **不做**（始终接受，无界 `asyncio.Queue`） | **不做**（对齐上游行为，依赖按 Key 限流 + 全局并发上限提供背压） | ✓ 已对齐 |
+| `GET /v1/tasks/{id}/result` 非终态 | 返回 `202` + 状态体 | 返回 `409` | MVP 简化（从 DB 镜像判断，不额外查询上游） |
+| `POST /v1/tasks` 响应体 | 含 `started_at` / `completed_at` / `error`（null 时仍出现） | 已补齐 `started_at` / `completed_at` / `error`（均 null） | ✓ 已对齐 |
+| `POST /v1/tasks` 提交前上游健康检查 | **不做**（始终接受，无界 `asyncio.Queue`） | **不做**（对齐上游行为，依赖按 Key 限流 + 全局并发上限提供背压） | ✓ 已对齐 |
 
 | 功能 | 说明 |
 |------|------|
 | 结构化日志 | JSON 日志，含 `task_id`、`api_key_id`、`duration_ms` 等字段。请求级访问日志由 ASGI 中间件（`middleware.py`）逐请求产生，含 `request_id`/`method`/`path`/`status_code`/`duration_ms`，认证请求附带 `api_key_id`；响应回填 `X-Request-Id` 头 |
-| 健康检查 | Gateway `/health` + 聚合上游状态 |
+| 健康检查 | Gateway `/v1/health` + 聚合上游状态 |
 
 ---
 
@@ -226,7 +226,7 @@ class TaskRecord(Base):
 
 ### 约束与索引
 
-- `(api_key_id, status, created_at)` 复合索引，支撑 `GET /tasks` 的筛选与排序。
+- `(api_key_id, status, created_at)` 复合索引，支撑 `GET /v1/tasks` 的筛选与排序。
 - 匿名请求（`GATEWAY_ALLOW_ANONYMOUS=true` 时）为纯透传，**不写入 `tasks` 表**，故 `api_key_id` 为 `NOT NULL`（每条任务都归属某个 Key），索引无空值。
 
 ---
@@ -239,11 +239,11 @@ class TaskRecord(Base):
 
 | 方法 | 路径 | 变化 |
 |------|------|------|
-| `POST` | `/file_parse` | 认证：记录到 DB 并透传；匿名：纯透传不记录 |
-| `POST` | `/tasks` | 同上，认证时返回 Gateway 的 task_id |
-| `GET` | `/tasks/{task_id}` | 先校验所有权，再返回 DB 镜像状态 |
-| `GET` | `/tasks/{task_id}/result` | 流式透传上游结果 |
-| `GET` | `/health` | 聚合 Gateway 自身 + 上游状态 |
+| `POST` | `/v1/file_parse` | 认证：记录到 DB 并透传；匿名：纯透传不记录 |
+| `POST` | `/v1/tasks` | 同上，认证时返回 Gateway 的 task_id |
+| `GET` | `/v1/tasks/{task_id}` | 先校验所有权，再返回 DB 镜像状态 |
+| `GET` | `/v1/tasks/{task_id}/result` | 流式透传上游结果 |
+| `GET` | `/v1/health` | 聚合 Gateway 自身 + 上游状态 |
 
 ### 5.2 旧端点的响应头
 
@@ -253,13 +253,13 @@ class TaskRecord(Base):
 HTTP/1.1 202 Accepted
 X-MinerU-Task-Id: {gateway_task_id}
 X-MinerU-Task-Status: pending
-X-MinerU-Task-Status-Url: {gateway_url}/tasks/{id}
-X-MinerU-Task-Result-Url: {gateway_url}/tasks/{id}/result
+X-MinerU-Task-Status-Url: {gateway_url}/v1/tasks/{id}
+X-MinerU-Task-Result-Url: {gateway_url}/v1/tasks/{id}/result
 ```
 
-> `POST /file_parse` 通常直接返回上游解析结果；MinerU 4.0 的等待预算耗尽时
+> `POST /v1/file_parse` 通常直接返回上游解析结果；MinerU 4.0 的等待预算耗尽时
 > 会返回 202。认证请求在此情况下创建 Gateway 任务、重写任务链接并进入与
-> `POST /tasks` 相同的状态同步及故障重提流程。
+> `POST /v1/tasks` 相同的状态同步及故障重提流程。
 
 ### 5.3 新增端点
 
@@ -300,7 +300,7 @@ DELETE /auth/keys/{key_id}:
 
 # ===== 任务管理（需 X-API-Key）=====
 
-GET /tasks:
+GET /v1/tasks:
   summary: 列出当前 Key 的任务
   security: X-API-Key
   parameters:
@@ -326,7 +326,7 @@ GET /tasks:
     page: int
     page_size: int
 
-DELETE /tasks/{task_id}:
+DELETE /v1/tasks/{task_id}:
   summary: 取消任务
   security: X-API-Key
   description: |
@@ -340,18 +340,18 @@ DELETE /tasks/{task_id}:
 
 ### 5.4 上游超时
 
-`GATEWAY_UPSTREAM_TIMEOUT_READ`（默认 600s）作用于 `/file_parse` 与结果下载——同步解析完成前不发送字节。异步 `POST /tasks` 使用固定 30s 读超时（上游队列无界，正常立即返回 202）。
+`GATEWAY_UPSTREAM_TIMEOUT_READ`（默认 600s）作用于 `/v1/file_parse` 与结果下载——同步解析完成前不发送字节。异步 `POST /v1/tasks` 使用固定 30s 读超时（上游队列无界，正常立即返回 202）。
 
 | 端点 | 上游超时的响应 |
 |------|---------------|
-| `POST /tasks`、`POST /file_parse`、`GET /tasks/{id}/result` | `504 {"detail": "Upstream timeout"}` + `Retry-After: 5` |
-| `GET /health` | 不变：聚合后返回 `503` + `status: "degraded"` |
-| `POST /tasks/result-zip` | 不变：该条记入 `_manifest.json` 的 `skipped`（`reason: "upstream_error"`），不整体失败 |
-| `DELETE /tasks/{id}`、`POST /tasks/cancel` | 不变：转发上游失败被忽略，仍按本地状态返回 |
+| `POST /v1/tasks`、`POST /v1/file_parse`、`GET /v1/tasks/{id}/result` | `504 {"detail": "Upstream timeout"}` + `Retry-After: 5` |
+| `GET /v1/health` | 不变：聚合后返回 `503` + `status: "degraded"` |
+| `POST /v1/tasks/result-zip` | 不变：该条记入 `_manifest.json` 的 `skipped`（`reason: "upstream_error"`），不整体失败 |
+| `DELETE /v1/tasks/{id}`、`POST /v1/tasks/cancel` | 不变：转发上游失败被忽略，仍按本地状态返回 |
 
-连接失败（`httpx.TransportError`，如 `ConnectError`）→ `502 {"detail": "Upstream request failed"}` + `Retry-After: 5`；连接池耗尽（`httpx.PoolTimeout`）→ `503 {"detail": "Upstream connection pool exhausted"}` + `Retry-After: 30`。`POST /file_parse` 的 health 预检失败直接 503，不进入 504。
+连接失败（`httpx.TransportError`，如 `ConnectError`）→ `502 {"detail": "Upstream request failed"}` + `Retry-After: 5`；连接池耗尽（`httpx.PoolTimeout`）→ `503 {"detail": "Upstream connection pool exhausted"}` + `Retry-After: 30`。`POST /v1/file_parse` 的 health 预检失败直接 503，不进入 504。
 
-健康聚合、状态轮询与取消转发使用固定 10s 读超时（不超过上述配置），避免拖住 `status_sync`/`/health`。`504` 不表示上游未受理：重试 `POST /tasks` 应带 `X-Idempotency-Key`（见 `specs/idempotent-submission.md`），否则可能重复建任务。
+健康聚合、状态轮询与取消转发使用固定 10s 读超时（不超过上述配置），避免拖住 `status_sync`/`/v1/health`。`504` 不表示上游未受理：重试 `POST /v1/tasks` 应带 `X-Idempotency-Key`（见 `specs/idempotent-submission.md`），否则可能重复建任务。
 
 客户端重试时机与提交超时要求见 `specs/idempotent-submission.md` §4.5；不要在第一次请求仍在飞行时用同一 key 重试。
 
@@ -378,13 +378,13 @@ mineru_gateway/
 ├── tasks/
 │   ├── service.py                   # 任务 CRUD + 权限检查
 │   ├── cache.py                     # 文件暂存管理（store/restore/release）
-│   ├── routes.py                    # GET /tasks, GET /tasks/{id}, DELETE /tasks/{id}
+│   ├── routes.py                    # GET /v1/tasks, GET /v1/tasks/{id}, DELETE /v1/tasks/{id}
 │   └── schemas.py
 │
 ├── proxy/
 │   ├── handler.py                   # 核心：multipart 流式透传
 │   ├── client.py                    # httpx async client 管理
-│   └── routes.py                    # POST /file_parse, POST /tasks（兼容）
+│   └── routes.py                    # POST /v1/file_parse, POST /v1/tasks（兼容）
 │
 ├── upstream/
 │   ├── health.py                    # 上游健康检查 + 门控逻辑
@@ -399,7 +399,7 @@ mineru_gateway/
 │   └── memory.py                    # 进程内令牌桶（单实例）
 │
 └── health/
-    └── routes.py                    # GET /health（聚合）
+    └── routes.py                    # GET /v1/health（聚合）
 ```
 
 ### 6.2 透传核心 (`proxy/handler.py`)
@@ -411,7 +411,7 @@ async def handle_task_submission(
     files: list[UploadFile],
     api_key: ApiKey | None,
 ) -> JSONResponse:
-    """处理 POST /tasks 请求。行为要点：
+    """处理 POST /v1/tasks 请求。行为要点：
     - 认证门控：默认拒绝匿名；ALLOW_ANONYMOUS=true 时匿名请求纯透传不记录
     - 速率限制：按 Key 内存令牌桶拦截
     - 文件暂存：认证请求的 multipart 落盘后转发上游（用于崩溃重提）
@@ -616,7 +616,7 @@ volumes:
 | 环境变量 | 默认 | 说明 |
 |---------|------|------|
 | `GATEWAY_UPSTREAM_URL` | - | 上游 router/api 地址 |
-| `GATEWAY_UPSTREAM_TIMEOUT_READ` | `600` | 同步解析/结果下载的上游读超时（秒）；异步 `/tasks` 固定 30s |
+| `GATEWAY_UPSTREAM_TIMEOUT_READ` | `600` | 同步解析/结果下载的上游读超时（秒）；异步 `/v1/tasks` 固定 30s |
 | `GATEWAY_DATABASE_URL` | `sqlite+aiosqlite:///./gateway.db` | 支持切 PG |
 | `GATEWAY_ADMIN_TOKEN` | - | 签发/管理 Key 所需，**必须设置** |
 | `GATEWAY_ALLOW_ANONYMOUS` | `false` | 是否允许无 Key 纯透传 |
@@ -658,8 +658,8 @@ volumes:
 
 | # | 项 | 澄清 |
 |---|----|------|
-| C1 | 全局并发上限作用域 | 仅约束**认证的 `POST /tasks`**；`POST /file_parse` 与匿名透传**不计入、不受限**（§3.5 的 `pending+processing+retry_pending` 计数只统计已入库任务）|
-| C2 | 取消范围 | `DELETE /tasks/{id}` **仅取消 `pending`**；`processing` / `retry_pending` 返回 409，无法取消上游正在处理的任务（§5.3）|
+| C1 | 全局并发上限作用域 | 仅约束**认证的 `POST /v1/tasks`**；`POST /v1/file_parse` 与匿名透传**不计入、不受限**（§3.5 的 `pending+processing+retry_pending` 计数只统计已入库任务）|
+| C2 | 取消范围 | `DELETE /v1/tasks/{id}` **仅取消 `pending`**；`processing` / `retry_pending` 返回 409，无法取消上游正在处理的任务（§5.3）|
 | C3 | 上传为全量内存缓冲 | `_extract_multipart` 逐文件 `read()` 进内存后再落暂存盘，大小限制在读入后校验；非流式，单请求常驻内存可达 `MAX_UPLOAD_SIZE` |
 | C4 | `retry_pending` 占用并发额度 | 待重提任务在被重提/判失败前持续计入全局并发；由 `retry_interval` 约束时长 |
 | C5 | 匿名为实例级全开关 | `GATEWAY_ALLOW_ANONYMOUS` 全局生效，无按端点/路径的匿名控制 |

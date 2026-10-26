@@ -1,8 +1,8 @@
-"""Tests for authenticated + anonymous proxying of POST /tasks and /file_parse.
+"""Tests for authenticated + anonymous proxying of POST /v1/tasks and /v1/file_parse.
 
 Spec: mvp-implementation.md §3.3 (透明代理 / 认证策略), §5.1-5.2 (已有端点 +
 响应头), §6.2 (透传核心 handle_task_submission), §3.5 (并发控制与保护).
-Plan: Phase 1 — "POST /tasks (异步) + POST /file_parse (同步) 流式透传"; 提前落地
+Plan: Phase 1 — "POST /v1/tasks (异步) + POST /v1/file_parse (同步) 流式透传"; 提前落地
 的持久化 (Phase 2) 与保护 (Phase 4) 一并覆盖。
 """
 
@@ -25,7 +25,7 @@ from tests.mock_upstream import create_mock_upstream, state as mock_state
 
 async def test_submit_requires_key_when_anonymous_disabled(client, sample_files):
     """§3.3: 默认禁止匿名 (ALLOW_ANONYMOUS=false) → 无 Key 提交被拒 (401)."""
-    resp = await client.post("/tasks", files=sample_files)
+    resp = await client.post("/v1/tasks", files=sample_files)
     assert resp.status_code == 401
 
 
@@ -34,15 +34,15 @@ async def test_submit_authenticated_creates_task_and_superset_response(
 ):
     """§6.2 / §5.2: 认证提交返回 Gateway task_id 的兼容超集响应 + X-MinerU-* 头."""
     resp = await client.post(
-        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+        "/v1/tasks", headers={"X-API-Key": api_key}, files=sample_files
     )
     assert resp.status_code == 202
     body = resp.json()
     # Gateway id replaces upstream id, superset fields added.
     assert body["task_id"]
     assert body["status"] == "pending"
-    assert body["status_url"].endswith(f"/tasks/{body['task_id']}")
-    assert body["result_url"].endswith(f"/tasks/{body['task_id']}/result")
+    assert body["status_url"].endswith(f"/v1/tasks/{body['task_id']}")
+    assert body["result_url"].endswith(f"/v1/tasks/{body['task_id']}/result")
     assert body["file_names"] == ["doc.pdf"]
     # §3.7: 202 应含 started_at / completed_at / error（均 null），与上游兼容
     assert body.get("started_at") is None
@@ -55,7 +55,7 @@ async def test_submit_authenticated_creates_task_and_superset_response(
 async def test_submit_records_parse_parameters(client, api_key, sample_files):
     """§4 (TaskRecord 解析参数) / §6.2 步骤6: 表单解析参数落库并类型正确."""
     resp = await client.post(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": api_key},
         files=sample_files,
         data={
@@ -96,7 +96,7 @@ async def test_submit_rejects_when_total_exceeds_max_size(
         ("files", ("a.pdf", half, "application/pdf")),
         ("files", ("b.pdf", half, "application/pdf")),
     ]
-    resp = await client.post("/tasks", headers={"X-API-Key": raw}, files=files)
+    resp = await client.post("/v1/tasks", headers={"X-API-Key": raw}, files=files)
     assert resp.status_code == 413
 
 
@@ -104,7 +104,7 @@ async def test_submit_upstream_non_202_surfaces_error(client, api_key, sample_fi
     """§6.2 步骤5: 上游非 202 提交失败时向客户端透出上游状态码."""
     mock_state.submit_status = 500
     resp = await client.post(
-        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+        "/v1/tasks", headers={"X-API-Key": api_key}, files=sample_files
     )
     assert resp.status_code == 500
     assert resp.json() == {"detail": "upstream error"}
@@ -114,7 +114,7 @@ async def test_submit_upstream_non_json_202_returns_502(client, api_key, sample_
     """§6.2: 上游返回 202 但 body 非 JSON → 502, 不创建 TaskRecord."""
     mock_state.submit_raw_body = "not json"
     resp = await client.post(
-        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+        "/v1/tasks", headers={"X-API-Key": api_key}, files=sample_files
     )
     assert resp.status_code == 502
 
@@ -137,7 +137,7 @@ async def test_submit_malformed_202_returns_502_without_stuck_task(
 
     mock_state.submit_malformed = True
     resp = await client.post(
-        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+        "/v1/tasks", headers={"X-API-Key": api_key}, files=sample_files
     )
 
     assert resp.status_code == 502
@@ -148,19 +148,19 @@ async def test_submit_malformed_202_returns_502_without_stuck_task(
 
 
 async def test_submit_accepted_when_upstream_degraded(client, api_key, sample_files):
-    """Async POST /tasks never probes upstream health; 4.0 only reports
+    """Async POST /v1/tasks never probes upstream health; 4.0 only reports
     reachability, so a degraded upstream still accepts the submission."""
     mock_state.status = "degraded"
     resp = await client.post(
-        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+        "/v1/tasks", headers={"X-API-Key": api_key}, files=sample_files
     )
     assert resp.status_code == 202
 
 
 async def test_file_parse_authenticated_relays_result(client, api_key, sample_files):
-    """§3.3 / §5.1 POST /file_parse: 同步端点直接透传上游解析结果 (200)."""
+    """§3.3 / §5.1 POST /v1/file_parse: 同步端点直接透传上游解析结果 (200)."""
     resp = await client.post(
-        "/file_parse", headers={"X-API-Key": api_key}, files=sample_files
+        "/v1/file_parse", headers={"X-API-Key": api_key}, files=sample_files
     )
     assert resp.status_code == 200
     assert resp.json()["files"][0]["content"]["markdown"] == "# parsed"
@@ -170,13 +170,13 @@ async def test_file_parse_authenticated_relays_result(client, api_key, sample_fi
 async def test_file_parse_authenticated_records_task(
     client, api_key, sample_files, app
 ):
-    """§3.3: 认证 /file_parse 记录一条 completed 任务 (供历史/所有权)."""
+    """§3.3: 认证 /v1/file_parse 记录一条 completed 任务 (供历史/所有权)."""
     from sqlalchemy import func, select
 
     from mineru_gateway.models import TaskRecord
 
     resp = await client.post(
-        "/file_parse", headers={"X-API-Key": api_key}, files=sample_files
+        "/v1/file_parse", headers={"X-API-Key": api_key}, files=sample_files
     )
     assert resp.status_code == 200
     response_task_id = uuid.UUID(resp.json()["task_id"])
@@ -200,7 +200,7 @@ async def test_file_parse_zip_uses_task_headers_for_history(
     from mineru_gateway.models import TaskRecord
 
     resp = await client.post(
-        "/file_parse",
+        "/v1/file_parse",
         headers={"X-API-Key": api_key},
         files=sample_files,
         data={"response_format": "zip"},
@@ -231,7 +231,7 @@ async def test_file_parse_records_partial_status_and_error(
         "message": "page 2 failed",
     }
     resp = await client.post(
-        "/file_parse", headers={"X-API-Key": api_key}, files=sample_files
+        "/v1/file_parse", headers={"X-API-Key": api_key}, files=sample_files
     )
 
     assert resp.status_code == 200
@@ -253,7 +253,7 @@ async def test_file_parse_202_creates_trackable_recoverable_task(
     mock_state.parse_status = 202
     mock_state.parse_task_status = "running"
     resp = await client.post(
-        "/file_parse",
+        "/v1/file_parse",
         headers={"X-API-Key": api_key},
         files=sample_files,
         data={"wait_timeout": "1"},
@@ -263,8 +263,8 @@ async def test_file_parse_202_creates_trackable_recoverable_task(
     body = resp.json()
     task_id = uuid.UUID(body["task_id"])
     assert body["status"] == "processing"
-    assert body["status_url"].endswith(f"/tasks/{task_id}")
-    assert body["result_url"].endswith(f"/tasks/{task_id}/result")
+    assert body["status_url"].endswith(f"/v1/tasks/{task_id}")
+    assert body["result_url"].endswith(f"/v1/tasks/{task_id}/result")
     assert resp.headers["X-MinerU-Task-Id"] == str(task_id)
 
     async with app.state.db.session_factory() as session:
@@ -287,7 +287,7 @@ async def test_file_parse_409_records_failed_task(client, api_key, sample_files,
         "message": "document failed",
     }
     resp = await client.post(
-        "/file_parse", headers={"X-API-Key": api_key}, files=sample_files
+        "/v1/file_parse", headers={"X-API-Key": api_key}, files=sample_files
     )
 
     assert resp.status_code == 409
@@ -301,8 +301,8 @@ async def test_file_parse_409_records_failed_task(client, api_key, sample_files,
 
 
 async def test_file_parse_requires_key_when_anonymous_disabled(client, sample_files):
-    """§3.3: /file_parse 同样默认禁止匿名 → 无 Key 401."""
-    resp = await client.post("/file_parse", files=sample_files)
+    """§3.3: /v1/file_parse 同样默认禁止匿名 → 无 Key 401."""
+    resp = await client.post("/v1/file_parse", files=sample_files)
     assert resp.status_code == 401
 
 
@@ -310,16 +310,18 @@ async def test_file_parse_relays_upstream_503(client, api_key, sample_files):
     """4.0 has no queue-depth gate; an engine-dead upstream 503 is relayed."""
     mock_state.parse_status = 503
     resp = await client.post(
-        "/file_parse", headers={"X-API-Key": api_key}, files=sample_files
+        "/v1/file_parse", headers={"X-API-Key": api_key}, files=sample_files
     )
     assert resp.status_code == 503
 
 
 async def test_file_parse_rejects_when_total_exceeds_max_size(client, api_key):
-    """§3.5: /file_parse 同样执行文件大小限制 → 超限 413."""
+    """§3.5: /v1/file_parse 同样执行文件大小限制 → 超限 413."""
     max_size = client._transport.app.state.settings.max_upload_size
     files = [("files", ("big.pdf", b"x" * (max_size + 1), "application/pdf"))]
-    resp = await client.post("/file_parse", headers={"X-API-Key": api_key}, files=files)
+    resp = await client.post(
+        "/v1/file_parse", headers={"X-API-Key": api_key}, files=files
+    )
     assert resp.status_code == 413
 
 
@@ -327,7 +329,7 @@ async def test_submit_rejects_more_than_100_files_before_upstream(client, api_ke
     files = [
         ("files", (f"{index}.pdf", b"x", "application/pdf")) for index in range(101)
     ]
-    resp = await client.post("/tasks", headers={"X-API-Key": api_key}, files=files)
+    resp = await client.post("/v1/tasks", headers={"X-API-Key": api_key}, files=files)
 
     assert resp.status_code == 400
     assert mock_state.submitted == []
@@ -337,21 +339,23 @@ async def test_file_parse_rejects_more_than_100_files_before_upstream(client, ap
     files = [
         ("files", (f"{index}.pdf", b"x", "application/pdf")) for index in range(101)
     ]
-    resp = await client.post("/file_parse", headers={"X-API-Key": api_key}, files=files)
+    resp = await client.post(
+        "/v1/file_parse", headers={"X-API-Key": api_key}, files=files
+    )
 
     assert resp.status_code == 400
     assert mock_state.submitted == []
 
 
 async def test_file_parse_429_when_rate_limited(client, admin_headers, sample_files):
-    """§3.5: /file_parse 也走按 Key 内存限流 — 耗尽突发预算后 429 + Retry-After."""
+    """§3.5: /v1/file_parse 也走按 Key 内存限流 — 耗尽突发预算后 429 + Retry-After."""
     raw = (
         await client.post("/auth/keys", json={"label": "fp-rl"}, headers=admin_headers)
     ).json()["api_key"]
     hit_429 = False
     for _ in range(40):
         resp = await client.post(
-            "/file_parse", headers={"X-API-Key": raw}, files=sample_files
+            "/v1/file_parse", headers={"X-API-Key": raw}, files=sample_files
         )
         if resp.status_code == 429:
             hit_429 = True
@@ -395,10 +399,22 @@ async def test_anonymous_passthrough_no_record(tmp_path):
             transport=transport, base_url="http://testserver"
         ) as c:
             files = [("files", ("a.pdf", b"data", "application/pdf"))]
-            resp = await c.post("/tasks", files=files)
+            resp = await c.post("/v1/tasks", files=files)
             # Pure passthrough: upstream 202 body relayed (upstream task_id kept).
             assert resp.status_code == 202
-            assert resp.json()["task_id"].startswith("up-")
+            task_id = resp.json()["task_id"]
+            assert task_id.startswith("up-")
+
+            status = await c.get(f"/v1/tasks/{task_id}")
+            assert status.status_code == 200
+            assert status.json()["task_id"] == task_id
+
+            result = await c.get(f"/v1/tasks/{task_id}/result")
+            assert result.status_code == 200
+
+            cancel = await c.delete(f"/v1/tasks/{task_id}")
+            assert cancel.status_code == 200
+            assert cancel.json()["task_id"] == task_id
 
         # No task rows written for anonymous requests.
         from sqlalchemy import func, select
@@ -409,8 +425,16 @@ async def test_anonymous_passthrough_no_record(tmp_path):
             assert count == 0
 
 
+async def test_legacy_unversioned_parse_paths_are_not_registered(
+    client, api_key, sample_files
+):
+    assert (await client.post("/tasks", files=sample_files)).status_code == 404
+    assert (await client.post("/file_parse", files=sample_files)).status_code == 404
+    assert (await client.get("/health")).status_code == 404
+
+
 async def test_anonymous_file_parse_passthrough_no_record(tmp_path):
-    """§3.3: ALLOW_ANONYMOUS=true 时无 Key 的 /file_parse 也为纯透传, 不入库."""
+    """§3.3: ALLOW_ANONYMOUS=true 时无 Key 的 /v1/file_parse 也为纯透传, 不入库."""
     app, settings = await _anon_client(tmp_path)
     async with LifespanManager(app):
         transport = httpx.ASGITransport(app=app)
@@ -418,7 +442,7 @@ async def test_anonymous_file_parse_passthrough_no_record(tmp_path):
             transport=transport, base_url="http://testserver"
         ) as c:
             files = [("files", ("a.pdf", b"data", "application/pdf"))]
-            resp = await c.post("/file_parse", files=files)
+            resp = await c.post("/v1/file_parse", files=files)
             assert resp.status_code == 200
             assert resp.json()["files"][0]["content"]["markdown"] == "# parsed"
 
@@ -438,7 +462,7 @@ async def test_idempotent_first_submission_with_key(client, api_key, sample_file
     """T1 sec 6.1: first submission with X-Idempotency-Key stores key in DB,
     returns 202 with no X-Idempotency-Key-Replayed response header."""
     resp = await client.post(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": api_key, "X-Idempotency-Key": "key-1"},
         files=sample_files,
     )
@@ -457,7 +481,7 @@ async def test_idempotent_without_key_header(client, api_key, sample_files):
     """T4 sec 6.1: submission without X-Idempotency-Key stores NULL in DB,
     response does not include X-Idempotency-Key-Replayed."""
     resp = await client.post(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": api_key},
         files=sample_files,
     )
@@ -477,7 +501,7 @@ async def test_idempotent_blank_key_treated_as_missing(client, api_key, sample_f
     treated as not provided, stores NULL in DB."""
     for idem_key in ("", "   ", "\t  "):
         resp = await client.post(
-            "/tasks",
+            "/v1/tasks",
             headers={"X-API-Key": api_key, "X-Idempotency-Key": idem_key},
             files=sample_files,
         )
@@ -498,20 +522,20 @@ async def test_idempotent_repeat_same_key_returns_replay(client, api_key, sample
     idem_key = "t2-repeat-key"
     headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
 
-    resp1 = await client.post("/tasks", headers=headers, files=sample_files)
+    resp1 = await client.post("/v1/tasks", headers=headers, files=sample_files)
     assert resp1.status_code == 202
     assert "X-Idempotency-Key-Replayed" not in resp1.headers
     task_id_1 = resp1.json()["task_id"]
 
-    resp2 = await client.post("/tasks", headers=headers, files=sample_files)
+    resp2 = await client.post("/v1/tasks", headers=headers, files=sample_files)
     assert resp2.status_code == 202
     assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
     assert resp2.json()["task_id"] == task_id_1
     assert resp2.headers["X-MinerU-Task-Id"] == task_id_1
     assert resp2.headers["X-MinerU-Task-Status"] == "pending"
-    assert resp2.headers["X-MinerU-Task-Status-Url"].endswith(f"/tasks/{task_id_1}")
+    assert resp2.headers["X-MinerU-Task-Status-Url"].endswith(f"/v1/tasks/{task_id_1}")
     assert resp2.headers["X-MinerU-Task-Result-Url"].endswith(
-        f"/tasks/{task_id_1}/result"
+        f"/v1/tasks/{task_id_1}/result"
     )
 
     from sqlalchemy import func, select
@@ -528,7 +552,7 @@ async def test_idempotent_repeat_after_task_completed(client, api_key, sample_fi
     idem_key = "t3-completed-key"
     headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
 
-    resp1 = await client.post("/tasks", headers=headers, files=sample_files)
+    resp1 = await client.post("/v1/tasks", headers=headers, files=sample_files)
     assert resp1.status_code == 202
     task_id = resp1.json()["task_id"]
 
@@ -539,7 +563,7 @@ async def test_idempotent_repeat_after_task_completed(client, api_key, sample_fi
         task.status = "completed"
         await session.commit()
 
-    resp2 = await client.post("/tasks", headers=headers, files=sample_files)
+    resp2 = await client.post("/v1/tasks", headers=headers, files=sample_files)
     assert resp2.status_code == 202
     assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
     body = resp2.json()
@@ -551,13 +575,13 @@ async def test_idempotent_repeat_after_task_completed(client, api_key, sample_fi
     assert body["tier"] == "standard"
     assert isinstance(body["file_names"], list)
     assert isinstance(body["created_at"], str)
-    assert body["status_url"].endswith(f"/tasks/{task_id}")
-    assert body["result_url"].endswith(f"/tasks/{task_id}/result")
+    assert body["status_url"].endswith(f"/v1/tasks/{task_id}")
+    assert body["result_url"].endswith(f"/v1/tasks/{task_id}/result")
     assert resp2.headers["X-MinerU-Task-Id"] == task_id
     assert resp2.headers["X-MinerU-Task-Status"] == "pending"
-    assert resp2.headers["X-MinerU-Task-Status-Url"].endswith(f"/tasks/{task_id}")
+    assert resp2.headers["X-MinerU-Task-Status-Url"].endswith(f"/v1/tasks/{task_id}")
     assert resp2.headers["X-MinerU-Task-Result-Url"].endswith(
-        f"/tasks/{task_id}/result"
+        f"/v1/tasks/{task_id}/result"
     )
 
 
@@ -567,7 +591,7 @@ async def test_idempotent_repeat_after_task_failed(client, api_key, sample_files
     idem_key = "t3b-failed-key"
     headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
 
-    resp1 = await client.post("/tasks", headers=headers, files=sample_files)
+    resp1 = await client.post("/v1/tasks", headers=headers, files=sample_files)
     assert resp1.status_code == 202
     task_id = resp1.json()["task_id"]
 
@@ -578,7 +602,7 @@ async def test_idempotent_repeat_after_task_failed(client, api_key, sample_files
         task.status = "failed"
         await session.commit()
 
-    resp2 = await client.post("/tasks", headers=headers, files=sample_files)
+    resp2 = await client.post("/v1/tasks", headers=headers, files=sample_files)
     assert resp2.status_code == 202
     assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
     body = resp2.json()
@@ -590,13 +614,13 @@ async def test_idempotent_repeat_after_task_failed(client, api_key, sample_files
     assert body["tier"] == "standard"
     assert isinstance(body["file_names"], list)
     assert isinstance(body["created_at"], str)
-    assert body["status_url"].endswith(f"/tasks/{task_id}")
-    assert body["result_url"].endswith(f"/tasks/{task_id}/result")
+    assert body["status_url"].endswith(f"/v1/tasks/{task_id}")
+    assert body["result_url"].endswith(f"/v1/tasks/{task_id}/result")
     assert resp2.headers["X-MinerU-Task-Id"] == task_id
     assert resp2.headers["X-MinerU-Task-Status"] == "pending"
-    assert resp2.headers["X-MinerU-Task-Status-Url"].endswith(f"/tasks/{task_id}")
+    assert resp2.headers["X-MinerU-Task-Status-Url"].endswith(f"/v1/tasks/{task_id}")
     assert resp2.headers["X-MinerU-Task-Result-Url"].endswith(
-        f"/tasks/{task_id}/result"
+        f"/v1/tasks/{task_id}/result"
     )
 
 
@@ -615,7 +639,7 @@ async def test_idempotent_different_keys_same_idempotency_key(
     key_a, key_b = resp_a["api_key"], resp_b["api_key"]
 
     r1 = await client.post(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": key_a, "X-Idempotency-Key": idem_key},
         files=sample_files,
     )
@@ -623,7 +647,7 @@ async def test_idempotent_different_keys_same_idempotency_key(
     assert "X-Idempotency-Key-Replayed" not in r1.headers
 
     r2 = await client.post(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": key_b, "X-Idempotency-Key": idem_key},
         files=sample_files,
     )
@@ -645,7 +669,7 @@ async def test_idempotent_same_key_different_idempotency_keys(
     """T7 sec 6.2: same API Key with different idempotency keys creates
     two independent tasks with different task_ids."""
     r1 = await client.post(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": api_key, "X-Idempotency-Key": "key-1"},
         files=sample_files,
     )
@@ -653,7 +677,7 @@ async def test_idempotent_same_key_different_idempotency_keys(
     assert "X-Idempotency-Key-Replayed" not in r1.headers
 
     r2 = await client.post(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": api_key, "X-Idempotency-Key": "key-2"},
         files=sample_files,
     )
@@ -682,12 +706,12 @@ async def test_idempotent_anonymous_ignores_key(tmp_path):
             files = [("files", ("a.pdf", b"data", "application/pdf"))]
             headers = {"X-Idempotency-Key": "anon-key-1"}
 
-            resp1 = await c.post("/tasks", headers=headers, files=files)
+            resp1 = await c.post("/v1/tasks", headers=headers, files=files)
             assert resp1.status_code == 202
             assert resp1.json()["task_id"].startswith("up-")
             assert "X-Idempotency-Key-Replayed" not in resp1.headers
 
-            resp2 = await c.post("/tasks", headers=headers, files=files)
+            resp2 = await c.post("/v1/tasks", headers=headers, files=files)
             assert resp2.status_code == 202
             assert resp2.json()["task_id"].startswith("up-")
             assert "X-Idempotency-Key-Replayed" not in resp2.headers
@@ -749,8 +773,8 @@ async def test_idempotent_concurrent_same_key(client, api_key, sample_files):
             task_service, "get_by_idempotency_key", side_effect=racing_lookup
         ):
             r1, r2 = await asyncio.gather(
-                client.post("/tasks", headers=headers, files=sample_files),
-                client.post("/tasks", headers=headers, files=sample_files),
+                client.post("/v1/tasks", headers=headers, files=sample_files),
+                client.post("/v1/tasks", headers=headers, files=sample_files),
                 return_exceptions=True,
             )
 
@@ -823,8 +847,8 @@ async def test_idempotent_concurrent_failure_releases_cache(
             ) as mock_release:
                 mock_release.return_value = None
                 r1, r2 = await asyncio.gather(
-                    client.post("/tasks", headers=headers, files=sample_files),
-                    client.post("/tasks", headers=headers, files=sample_files),
+                    client.post("/v1/tasks", headers=headers, files=sample_files),
+                    client.post("/v1/tasks", headers=headers, files=sample_files),
                     return_exceptions=True,
                 )
 
@@ -838,7 +862,7 @@ async def test_idempotent_key_too_long_returns_422(client, api_key, sample_files
     422 Unprocessable Entity, no downstream processing."""
     long_key = "a" * 256
     resp = await client.post(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": api_key, "X-Idempotency-Key": long_key},
         files=sample_files,
     )
@@ -890,16 +914,16 @@ async def test_idempotent_replay_skips_rate_limit(tmp_path, sample_files):
             headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
             files = [("files", ("a.pdf", b"data", "application/pdf"))]
 
-            resp1 = await c.post("/tasks", headers=headers, files=files)
+            resp1 = await c.post("/v1/tasks", headers=headers, files=files)
             assert resp1.status_code == 202
 
-            resp2 = await c.post("/tasks", headers=headers, files=files)
+            resp2 = await c.post("/v1/tasks", headers=headers, files=files)
             assert resp2.status_code == 202
             assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
 
             # Control: a different key should be rate-limited (proves limiter is empty)
             resp3 = await c.post(
-                "/tasks",
+                "/v1/tasks",
                 headers={
                     "X-API-Key": api_key,
                     "X-Idempotency-Key": "different-key",
@@ -914,7 +938,7 @@ async def test_idempotent_key_at_max_length(client, api_key, sample_files):
     returns 202 and stores the key."""
     key_255 = "a" * 255
     resp = await client.post(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": api_key, "X-Idempotency-Key": key_255},
         files=sample_files,
     )
@@ -934,11 +958,11 @@ async def test_idempotent_blank_keys_do_not_collide(client, api_key, sample_file
     creates two separate tasks (NULL values do not collide)."""
     headers = {"X-API-Key": api_key, "X-Idempotency-Key": "   "}
 
-    resp1 = await client.post("/tasks", headers=headers, files=sample_files)
+    resp1 = await client.post("/v1/tasks", headers=headers, files=sample_files)
     assert resp1.status_code == 202
     task_id_1 = resp1.json()["task_id"]
 
-    resp2 = await client.post("/tasks", headers=headers, files=sample_files)
+    resp2 = await client.post("/v1/tasks", headers=headers, files=sample_files)
     assert resp2.status_code == 202
     task_id_2 = resp2.json()["task_id"]
     assert task_id_1 != task_id_2
@@ -954,24 +978,24 @@ async def test_idempotent_blank_keys_do_not_collide(client, api_key, sample_file
 async def test_idempotent_replay_still_accepted_when_upstream_degraded(
     client, api_key, sample_files
 ):
-    """Async /tasks never probes upstream health, so both fresh submissions
+    """Async /v1/tasks never probes upstream health, so both fresh submissions
     and idempotent replays are accepted (202) while upstream is degraded."""
     idem_key = "t12b-health-key"
     headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
 
-    resp1 = await client.post("/tasks", headers=headers, files=sample_files)
+    resp1 = await client.post("/v1/tasks", headers=headers, files=sample_files)
     assert resp1.status_code == 202
 
     mock_state.status = "degraded"
 
-    resp2 = await client.post("/tasks", headers=headers, files=sample_files)
+    resp2 = await client.post("/v1/tasks", headers=headers, files=sample_files)
     assert resp2.status_code == 202
     assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
 
     # Control: a fresh submission with a different idempotency key
-    # is also accepted (202): async /tasks never probes upstream health.
+    # is also accepted (202): async /v1/tasks never probes upstream health.
     resp3 = await client.post(
-        "/tasks",
+        "/v1/tasks",
         headers={
             "X-API-Key": api_key,
             "X-Idempotency-Key": "health-control-key",
@@ -987,7 +1011,7 @@ async def test_idempotent_key_reusable_after_cleanup(client, api_key, sample_fil
     idem_key = "t13-cleanup-key"
     headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
 
-    resp1 = await client.post("/tasks", headers=headers, files=sample_files)
+    resp1 = await client.post("/v1/tasks", headers=headers, files=sample_files)
     assert resp1.status_code == 202
     task_id_1 = resp1.json()["task_id"]
 
@@ -998,7 +1022,7 @@ async def test_idempotent_key_reusable_after_cleanup(client, api_key, sample_fil
         await session.delete(task)
         await session.commit()
 
-    resp2 = await client.post("/tasks", headers=headers, files=sample_files)
+    resp2 = await client.post("/v1/tasks", headers=headers, files=sample_files)
     assert resp2.status_code == 202
     task_id_2 = resp2.json()["task_id"]
     assert "X-Idempotency-Key-Replayed" not in resp2.headers
@@ -1012,17 +1036,17 @@ async def test_idempotent_key_reusable_after_cleanup(client, api_key, sample_fil
 
 
 async def test_file_parse_ignores_idempotency_key(client, api_key, sample_files):
-    """GAP-3 sec 0 non-goal: POST /file_parse ignores X-Idempotency-Key.
+    """GAP-3 sec 0 non-goal: POST /v1/file_parse ignores X-Idempotency-Key.
     Two requests with the same key each return independent 200 responses,
     no X-Idempotency-Key-Replayed header."""
     headers = {"X-API-Key": api_key, "X-Idempotency-Key": "fp-key-1"}
 
-    resp1 = await client.post("/file_parse", headers=headers, files=sample_files)
+    resp1 = await client.post("/v1/file_parse", headers=headers, files=sample_files)
     assert resp1.status_code == 200
     assert "X-Idempotency-Key-Replayed" not in resp1.headers
     assert resp1.json()["files"][0]["content"]["markdown"] == "# parsed"
 
-    resp2 = await client.post("/file_parse", headers=headers, files=sample_files)
+    resp2 = await client.post("/v1/file_parse", headers=headers, files=sample_files)
     assert resp2.status_code == 200
     assert "X-Idempotency-Key-Replayed" not in resp2.headers
     assert resp2.json()["files"][0]["content"]["markdown"] == "# parsed"
@@ -1035,13 +1059,13 @@ async def test_unhandled_exception_returns_500_json(app, api_key, sample_files):
         transport=transport, base_url="http://testserver"
     ) as c:
         resp = await c.post(
-            "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+            "/v1/tasks", headers={"X-API-Key": api_key}, files=sample_files
         )
         task_id = resp.json()["task_id"]
 
         with patch.object(task_service, "get_owned", side_effect=RuntimeError("boom")):
             resp = await c.get(
-                f"/tasks/{task_id}",
+                f"/v1/tasks/{task_id}",
                 headers={"X-API-Key": api_key},
             )
         assert resp.status_code == 500
@@ -1053,7 +1077,7 @@ async def test_upstream_timeout_returns_504(client, api_key, sample_files, monke
 
     async def _timeout(*_args, **_kwargs):
         raise httpx.ReadTimeout(
-            "slow", request=httpx.Request("POST", "http://up/tasks")
+            "slow", request=httpx.Request("POST", "http://up/v1/tasks")
         )
 
     monkeypatch.setattr(
@@ -1061,7 +1085,7 @@ async def test_upstream_timeout_returns_504(client, api_key, sample_files, monke
     )
 
     resp = await client.post(
-        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+        "/v1/tasks", headers={"X-API-Key": api_key}, files=sample_files
     )
     assert resp.status_code == 504
     assert resp.json() == {"detail": "Upstream timeout"}
@@ -1073,7 +1097,7 @@ async def test_pool_timeout_returns_503(client, api_key, sample_files, monkeypat
 
     async def _pool(*_args, **_kwargs):
         raise httpx.PoolTimeout(
-            "pool", request=httpx.Request("POST", "http://up/tasks")
+            "pool", request=httpx.Request("POST", "http://up/v1/tasks")
         )
 
     monkeypatch.setattr(
@@ -1081,7 +1105,7 @@ async def test_pool_timeout_returns_503(client, api_key, sample_files, monkeypat
     )
 
     resp = await client.post(
-        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+        "/v1/tasks", headers={"X-API-Key": api_key}, files=sample_files
     )
     assert resp.status_code == 503
     assert resp.json() == {"detail": "Upstream connection pool exhausted"}
@@ -1093,7 +1117,7 @@ async def test_connect_error_returns_502(client, api_key, sample_files, monkeypa
 
     async def _down(*_args, **_kwargs):
         raise httpx.ConnectError(
-            "down", request=httpx.Request("POST", "http://up/tasks")
+            "down", request=httpx.Request("POST", "http://up/v1/tasks")
         )
 
     monkeypatch.setattr(
@@ -1101,7 +1125,7 @@ async def test_connect_error_returns_502(client, api_key, sample_files, monkeypa
     )
 
     resp = await client.post(
-        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+        "/v1/tasks", headers={"X-API-Key": api_key}, files=sample_files
     )
     assert resp.status_code == 502
     assert resp.json() == {"detail": "Upstream request failed"}
@@ -1115,7 +1139,7 @@ async def test_submit_releases_staged_upload_when_upstream_fails(
 
     async def _down(*_args, **_kwargs):
         raise httpx.ConnectError(
-            "down", request=httpx.Request("POST", "http://up/tasks")
+            "down", request=httpx.Request("POST", "http://up/v1/tasks")
         )
 
     monkeypatch.setattr(
@@ -1123,7 +1147,7 @@ async def test_submit_releases_staged_upload_when_upstream_fails(
     )
 
     resp = await client.post(
-        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+        "/v1/tasks", headers={"X-API-Key": api_key}, files=sample_files
     )
     assert resp.status_code == 502
     assert resp.json() == {"detail": "Upstream request failed"}
@@ -1139,7 +1163,7 @@ async def test_submit_releases_staged_upload_on_timeout(
 
     async def _timeout(*_args, **_kwargs):
         raise httpx.ReadTimeout(
-            "slow", request=httpx.Request("POST", "http://up/tasks")
+            "slow", request=httpx.Request("POST", "http://up/v1/tasks")
         )
 
     monkeypatch.setattr(
@@ -1147,7 +1171,7 @@ async def test_submit_releases_staged_upload_on_timeout(
     )
 
     resp = await client.post(
-        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+        "/v1/tasks", headers={"X-API-Key": api_key}, files=sample_files
     )
     assert resp.status_code == 504
     assert resp.json() == {"detail": "Upstream timeout"}

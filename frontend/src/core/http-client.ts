@@ -294,7 +294,7 @@ export function parseArrayBuffer(
 /**
  * Passes the `RawResponse` through without reading the body.
  * Used for endpoints where the response shape is defined by the upstream
- * and the frontend does not validate it (e.g. `/file_parse`).
+ * and the frontend does not validate it (e.g. `/v1/file_parse`).
  *
  * @returns `Result<RawResponse, ApiError<never>>`
  */

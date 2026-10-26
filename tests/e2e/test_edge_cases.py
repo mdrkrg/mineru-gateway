@@ -21,7 +21,7 @@ async def test_rate_limit_real_http(mock_upstream_url, mock_control, tmp_path):
 
     1. Start a gateway with GATEWAY_RATE_LIMIT_PER_KEY=3 (burst=9).
     2. Issue an API key.
-    3. Fire rapid POST /tasks requests - first burst-size requests get
+    3. Fire rapid POST /v1/tasks requests - first burst-size requests get
        202; once the token bucket is exhausted the gateway returns 429
        with a Retry-After header.
     """
@@ -45,7 +45,7 @@ async def test_rate_limit_real_http(mock_upstream_url, mock_control, tmp_path):
 
             hit_429 = False
             for i in range(40):
-                r = await c.post("/tasks", headers=h, files=files)
+                r = await c.post("/v1/tasks", headers=h, files=files)
                 if r.status_code == 429:
                     hit_429 = True
                     assert r.headers.get("Retry-After") is not None
@@ -65,7 +65,7 @@ async def test_cors_preflight_real_http(mock_upstream_url, mock_control, tmp_pat
 
     1. Start gateway with CORS origin set to https://example.com and
        credentials enabled.
-    2. Issue an OPTIONS request to /health with the matching Origin.
+    2. Issue an OPTIONS request to /v1/health with the matching Origin.
     3. Response is 200 with Access-Control-Allow-Origin matching and
        Access-Control-Allow-Credentials: true.
     4. OPTIONS from a different Origin should be rejected (no ACAO or
@@ -85,7 +85,7 @@ async def test_cors_preflight_real_http(mock_upstream_url, mock_control, tmp_pat
         async with httpx.AsyncClient(base_url=url) as c:
             # Matching origin
             preflight = await c.options(
-                "/health",
+                "/v1/health",
                 headers={
                     "Origin": "https://example.com",
                     "Access-Control-Request-Method": "GET",
@@ -100,7 +100,7 @@ async def test_cors_preflight_real_http(mock_upstream_url, mock_control, tmp_pat
 
             # Non-matching origin
             bad = await c.options(
-                "/health",
+                "/v1/health",
                 headers={
                     "Origin": "https://evil.com",
                     "Access-Control-Request-Method": "GET",

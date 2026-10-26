@@ -275,7 +275,7 @@ export function fetchAndValidate<
 
 /**
  * Convenience pipeline for endpoints that return binary data on success
- * but JSON on error (e.g. `POST /tasks/result-zip`: 200=ZIP, 409=JSON).
+ * but JSON on error (e.g. `POST /v1/tasks/result-zip`: 200=ZIP, 409=JSON).
  *
  * Internally chains:
  *   `request -> andThen(parseBlob|parseArrayBuffer) ->

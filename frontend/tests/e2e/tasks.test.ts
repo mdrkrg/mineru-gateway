@@ -2,13 +2,13 @@
  * E2E tests for task management and proxy endpoints.
  *
  * Verifies the task lifecycle against a running gateway + mock upstream:
- *   POST   /tasks           submit (async, multipart)
- *   POST   /file_parse       synchronous file parse
- *   GET    /tasks            list with filters
- *   GET    /tasks/stats      task statistics
- *   GET    /tasks/{id}       task detail
- *   DELETE /tasks/{id}       cancel a task
- *   POST   /tasks/cancel     batch cancel
+ *   POST   /v1/tasks           submit (async, multipart)
+ *   POST   /v1/file_parse      synchronous file parse
+ *   GET    /v1/tasks           list with filters
+ *   GET    /v1/tasks/stats     task statistics
+ *   GET    /v1/tasks/{id}      task detail
+ *   DELETE /v1/tasks/{id}      cancel a task
+ *   POST   /v1/tasks/cancel    batch cancel
  *
  * The gateway runs with GATEWAY_ENABLE_BACKGROUND=false so submitted tasks
  * stay in "pending" status.  Result download / result-zip needs background
@@ -58,7 +58,7 @@ afterAll(async () => {
   await mock.reset();
 });
 
-describe('POST /tasks (submit)', () => {
+describe('POST /v1/tasks (submit)', () => {
   it('submits a task and returns the submission response', async () => {
     await mock.reset();
 
@@ -75,7 +75,7 @@ describe('POST /tasks (submit)', () => {
     expect(body.status).toBe('pending');
     expect(body.tier).toBe('standard');
     expect(body.fileNames.length).toBeGreaterThanOrEqual(1);
-    expect(body.statusUrl).toContain('/tasks/');
+    expect(body.statusUrl).toContain('/v1/tasks/');
     expect(body.resultUrl).toContain('/result');
     // Response includes startedAt/completedAt/error, all null on submission.
     expect(body.startedAt).toBeNull();
@@ -113,7 +113,7 @@ describe('POST /tasks (submit)', () => {
 
   it('relays upstream error when upstream returns non-202', async () => {
     await mock.reset();
-    // Configure the mock to return 500 for /tasks.
+    // Configure the mock to return 500 for /v1/tasks.
     await mock.setSubmitStatus(500);
 
     const result = await submitTask({
@@ -130,7 +130,7 @@ describe('POST /tasks (submit)', () => {
   });
 });
 
-describe('POST /file_parse (sync parse)', () => {
+describe('POST /v1/file_parse (sync parse)', () => {
   it('returns the parsed result from the mock upstream', async () => {
     await mock.reset();
 
@@ -152,7 +152,7 @@ describe('POST /file_parse (sync parse)', () => {
   });
 });
 
-describe('GET /tasks (list)', () => {
+describe('GET /v1/tasks (list)', () => {
   it('lists submitted tasks with pagination', async () => {
     await mock.reset();
     await submitTask({ apiKey, parseFields: samplePdfFormData() });
@@ -192,7 +192,7 @@ describe('GET /tasks (list)', () => {
   });
 });
 
-describe('GET /tasks/stats', () => {
+describe('GET /v1/tasks/stats', () => {
   it('returns task counters', async () => {
     await mock.reset();
     await submitTask({ apiKey, parseFields: samplePdfFormData() });
@@ -210,7 +210,7 @@ describe('GET /tasks/stats', () => {
   });
 });
 
-describe('GET /tasks/{id} (detail)', () => {
+describe('GET /v1/tasks/{id} (detail)', () => {
   it('returns full task detail for an existing task', async () => {
     await mock.reset();
     const submitResult = await submitTask({ apiKey, parseFields: samplePdfFormData() });
@@ -241,7 +241,7 @@ describe('GET /tasks/{id} (detail)', () => {
   });
 });
 
-describe('DELETE /tasks/{id} (cancel)', () => {
+describe('DELETE /v1/tasks/{id} (cancel)', () => {
   it('cancels a pending task', async () => {
     await mock.reset();
     const submitResult = await submitTask({ apiKey, parseFields: samplePdfFormData() });
@@ -269,7 +269,7 @@ describe('DELETE /tasks/{id} (cancel)', () => {
   });
 });
 
-describe('POST /tasks/cancel (batch cancel)', () => {
+describe('POST /v1/tasks/cancel (batch cancel)', () => {
   it('cancels multiple pending tasks', async () => {
     await mock.reset();
     const ids: string[] = [];

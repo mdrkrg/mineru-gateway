@@ -14,7 +14,7 @@ from ..db import Database
 from ..tasks import service
 from ..tasks.cache import FileCache
 from ..upstream.client import UpstreamClient
-from ..upstream.params import parse_v1_params, v1_files
+from ..upstream.params import parse_v1_params
 from ..upstream.schemas import gateway_task_status, validate_submission_payload
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ async def retry_once(
         try:
             data, files = await cache.restore(str(task.cache_dir))
             params = parse_v1_params(data, sync=False, include_zip=True)
-            resp = await upstream.submit_task(params, v1_files(files))
+            resp = await upstream.submit_task(params, files)
             if resp.status_code != 202:
                 # Non-transient: upstream rejected the request. Fail without
                 # consuming a retry.

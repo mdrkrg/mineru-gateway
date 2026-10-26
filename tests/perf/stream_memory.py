@@ -39,7 +39,7 @@ def _wait_ready(url: str, timeout: float = 10.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            httpx.get(url + "/health", timeout=1)
+            httpx.get(url + "/v1/health", timeout=1)
             return
         except httpx.RequestError:
             time.sleep(0.1)
@@ -79,7 +79,7 @@ def main() -> None:
         stderr=subprocess.DEVNULL,
     )
     upstream_url = f"http://127.0.0.1:{upstream_port}"
-    _wait_ready(upstream_url + "/health")
+    _wait_ready(upstream_url + "/v1/health")
 
     # Start gateway
     gateway_proc = subprocess.Popen(
@@ -99,7 +99,7 @@ def main() -> None:
         stderr=subprocess.DEVNULL,
     )
     gateway_url = f"http://127.0.0.1:{gateway_port}"
-    _wait_ready(gateway_url + "/health")
+    _wait_ready(gateway_url + "/v1/health")
 
     try:
         # Create API key
@@ -131,7 +131,7 @@ def main() -> None:
         # Upload
         upload_start = time.monotonic()
         resp = httpx.post(
-            f"{gateway_url}/tasks",
+            f"{gateway_url}/v1/tasks",
             headers={"X-API-Key": api_key},
             files=files,
             data=data,

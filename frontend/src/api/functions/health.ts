@@ -12,7 +12,7 @@ export function getHealth(): ResultAsync<
   HealthResponse,
   ApiError<HttpError<503, HealthDegradedResponse>>
 > {
-  return fetchAndValidate('health', {
+  return fetchAndValidate('v1/health', {
     success: HealthResponseSchema,
     failures: { 503: HealthDegradedResponseSchema },
   });

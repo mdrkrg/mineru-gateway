@@ -60,10 +60,14 @@ async def test_submit_rejected_when_global_cap_reached(tmp_path):
             transport=transport, base_url="http://testserver"
         ) as c:
             key = await _issue_key(c)
-            first = await c.post("/tasks", headers={"X-API-Key": key}, files=_files())
+            first = await c.post(
+                "/v1/tasks", headers={"X-API-Key": key}, files=_files()
+            )
             assert first.status_code == 202
 
-            second = await c.post("/tasks", headers={"X-API-Key": key}, files=_files())
+            second = await c.post(
+                "/v1/tasks", headers={"X-API-Key": key}, files=_files()
+            )
             assert second.status_code == 503
             assert second.headers.get("Retry-After")
 
@@ -79,7 +83,7 @@ async def test_cap_zero_disables_limit(tmp_path):
             key = await _issue_key(c)
             for _ in range(3):
                 resp = await c.post(
-                    "/tasks", headers={"X-API-Key": key}, files=_files()
+                    "/v1/tasks", headers={"X-API-Key": key}, files=_files()
                 )
                 assert resp.status_code == 202
 
@@ -93,13 +97,17 @@ async def test_cap_frees_after_terminal_state(tmp_path):
             transport=transport, base_url="http://testserver"
         ) as c:
             key = await _issue_key(c)
-            first = await c.post("/tasks", headers={"X-API-Key": key}, files=_files())
+            first = await c.post(
+                "/v1/tasks", headers={"X-API-Key": key}, files=_files()
+            )
             task_id = first.json()["task_id"]
 
             # Cancel the first (pending) task → frees the in-flight slot.
-            await c.delete(f"/tasks/{task_id}", headers={"X-API-Key": key})
+            await c.delete(f"/v1/tasks/{task_id}", headers={"X-API-Key": key})
 
-            second = await c.post("/tasks", headers={"X-API-Key": key}, files=_files())
+            second = await c.post(
+                "/v1/tasks", headers={"X-API-Key": key}, files=_files()
+            )
             assert second.status_code == 202
 
 
@@ -112,7 +120,9 @@ async def test_retry_pending_task_occupies_slot(tmp_path):
             transport=transport, base_url="http://testserver"
         ) as c:
             key = await _issue_key(c)
-            first = await c.post("/tasks", headers={"X-API-Key": key}, files=_files())
+            first = await c.post(
+                "/v1/tasks", headers={"X-API-Key": key}, files=_files()
+            )
             task_id = first.json()["task_id"]
 
         # Move the task into retry_pending directly.
@@ -126,5 +136,7 @@ async def test_retry_pending_task_occupies_slot(tmp_path):
         async with httpx.AsyncClient(
             transport=transport, base_url="http://testserver"
         ) as c:
-            second = await c.post("/tasks", headers={"X-API-Key": key}, files=_files())
+            second = await c.post(
+                "/v1/tasks", headers={"X-API-Key": key}, files=_files()
+            )
             assert second.status_code == 503

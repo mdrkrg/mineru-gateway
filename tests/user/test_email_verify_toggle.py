@@ -143,7 +143,7 @@ async def test_unverified_user_existing_key_keeps_working(
         await session.commit()
 
     task = await gated_smtp_client.post(
-        "/tasks", headers={"X-API-Key": raw_key}, files=sample_files
+        "/v1/tasks", headers={"X-API-Key": raw_key}, files=sample_files
     )
     assert task.status_code == 202
 

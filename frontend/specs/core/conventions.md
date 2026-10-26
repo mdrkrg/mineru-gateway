@@ -14,7 +14,7 @@
 **不在本目录范围内**（后续 spec 处理）：
 
 - 认证流程（JWT 登录/刷新/登出、OAuth 授权/回调、token 存储策略、401→refresh→retry 的具体实现）
-- 各 API 端点契约（`/auth/*`、`/users/*`、`/me/api-keys`、`/auth/keys`、`/tasks/*`、`/file_parse`、`/health`）
+- 各 API 端点契约（`/auth/*`、`/users/*`、`/me/api-keys`、`/auth/keys`、`/v1/tasks/*`、`/v1/file_parse`、`/v1/health`）
 - 全部 arktype schema 定义
 - UI 页面与 store 行为
 
@@ -155,7 +155,7 @@ const ResultZipRequestSchema = defineRequestSchema(
 
 | Header | 用途 | 出现位置 |
 |--------|------|----------|
-| `X-API-Key` | 调用 `/tasks`、`/file_parse`、任务 CRUD；`allow_anonymous=true` 时可缺省 | `X_API_KEY` 常量 + `require_api_key` 依赖；`proxy/routes.py` 的 `submit_task` / `parse_file` 路由；`tasks/routes.py` 各路由 |
+| `X-API-Key` | 调用 `/v1/tasks`、`/v1/file_parse`、任务 CRUD；`allow_anonymous=true` 时可缺省 | `X_API_KEY` 常量 + `require_api_key` 依赖；`proxy/routes.py` 的 `submit_task` / `parse_file` 路由；`tasks/routes.py` 各路由 |
 | `X-Admin-Token` | 调用 `/auth/keys` 全量管理、`/auth/users` 管理员建用户 | `X_ADMIN_TOKEN` 常量 + `require_admin_token` 依赖 |
 | `Authorization: Bearer <jwt>` | 调用 `/users/me`、`/me/api-keys`；仅 `user_auth_enabled=true` 时存在 | `current_active_user` 依赖 |
 
@@ -167,9 +167,9 @@ const ResultZipRequestSchema = defineRequestSchema(
 
 | 端点 | 响应 | 证据 |
 |------|------|------|
-| `GET /tasks/{task_id}/result` | 透传上游任意 `Content-Type`/`Content-Disposition`，body 为二进制 | `tasks/routes.py` 的 `get_task_result` 路由 |
-| `POST /tasks/result-zip` | 成功返回 `application/zip` + `Content-Disposition: attachment; filename="results.zip"`；409 返回 JSON `{detail, non_downloadable}` | `tasks/routes.py` 的 `result_zip` 路由 |
-| `POST /file_parse` | 透传上游任意响应（成功/失败均透传） | `proxy/handler.py` 的 `handle_file_parse` |
+| `GET /v1/tasks/{task_id}/result` | 透传上游任意 `Content-Type`/`Content-Disposition`，body 为二进制 | `tasks/routes.py` 的 `get_task_result` 路由 |
+| `POST /v1/tasks/result-zip` | 成功返回 `application/zip` + `Content-Disposition: attachment; filename="results.zip"`；409 返回 JSON `{detail, non_downloadable}` | `tasks/routes.py` 的 `result_zip` 路由 |
+| `POST /v1/file_parse` | 透传上游任意响应（成功/失败均透传） | `proxy/handler.py` 的 `handle_file_parse` |
 
 ### 前提 3：refresh 端点不轮换
 
@@ -185,13 +185,13 @@ const ResultZipRequestSchema = defineRequestSchema(
 |------|-------|------|
 | FastAPI 默认 422 校验错误 | `{ detail: [{ type, loc, msg, input?, url? }] }` | FastAPI 行为 |
 | 业务错误（多数端点） | `{ detail: string }` | 各 route 的 `HTTPException(detail="...")` |
-| `/tasks/result-zip` 409 | `{ detail: string, non_downloadable: [{ task_id, status, reason }] }` | `tasks/routes.py` 的 `result_zip` 路由 409 分支 |
+| `/v1/tasks/result-zip` 409 | `{ detail: string, non_downloadable: [{ task_id, status, reason }] }` | `tasks/routes.py` 的 `result_zip` 路由 409 分支 |
 
 **写入 spec 的约束**：`validateFailure` 必须逐状态码声明不同 schema，不得引入全局共享错误 schema。
 
 ### 前提 5：提交端点附带响应头（仅认证路径）
 
-`POST /tasks` 成功响应（202）在**认证路径**下附带以下响应头，HTTP 客户端层**必须**让其可达：
+`POST /v1/tasks` 成功响应（202）在**认证路径**下附带以下响应头，HTTP 客户端层**必须**让其可达：
 
 - `X-MinerU-Task-Id`
 - `X-MinerU-Task-Status`

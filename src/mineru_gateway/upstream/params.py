@@ -105,10 +105,3 @@ def parse_v1_params(
             params["wait_timeout"] = _wait_timeout(data["wait_timeout"])
 
     return params
-
-
-def v1_files(
-    files: list[tuple[str, tuple[str, bytes, str]]],
-) -> list[tuple[str, tuple[str, bytes, str]]]:
-    """MinerU 4.0 only accepts multipart parts named ``files``."""
-    return [("files", payload) for _field, payload in files]

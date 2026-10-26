@@ -17,7 +17,7 @@ from ..config import Settings
 _CONNECT_TIMEOUT = 10.0
 _WRITE_TIMEOUT = 120.0
 _POOL_TIMEOUT = 30.0
-# Probes and async submissions must fail fast; `/tasks` normally returns 202.
+# Probes and async submissions must fail fast; `/v1/tasks` normally returns 202.
 _PROBE_READ_TIMEOUT = 10.0
 _SUBMIT_READ_TIMEOUT = 30.0
 

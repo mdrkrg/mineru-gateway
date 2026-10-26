@@ -1,4 +1,4 @@
-"""GET /health: aggregate gateway + upstream status."""
+"""GET /v1/health: aggregate gateway + upstream status."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from starlette.responses import JSONResponse
 
 from ..upstream.client import UpstreamClient
 
-router = APIRouter(tags=["health"])
+router = APIRouter(prefix="/v1", tags=["health"])
 
 
 @router.get("/health")

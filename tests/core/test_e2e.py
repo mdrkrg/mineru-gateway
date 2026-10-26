@@ -29,15 +29,15 @@ async def test_full_lifecycle(client, admin_headers, app, upstream_client):
     # 2. Submit an async task.
     files = [("files", ("doc.pdf", b"%PDF-1.4 e2e", "application/pdf"))]
     submit = await client.post(
-        "/tasks", headers=headers, files=files, data={"tier": "basic"}
+        "/v1/tasks", headers=headers, files=files, data={"tier": "basic"}
     )
     assert submit.status_code == 202
     task_id = submit.json()["task_id"]
 
     # 3. It appears in the owner's task list and detail.
-    listing = await client.get("/tasks", headers=headers)
+    listing = await client.get("/v1/tasks", headers=headers)
     assert listing.json()["total"] == 1
-    detail = await client.get(f"/tasks/{task_id}", headers=headers)
+    detail = await client.get(f"/v1/tasks/{task_id}", headers=headers)
     assert detail.json()["status"] == "pending"
 
     # 4. Background status sync mirrors upstream completion into the DB.
@@ -45,11 +45,11 @@ async def test_full_lifecycle(client, admin_headers, app, upstream_client):
     await status_sync.sync_once(
         app.state.db, UpstreamClient(upstream_client), poll_failure_threshold=3
     )
-    detail = await client.get(f"/tasks/{task_id}", headers=headers)
+    detail = await client.get(f"/v1/tasks/{task_id}", headers=headers)
     assert detail.json()["status"] == "completed"
 
     # 5. Result is streamed back from upstream.
-    result = await client.get(f"/tasks/{task_id}/result", headers=headers)
+    result = await client.get(f"/v1/tasks/{task_id}/result", headers=headers)
     assert result.status_code == 200
     assert "result content" in result.text
 
@@ -61,15 +61,15 @@ async def test_cancel_lifecycle(client, admin_headers):
     headers = {"X-API-Key": key}
 
     files = [("files", ("doc.pdf", b"%PDF-1.4 e2e", "application/pdf"))]
-    task_id = (await client.post("/tasks", headers=headers, files=files)).json()[
+    task_id = (await client.post("/v1/tasks", headers=headers, files=files)).json()[
         "task_id"
     ]
 
-    cancel = await client.delete(f"/tasks/{task_id}", headers=headers)
+    cancel = await client.delete(f"/v1/tasks/{task_id}", headers=headers)
     assert cancel.status_code == 200
     assert cancel.json()["status"] == "cancelled"
 
-    detail = await client.get(f"/tasks/{task_id}", headers=headers)
+    detail = await client.get(f"/v1/tasks/{task_id}", headers=headers)
     assert detail.json()["status"] == "cancelled"
 
 
@@ -109,16 +109,16 @@ async def test_protected_lifecycle_with_concurrency_cap(tmp_path):
             ).json()["api_key"]
             headers = {"X-API-Key": key}
 
-            first = await c.post("/tasks", headers=headers, files=files)
+            first = await c.post("/v1/tasks", headers=headers, files=files)
             assert first.status_code == 202
             task_id = first.json()["task_id"]
 
             # Cap reached → next submission is rejected.
-            blocked = await c.post("/tasks", headers=headers, files=files)
+            blocked = await c.post("/v1/tasks", headers=headers, files=files)
             assert blocked.status_code == 503
             assert blocked.headers.get("Retry-After")
 
             # Cancel frees the slot → subsequent submission succeeds.
-            await c.delete(f"/tasks/{task_id}", headers=headers)
-            third = await c.post("/tasks", headers=headers, files=files)
+            await c.delete(f"/v1/tasks/{task_id}", headers=headers)
+            third = await c.post("/v1/tasks", headers=headers, files=files)
             assert third.status_code == 202

@@ -51,7 +51,7 @@ async def test_rate_limit_enforced_via_endpoint(client, admin_headers, sample_fi
     hit_429 = False
     for _ in range(40):
         resp = await client.post(
-            "/tasks", headers={"X-API-Key": raw}, files=sample_files
+            "/v1/tasks", headers={"X-API-Key": raw}, files=sample_files
         )
         if resp.status_code == 429:
             hit_429 = True

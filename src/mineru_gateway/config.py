@@ -115,7 +115,7 @@ class Settings(BaseSettings):
     upstream_url: str = "http://127.0.0.1:8002"
     # MinerU 4.0 services started with `--api-key` require this Bearer token.
     upstream_api_key: str = ""
-    # Read timeout for sync parses/result downloads; `/tasks` uses 30s (see
+    # Read timeout for sync parses/result downloads; `/v1/tasks` uses 30s (see
     # `upstream/client.py`). MinerU 4.0's `/v1/file_parse` waits up to
     # `wait_timeout` (default 300s), so the default covers a full parse.
     upstream_timeout_read: float = Field(default=600.0, gt=0)

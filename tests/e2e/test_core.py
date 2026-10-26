@@ -26,14 +26,14 @@ async def test_full_lifecycle_real_http(mock_control, mock_upstream_url, tmp_pat
 
     1. Start a background-enabled gateway.
     2. Issue an API key with the admin token -> 201 with plaintext key.
-    3. POST /tasks with key + multipart file -> 202 with task_id,
+    3. POST /v1/tasks with key + multipart file -> 202 with task_id,
        status_url, result_url, file_names.
-    4. GET /tasks -> the submitted task appears in the owner list.
-    5. GET /tasks/{id} -> returns pending status, tier, file info.
+    4. GET /v1/tasks -> the submitted task appears in the owner list.
+    5. GET /v1/tasks/{id} -> returns pending status, tier, file info.
     6. Set mock upstream task_status to "completed" -> the background
        status-sync loop will pick up the change (interval=0.5s).
        Poll until the task status transitions to "completed".
-    7. GET /tasks/{id}/result -> 200, content matches upstream mock.
+    7. GET /v1/tasks/{id}/result -> 200, content matches upstream mock.
     """
     db = str(tmp_path / "lifecycle.db")
     cache = str(tmp_path / "lifecycle_cache")
@@ -60,7 +60,7 @@ async def test_full_lifecycle_real_http(mock_control, mock_upstream_url, tmp_pat
             # 2. Submit task
             files = sample_files()
             submit = await c.post(
-                "/tasks",
+                "/v1/tasks",
                 headers=headers,
                 files=files,
                 data={"tier": "basic"},
@@ -73,19 +73,19 @@ async def test_full_lifecycle_real_http(mock_control, mock_upstream_url, tmp_pat
             assert "file_names" in body
 
             # 3. Task list
-            listing = await c.get("/tasks", headers=headers)
+            listing = await c.get("/v1/tasks", headers=headers)
             assert listing.status_code == 200
             assert listing.json()["total"] >= 1
 
             # 4. Task detail - pending
-            detail = await c.get(f"/tasks/{task_id}", headers=headers)
+            detail = await c.get(f"/v1/tasks/{task_id}", headers=headers)
             assert detail.status_code == 200
             assert detail.json()["status"] == "pending"
 
             # 5. Trigger status sync
             mock_control.set_task_status("completed")
             for _ in range(30):
-                detail = await c.get(f"/tasks/{task_id}", headers=headers)
+                detail = await c.get(f"/v1/tasks/{task_id}", headers=headers)
                 if detail.json()["status"] == "completed":
                     break
                 await asyncio.sleep(0.5)
@@ -93,7 +93,7 @@ async def test_full_lifecycle_real_http(mock_control, mock_upstream_url, tmp_pat
                 pytest.fail("task did not reach completed status within timeout")
 
             # 6. Retrieve result
-            result = await c.get(f"/tasks/{task_id}/result", headers=headers)
+            result = await c.get(f"/v1/tasks/{task_id}/result", headers=headers)
             assert result.status_code == 200
             assert "result content" in result.text
     finally:
@@ -103,7 +103,7 @@ async def test_full_lifecycle_real_http(mock_control, mock_upstream_url, tmp_pat
 
 @pytest.mark.e2e
 async def test_result_zip_real_http(mock_control, mock_upstream_url, tmp_path):
-    """POST /tasks/result-zip over real HTTP (batch-endpoints.md §1).
+    """POST /v1/tasks/result-zip over real HTTP (batch-endpoints.md §1).
 
     1. Background-enabled gateway; submit -> sync to completed.
     2. Single completed task -> 200 application/zip with a _manifest.json.
@@ -132,11 +132,11 @@ async def test_result_zip_real_http(mock_control, mock_upstream_url, tmp_path):
 
             # (1) Submit and let status sync reach a terminal state.
             mock_control.set_task_status("running")
-            first = await c.post("/tasks", headers=h, files=sample_files())
+            first = await c.post("/v1/tasks", headers=h, files=sample_files())
             completed_id = first.json()["task_id"]
             mock_control.set_task_status("completed")
             for _ in range(30):
-                detail = await c.get(f"/tasks/{completed_id}", headers=h)
+                detail = await c.get(f"/v1/tasks/{completed_id}", headers=h)
                 if detail.json()["status"] == "completed":
                     break
                 await asyncio.sleep(0.5)
@@ -145,7 +145,7 @@ async def test_result_zip_real_http(mock_control, mock_upstream_url, tmp_path):
 
             # (2) One completed task -> downloadable zip.
             resp = await c.post(
-                "/tasks/result-zip", json={"task_ids": [completed_id]}, headers=h
+                "/v1/tasks/result-zip", json={"task_ids": [completed_id]}, headers=h
             )
             assert resp.status_code == 200
             assert resp.headers.get("content-type") == "application/zip"
@@ -154,10 +154,10 @@ async def test_result_zip_real_http(mock_control, mock_upstream_url, tmp_path):
 
             # (3) A non-terminal task in the batch -> 409 not_completed.
             mock_control.set_task_status("running")
-            second = await c.post("/tasks", headers=h, files=sample_files())
+            second = await c.post("/v1/tasks", headers=h, files=sample_files())
             active_id = second.json()["task_id"]
             resp = await c.post(
-                "/tasks/result-zip",
+                "/v1/tasks/result-zip",
                 json={"task_ids": [completed_id, active_id]},
                 headers=h,
             )
@@ -177,20 +177,20 @@ async def test_cancel_lifecycle_real_http(e2e_client, e2e_key_headers, mock_cont
     """Cancel lifecycle over real HTTP.
 
     1. Submit task -> 202.
-    2. DELETE /tasks/{id} -> 200, status=cancelled.
-    3. GET /tasks/{id} -> status confirms cancelled.
+    2. DELETE /v1/tasks/{id} -> 200, status=cancelled.
+    3. GET /v1/tasks/{id} -> status confirms cancelled.
     4. Upstream cancel endpoint is called (mock verifies no error).
     """
     files = sample_files()
-    submit = await e2e_client.post("/tasks", headers=e2e_key_headers, files=files)
+    submit = await e2e_client.post("/v1/tasks", headers=e2e_key_headers, files=files)
     assert submit.status_code == 202
     task_id = submit.json()["task_id"]
 
-    cancel = await e2e_client.delete(f"/tasks/{task_id}", headers=e2e_key_headers)
+    cancel = await e2e_client.delete(f"/v1/tasks/{task_id}", headers=e2e_key_headers)
     assert cancel.status_code == 200
     assert cancel.json()["status"] == "cancelled"
 
-    detail = await e2e_client.get(f"/tasks/{task_id}", headers=e2e_key_headers)
+    detail = await e2e_client.get(f"/v1/tasks/{task_id}", headers=e2e_key_headers)
     assert detail.json()["status"] == "cancelled"
 
 
@@ -223,17 +223,17 @@ async def test_concurrency_cap_real_http(mock_upstream_url, mock_control, tmp_pa
 
             files = sample_files()
 
-            first = await c.post("/tasks", headers=h, files=files)
+            first = await c.post("/v1/tasks", headers=h, files=files)
             assert first.status_code == 202
             task_id = first.json()["task_id"]
 
-            blocked = await c.post("/tasks", headers=h, files=files)
+            blocked = await c.post("/v1/tasks", headers=h, files=files)
             assert blocked.status_code == 503
             assert blocked.headers.get("Retry-After")
 
-            await c.delete(f"/tasks/{task_id}", headers=h)
+            await c.delete(f"/v1/tasks/{task_id}", headers=h)
 
-            third = await c.post("/tasks", headers=h, files=files)
+            third = await c.post("/v1/tasks", headers=h, files=files)
             assert third.status_code == 202
     finally:
         proc.send_signal(signal.SIGTERM)
@@ -244,19 +244,19 @@ async def test_concurrency_cap_real_http(mock_upstream_url, mock_control, tmp_pa
 async def test_idempotent_submission_real_http(e2e_client, e2e_key_headers):
     """Idempotent submission via X-Idempotency-Key over real HTTP.
 
-    1. POST /tasks with X-Idempotency-Key -> 202, creates task.
-    2. POST /tasks with the same X-Idempotency-Key -> 202, returns the
+    1. POST /v1/tasks with X-Idempotency-Key -> 202, creates task.
+    2. POST /v1/tasks with the same X-Idempotency-Key -> 202, returns the
        original task_id with header X-Idempotency-Key-Replayed: true.
     """
     idem_key = "e2e-idem-key-001"
     files = sample_files()
     headers = {**e2e_key_headers, "X-Idempotency-Key": idem_key}
 
-    first = await e2e_client.post("/tasks", headers=headers, files=files)
+    first = await e2e_client.post("/v1/tasks", headers=headers, files=files)
     assert first.status_code == 202
     task_id = first.json()["task_id"]
 
-    second = await e2e_client.post("/tasks", headers=headers, files=files)
+    second = await e2e_client.post("/v1/tasks", headers=headers, files=files)
     assert second.status_code == 202
     assert second.json()["task_id"] == task_id
     assert second.headers.get("X-Idempotency-Key-Replayed") == "true"
@@ -288,7 +288,7 @@ async def test_file_size_limit_real_http(mock_upstream_url, mock_control, tmp_pa
 
             # Oversized - _MINIMAL_PDF ~433 bytes + multipart framing > 500 limit
             oversized = await c.post(
-                "/tasks",
+                "/v1/tasks",
                 headers=h,
                 files=sample_files(),
             )
@@ -297,7 +297,7 @@ async def test_file_size_limit_real_http(mock_upstream_url, mock_control, tmp_pa
             # Within limit - tiny 5-byte payload
             tiny = [("files", ("tiny.dat", b"hello", "application/octet-stream"))]
             ok = await c.post(
-                "/tasks",
+                "/v1/tasks",
                 headers=h,
                 files=tiny,
             )

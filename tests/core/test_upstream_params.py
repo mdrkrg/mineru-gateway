@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from mineru_gateway.upstream.params import parse_v1_params, v1_files
+from mineru_gateway.upstream.params import parse_v1_params
 
 
 def test_native_v1_options_are_preserved():
@@ -63,7 +63,7 @@ def test_sync_only_options_are_validated():
         {"start_page_id": "0"},
     ],
 )
-def test_legacy_options_are_rejected(data):
+def test_unsupported_options_are_rejected(data):
     with pytest.raises(ValueError, match="unsupported parse option"):
         parse_v1_params(data, sync=False)
 
@@ -80,8 +80,3 @@ def test_unknown_native_values_are_rejected():
 def test_sync_options_are_rejected_for_async_tasks():
     with pytest.raises(ValueError, match="unsupported parse option"):
         parse_v1_params({"response_format": "zip"}, sync=False)
-
-
-def test_files_are_forwarded_under_the_v1_field_name():
-    files = [("upload", ("a.pdf", b"data", "application/pdf"))]
-    assert v1_files(files) == [("files", ("a.pdf", b"data", "application/pdf"))]

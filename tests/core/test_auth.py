@@ -62,14 +62,16 @@ async def test_revoke_key_disables_it(client, admin_headers, sample_files):
     key_id, raw = created["key_id"], created["api_key"]
 
     # Key works before revocation.
-    ok = await client.post("/tasks", headers={"X-API-Key": raw}, files=sample_files)
+    ok = await client.post("/v1/tasks", headers={"X-API-Key": raw}, files=sample_files)
     assert ok.status_code == 202
 
     del_resp = await client.delete(f"/auth/keys/{key_id}", headers=admin_headers)
     assert del_resp.status_code == 204
 
     # Key rejected after revocation.
-    denied = await client.post("/tasks", headers={"X-API-Key": raw}, files=sample_files)
+    denied = await client.post(
+        "/v1/tasks", headers={"X-API-Key": raw}, files=sample_files
+    )
     assert denied.status_code == 401
 
 
@@ -92,7 +94,9 @@ async def test_expired_key_is_rejected(client, admin_headers, sample_files):
         )
     ).json()["api_key"]
 
-    resp = await client.post("/tasks", headers={"X-API-Key": raw}, files=sample_files)
+    resp = await client.post(
+        "/v1/tasks", headers={"X-API-Key": raw}, files=sample_files
+    )
     assert resp.status_code == 401
 
 
@@ -109,7 +113,9 @@ async def test_future_expiry_key_works(client, admin_headers, sample_files):
         )
     ).json()["api_key"]
 
-    resp = await client.post("/tasks", headers={"X-API-Key": raw}, files=sample_files)
+    resp = await client.post(
+        "/v1/tasks", headers={"X-API-Key": raw}, files=sample_files
+    )
     assert resp.status_code == 202
 
 
@@ -127,7 +133,7 @@ async def test_last_used_at_updated_on_use(client, admin_headers, sample_files, 
         before = await session.get(ApiKey, uuid.UUID(key_id))
         assert before.last_used_at is None
 
-    await client.post("/tasks", headers={"X-API-Key": raw}, files=sample_files)
+    await client.post("/v1/tasks", headers={"X-API-Key": raw}, files=sample_files)
 
     async with app.state.db.session_factory() as session:
         after = await session.get(ApiKey, uuid.UUID(key_id))

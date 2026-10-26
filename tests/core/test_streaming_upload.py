@@ -1,4 +1,4 @@
-"""Streaming multipart upload tests for POST /tasks.
+"""Streaming multipart upload tests for POST /v1/tasks.
 
 Spec: streaming-upload.md sec 6 (Test Scenarios).
 Labels T1-T15 map to spec sections S1-S15.
@@ -132,7 +132,7 @@ async def _make_streaming_app(
 
 async def test_t1_small_file_normal_submit(client, api_key):
     resp = await client.post(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": api_key},
         files=_example_files(),
     )
@@ -175,7 +175,7 @@ async def test_t2_multi_file_submit(client, api_key):
         ("files", ("c.pdf", b"ccccc", "application/pdf")),
     ]
     resp = await client.post(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": api_key},
         files=files,
     )
@@ -209,7 +209,7 @@ async def test_t2_multi_file_submit(client, api_key):
 
 async def test_t3_form_fields_passthrough(client, api_key):
     resp = await client.post(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": api_key},
         files=_example_files(),
         data={
@@ -252,7 +252,7 @@ async def test_t3_form_fields_passthrough(client, api_key):
 
 async def test_repeated_output_formats_are_accumulated(client, api_key):
     resp = await client.post(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": api_key},
         files=[
             *_example_files(),
@@ -273,7 +273,7 @@ async def test_non_v1_file_field_is_rejected(client, api_key):
     cache_base = client._transport.app.state.settings.file_cache_dir
 
     resp = await client.post(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": api_key},
         files=[("upload", ("doc.pdf", b"%PDF-1.4", "application/pdf"))],
     )
@@ -286,7 +286,7 @@ async def test_invalid_parse_options_release_finalized_cache(client, api_key):
     cache_base = client._transport.app.state.settings.file_cache_dir
 
     resp = await client.post(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": api_key},
         files=_example_files(),
         data={"tier": "invalid"},
@@ -324,7 +324,7 @@ async def test_t4_anonymous_submit(tmp_path):
         async with httpx.AsyncClient(
             transport=transport, base_url="http://testserver"
         ) as c:
-            resp = await c.post("/tasks", files=_example_files())
+            resp = await c.post("/v1/tasks", files=_example_files())
             assert resp.status_code == 202
             assert resp.json()["task_id"].startswith("up-")
 
@@ -427,7 +427,9 @@ async def test_t6_over_limit_rejected(tmp_path):
         api_key = r.json()["api_key"]
 
         files = [("files", ("big.bin", b"x" * file_size, "application/octet-stream"))]
-        resp = await client.post("/tasks", headers={"X-API-Key": api_key}, files=files)
+        resp = await client.post(
+            "/v1/tasks", headers={"X-API-Key": api_key}, files=files
+        )
         assert resp.status_code == 413
         detail = resp.json().get("detail", "")
         assert str(limit) in detail, f"413 detail must mention max size, got: {detail}"
@@ -463,7 +465,9 @@ async def test_t7_exact_limit_passes(tmp_path):
         api_key = r.json()["api_key"]
 
         files = [("files", ("exact.bin", b"y" * limit, "application/octet-stream"))]
-        resp = await client.post("/tasks", headers={"X-API-Key": api_key}, files=files)
+        resp = await client.post(
+            "/v1/tasks", headers={"X-API-Key": api_key}, files=files
+        )
         assert resp.status_code == 202
         body = resp.json()
         assert body["task_id"]
@@ -497,7 +501,9 @@ async def test_t8_multi_file_cumulative_over_limit(tmp_path):
             ("files", ("b.bin", b"b" * per_file, "application/octet-stream")),
             ("files", ("c.bin", b"c" * per_file, "application/octet-stream")),
         ]
-        resp = await client.post("/tasks", headers={"X-API-Key": api_key}, files=files)
+        resp = await client.post(
+            "/v1/tasks", headers={"X-API-Key": api_key}, files=files
+        )
         assert resp.status_code == 413
         detail = resp.json().get("detail", "")
         assert str(limit) in detail, f"413 detail must mention max size, got: {detail}"
@@ -633,7 +639,7 @@ async def test_t10_upstream_rejection_cleans_cache(tmp_path):
         api_key = r.json()["api_key"]
 
         resp = await client.post(
-            "/tasks",
+            "/v1/tasks",
             headers={"X-API-Key": api_key},
             files=_example_files(),
         )
@@ -672,7 +678,7 @@ async def test_t12_idempotent_replay_does_not_read_body(client, api_key):
     headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
 
     # First request: normal submission
-    resp1 = await client.post("/tasks", headers=headers, files=_example_files())
+    resp1 = await client.post("/v1/tasks", headers=headers, files=_example_files())
     assert resp1.status_code == 202
     assert "X-Idempotency-Key-Replayed" not in resp1.headers
 
@@ -682,7 +688,7 @@ async def test_t12_idempotent_replay_does_not_read_body(client, api_key):
 
     # Second request with same key: replay without reading body
     large_file = [("files", ("huge.bin", b"x" * 50_000, "application/octet-stream"))]
-    resp2 = await client.post("/tasks", headers=headers, files=large_file)
+    resp2 = await client.post("/v1/tasks", headers=headers, files=large_file)
     assert resp2.status_code == 202
     assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
 
@@ -706,13 +712,13 @@ async def test_t13_idempotent_replay_skips_size_check(client, api_key):
     max_size = client._transport.app.state.settings.max_upload_size
 
     # First request: normal submission (must fit within the small test limit)
-    resp1 = await client.post("/tasks", headers=headers, files=_example_files())
+    resp1 = await client.post("/v1/tasks", headers=headers, files=_example_files())
     assert resp1.status_code == 202
 
     # Second request: same key, file exceeds max_upload_size
     over_limit = b"z" * (max_size + 100)
     files = [("files", ("oversized.bin", over_limit, "application/octet-stream"))]
-    resp2 = await client.post("/tasks", headers=headers, files=files)
+    resp2 = await client.post("/v1/tasks", headers=headers, files=files)
     assert resp2.status_code == 202, f"expected 202 (replay), got {resp2.status_code}"
     assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
     assert resp1.json()["task_id"] == resp2.json()["task_id"]
@@ -758,7 +764,7 @@ async def test_t15_file_parse_unchanged(client, api_key):
     from sqlalchemy import func, select
 
     resp = await client.post(
-        "/file_parse",
+        "/v1/file_parse",
         headers={"X-API-Key": api_key},
         files=_example_files(),
         data={"tier": "basic"},
@@ -827,8 +833,8 @@ async def test_t11_idempotency_conflict_releases_cache(client, api_key, caplog):
             ) as mock_release:
                 mock_release.return_value = None
                 r1, r2 = await asyncio.gather(
-                    client.post("/tasks", headers=headers, files=_example_files()),
-                    client.post("/tasks", headers=headers, files=_example_files()),
+                    client.post("/v1/tasks", headers=headers, files=_example_files()),
+                    client.post("/v1/tasks", headers=headers, files=_example_files()),
                     return_exceptions=True,
                 )
 
@@ -947,7 +953,7 @@ async def test_t18_interleaved_file_form_parts(tmp_path):
         ]
         data = {"tier": "basic", "ocr_mode": "auto"}
         resp = await client.post(
-            "/tasks",
+            "/v1/tasks",
             headers={"X-API-Key": api_key},
             files=files,
             data=data,
@@ -991,13 +997,13 @@ async def test_t19_duplicate_filename_parts_kept_distinct(tmp_path):
             ("files", ("dup.pdf", b"AAAA", "application/pdf")),
             ("files", ("dup.pdf", b"BBBB", "application/pdf")),
         ]
-        resp = await client.post("/tasks", headers={"X-API-Key": key}, files=files)
+        resp = await client.post("/v1/tasks", headers={"X-API-Key": key}, files=files)
         assert resp.status_code == 202
         body = resp.json()
         assert body["file_names"] == ["dup.pdf", "dup.pdf"]
 
         detail = await client.get(
-            f"/tasks/{body['task_id']}", headers={"X-API-Key": key}
+            f"/v1/tasks/{body['task_id']}", headers={"X-API-Key": key}
         )
         assert detail.status_code == 200
         assert detail.json()["file_count"] == 2
@@ -1025,7 +1031,9 @@ async def test_t8b_per_file_limit_rejected(tmp_path):
         files = [
             ("files", ("big.bin", b"x" * (file_limit + 1), "application/octet-stream"))
         ]
-        resp = await client.post("/tasks", headers={"X-API-Key": api_key}, files=files)
+        resp = await client.post(
+            "/v1/tasks", headers={"X-API-Key": api_key}, files=files
+        )
         assert resp.status_code == 413
         detail = resp.json().get("detail", "")
         assert str(file_limit) in detail

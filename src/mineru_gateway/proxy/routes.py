@@ -1,4 +1,4 @@
-"""Proxy endpoints: POST /tasks, POST /file_parse (Phase 1)."""
+"""MinerU V1 proxy endpoints: POST /v1/tasks and /v1/file_parse."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from ..tasks.cache import FileCache
 from ..upstream.client import UpstreamClient
 from .handler import handle_file_parse, handle_task_submission
 
-router = APIRouter()
+router = APIRouter(prefix="/v1")
 
 
 async def _settings(req: Request) -> Settings:
