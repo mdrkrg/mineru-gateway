@@ -306,8 +306,8 @@ def e2e_key_headers(e2e_api_key) -> dict[str, str]:
 # Test data
 # ---------------------------------------------------------------------------
 
-# A minimal but structurally valid PDF that real mineru-router (>=3.4)
-# accepts via content sniffing.  Taken from tests/perf/locustfile.py.
+# A minimal but structurally valid PDF that the MinerU 4.0 router accepts via
+# content sniffing. Taken from tests/perf/locustfile.py.
 _MINIMAL_PDF = (
     b"%PDF-1.4\n"
     b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"

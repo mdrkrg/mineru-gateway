@@ -131,7 +131,7 @@ async def test_result_zip_real_http(mock_control, mock_upstream_url, tmp_path):
             h = {"X-API-Key": key}
 
             # (1) Submit and let status sync reach a terminal state.
-            mock_control.set_task_status("processing")
+            mock_control.set_task_status("running")
             first = await c.post("/tasks", headers=h, files=sample_files())
             completed_id = first.json()["task_id"]
             mock_control.set_task_status("completed")
@@ -153,7 +153,7 @@ async def test_result_zip_real_http(mock_control, mock_upstream_url, tmp_path):
                 assert "_manifest.json" in zf.namelist()
 
             # (3) A non-terminal task in the batch -> 409 not_completed.
-            mock_control.set_task_status("processing")
+            mock_control.set_task_status("running")
             second = await c.post("/tasks", headers=h, files=sample_files())
             active_id = second.json()["task_id"]
             resp = await c.post(

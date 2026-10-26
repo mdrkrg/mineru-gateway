@@ -143,7 +143,7 @@ async def test_sync_ignores_terminal_tasks(app, upstream_client):
         task = await _make_task(session, key_id, status="completed")
         task_id = task.id
 
-    mock_state.task_status = "processing"
+    mock_state.task_status = "running"
     await status_sync.sync_once(db, upstream, poll_failure_threshold=3)
 
     async with db.session_factory() as session:
@@ -187,7 +187,7 @@ async def test_sync_sets_completed_at_on_upstream_cancelled(app, upstream_client
         task = await _make_task(session, key_id)
         task_id = task.id
 
-    mock_state.task_status = "cancelled"
+    mock_state.task_status = "canceled"
     await status_sync.sync_once(db, upstream, poll_failure_threshold=3)
 
     async with db.session_factory() as session:

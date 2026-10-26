@@ -1,9 +1,13 @@
-"""Standalone mock MinerU upstream server for e2e tests.
+"""Standalone mock MinerU 4.0 upstream server for e2e tests.
 
 Runs as a uvicorn HTTP process. Behaviour is controllable via
 `POST /_mock/configure` and `POST /_mock/reset` so that e2e tests
 can simulate upstream errors, unhealthy states, and status transitions
 over a real TCP connection.
+
+The upstream contract mirrors MinerU 4.0's V1 API: parse options are query
+parameters, multipart bodies only carry `files` parts, and jobs use the
+queued/running/completed/partial/failed/canceled vocabulary.
 
 Usage (manual, for debugging):
 
@@ -15,12 +19,27 @@ uv run python tests/e2e/mock_server.py --port 9001
 from __future__ import annotations
 
 import argparse
+import sys
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
+
+_ROOT = Path(__file__).resolve().parents[2]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+from tests.mock_v1_contract import (  # noqa: E402
+    canceled_payload,
+    default_features,
+    error_payload,
+    health_payload,
+    inline_result_payload,
+    job_payload,
+)
 
 # ---------------------------------------------------------------------------
 # Controllable state (module-level - the server is a single uvicorn worker)
@@ -32,14 +51,8 @@ class MockState:
     """Mutable state that control endpoints can modify at runtime."""
 
     health_status: str = "healthy"
-    max_concurrent: int = 4
-    queued: int = 0
-    processing: int = 0
-    version: str = "3.4.0"
-    protocol_version: int = 2
-    completed_tasks: int = 0
-    failed_tasks: int = 0
-    processing_window_size: int = 64
+    version: str = "4.0.12"
+    features: dict = field(default_factory=default_features)
     health_raises: bool = False
     submit_status: int = 202
     submit_raises: bool = False
@@ -48,8 +61,8 @@ class MockState:
     parse_status: int = 200
     cancel_raises: bool = False
     status_raises: bool = False
-    task_status: str = "processing"
-    queued_ahead: int | None = None
+    task_status: str = "running"
+    task_error: dict | None = None
     result_status_code: int = 200
     result_content_type: str | None = None
     result_content_disposition: str | None = None
@@ -59,14 +72,8 @@ class MockState:
 
     def reset(self) -> None:
         self.health_status = "healthy"
-        self.max_concurrent = 4
-        self.queued = 0
-        self.processing = 0
-        self.version = "3.4.0"
-        self.protocol_version = 2
-        self.completed_tasks = 0
-        self.failed_tasks = 0
-        self.processing_window_size = 64
+        self.version = "4.0.12"
+        self.features = default_features()
         self.health_raises = False
         self.submit_status = 202
         self.submit_raises = False
@@ -75,8 +82,8 @@ class MockState:
         self.parse_status = 200
         self.cancel_raises = False
         self.status_raises = False
-        self.task_status = "processing"
-        self.queued_ahead = None
+        self.task_status = "running"
+        self.task_error = None
         self.result_status_code = 200
         self.result_content_type = None
         self.result_content_disposition = None
@@ -94,7 +101,7 @@ state = MockState()
 app = FastAPI(title="mock-mineru-e2e")
 
 # ---------------------------------------------------------------------------
-# File content validation (matches real mineru-router >= 3.4 behaviour)
+# File content validation matching the MinerU 4.0 router.
 # ---------------------------------------------------------------------------
 
 _PDF_MAGIC = b"%PDF-"
@@ -116,93 +123,108 @@ def _unsupported_file(filename: str, content: bytes) -> str | None:
     return None
 
 
-@app.get("/health")
+def _error(message: str, *, code: str = "invalid_request", status: int = 400):
+    return JSONResponse(
+        status_code=status,
+        content=error_payload(message, code=code),
+    )
+
+
+def _query_params(request: Request) -> dict:
+    """Keep repeated query params (output_formats) as lists."""
+    params: dict = {}
+    for key in request.query_params:
+        values = request.query_params.getlist(key)
+        params[key] = values[0] if len(values) == 1 else values
+    return params
+
+
+@app.get("/v1/health")
 async def health():
     """Return health payload. Returns 503 when status != 'healthy'."""
     if state.health_raises:
         raise RuntimeError("upstream unreachable")
-    payload = {
-        "status": state.health_status,
-        "version": state.version,
-        "protocol_version": state.protocol_version,
-        "max_concurrent_requests": state.max_concurrent,
-        "queued_tasks": state.queued,
-        "processing_tasks": state.processing,
-        "completed_tasks": state.completed_tasks,
-        "failed_tasks": state.failed_tasks,
-        "processing_window_size": state.processing_window_size,
-    }
+    payload = health_payload(
+        healthy=state.health_status == "healthy",
+        version=state.version,
+        features=state.features,
+    )
     if state.health_status != "healthy":
         return JSONResponse(status_code=503, content=payload)
     return payload
 
 
-@app.post("/tasks")
+@app.post("/v1/tasks")
 async def submit_task(request: Request):
     """Accept a multipart task submission, return 202 with a task_id."""
     if state.submit_raises:
         raise RuntimeError("upstream unreachable")
     if state.submit_raw_body is not None:
         return PlainTextResponse(status_code=202, content=state.submit_raw_body)
-    form = await request.form()
-    form_data: dict = {}
+    form = await request.form(max_files=100, max_fields=0)
+    if any(name != "files" for name in form):
+        return _error("Too many fields. Maximum number of fields is 0.")
     file_names: list[str] = []
-    for name, value in form.multi_items():
-        if hasattr(value, "filename") and value.filename:
-            file_names.append(value.filename)
-            content = (
-                value.file.read() if hasattr(value, "file") else await value.read()
-            )  # type: ignore[union-attr]
-            bad_ext = _unsupported_file(value.filename, content)  # type: ignore[arg-type]
-            if bad_ext:
-                return JSONResponse(
-                    status_code=400,
-                    content={"detail": f"Unsupported file type: {bad_ext}"},
-                )
-        else:
-            form_data[name] = str(value)
-    state.submitted.append({"file_names": file_names, "form": form_data})
+    for value in form.getlist("files"):
+        if not getattr(value, "filename", None):
+            return _error("Every files field must contain a named file")
+        content = value.file.read() if hasattr(value, "file") else await value.read()  # type: ignore[union-attr]
+        bad_ext = _unsupported_file(value.filename, content)  # type: ignore[arg-type]
+        if bad_ext:
+            return _error(f"Unsupported file type: {bad_ext}")
+        file_names.append(value.filename)
+    params = _query_params(request)
+    state.submitted.append({"file_names": file_names, "params": params})
     if state.submit_status != 202:
         return JSONResponse(
             status_code=state.submit_status, content={"detail": "upstream error"}
         )
     if state.submit_malformed:
-        return JSONResponse(status_code=202, content={"status": "pending"})
+        return JSONResponse(status_code=202, content={"status": "queued", "files": []})
+    task_id = f"up-{uuid.uuid4().hex[:12]}"
     return JSONResponse(
         status_code=202,
-        content={
-            "task_id": f"up-{uuid.uuid4().hex[:12]}",
-            "status": "pending",
-            "file_names": file_names,
-            "queued_ahead": state.queued_ahead,
-        },
+        content=job_payload(
+            task_id,
+            status="queued",
+            file_names=file_names,
+            tier=params.get("tier", "standard"),
+            output_formats=params.get("output_formats", ["markdown"]),
+        ),
     )
 
 
-@app.post("/file_parse")
+@app.post("/v1/file_parse")
 async def parse_file(request: Request):
-    """Synchronous file parse, returns markdown."""
-    await request.form()
+    """Synchronous file parse, returns the V1 inline result."""
+    form = await request.form(max_files=100, max_fields=0)
+    if any(name != "files" for name in form):
+        return _error("Too many fields. Maximum number of fields is 0.")
     if state.parse_status != 200:
         return JSONResponse(
             status_code=state.parse_status, content={"detail": "upstream error"}
         )
     return JSONResponse(
         status_code=200,
-        content={"markdown": "# parsed", "status": "completed"},
+        content=inline_result_payload(f"up-{uuid.uuid4().hex[:12]}"),
     )
 
 
-@app.get("/tasks/{task_id}")
+@app.get("/v1/tasks/{task_id}")
 async def task_status(task_id: str):
     """Return the current task status (controlled by state.task_status)."""
     if state.status_raises:
         raise RuntimeError("status query failed")
-    return {"task_id": task_id, "status": state.task_status}
+    return job_payload(
+        task_id,
+        status=state.task_status,
+        file_names=["doc.pdf"],
+        error=state.task_error,
+    )
 
 
-@app.get("/tasks/{task_id}/result")
-async def task_result(task_id: str):
+@app.get("/v1/tasks/{task_id}/result")
+async def task_result(task_id: str, response_format: str = "json"):
     """Return task result content."""
     headers: dict[str, str] = {}
     if state.result_content_type:
@@ -219,12 +241,12 @@ async def task_result(task_id: str):
     return PlainTextResponse("# result content", status_code=state.result_status_code)
 
 
-@app.delete("/tasks/{task_id}")
+@app.delete("/v1/tasks/{task_id}")
 async def cancel_task(task_id: str):
     """Cancel a task. Raises when cancel_raises is True."""
     if state.cancel_raises:
         raise RuntimeError("upstream unreachable")
-    return {"task_id": task_id, "status": "cancelled"}
+    return canceled_payload(task_id)
 
 
 # ---------------------------------------------------------------------------

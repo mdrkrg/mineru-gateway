@@ -23,7 +23,7 @@ import uuid
 
 from locust import HttpUser, between, task
 
-# Minimal valid PDF that upstream (mineru-router >=3.4) accepts by content sniffing.
+# Minimal valid PDF that the MinerU 4.0 router accepts by content sniffing.
 _MINIMAL_PDF = (
     b"%PDF-1.4\n"
     b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"

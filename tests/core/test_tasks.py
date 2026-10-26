@@ -357,7 +357,7 @@ async def test_get_result_409_for_pending_task_with_upstream_id(
     """§3.7: 非终态任务 (has upstream_task_id but not terminal) → 409."""
     from tests.mock_upstream import state as ms
 
-    ms.task_status = "pending"
+    ms.task_status = "queued"
     resp = await client.post(
         "/tasks", headers={"X-API-Key": api_key}, files=sample_files
     )

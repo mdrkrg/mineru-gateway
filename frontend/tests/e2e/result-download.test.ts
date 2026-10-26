@@ -125,7 +125,7 @@ beforeAll(async () => {
   apiKey = keyResult.value.apiKey;
 
   await mock.reset();
-  await mock.setTaskStatus('processing');
+  await mock.setTaskStatus('running');
 });
 
 afterAll(async () => {
@@ -162,7 +162,7 @@ async function waitForResult(taskId: string): Promise<void> {
 describe('GET /tasks/{id}/result (background sync)', () => {
   it('serves a partial result once a failed task has synced', async () => {
     await mock.reset();
-    await mock.setTaskStatus('processing');
+    await mock.setTaskStatus('running');
     const taskId = await submit();
 
     await mock.setTaskStatus('failed');
@@ -187,14 +187,14 @@ describe('GET /tasks/{id}/result (background sync)', () => {
 describe('POST /tasks/result-zip (partial results)', () => {
   it('rejects a batch containing a still-active task with not_completed', async () => {
     await mock.reset();
-    await mock.setTaskStatus('processing');
+    await mock.setTaskStatus('running');
 
     const failedId = await submit();
     await mock.setTaskStatus('failed');
     await waitForResult(failedId);
 
     // Keep the mock non-terminal so the second task never grows a result.
-    await mock.setTaskStatus('processing');
+    await mock.setTaskStatus('running');
     const activeId = await submit();
 
     const zip = await downloadResultZip([failedId, activeId], apiKey);

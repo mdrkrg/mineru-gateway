@@ -4,6 +4,14 @@
  *
  * Every test's `beforeAll` should call `reset()` to start from a clean slate.
  */
+type MockTaskStatus =
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'partial'
+  | 'failed'
+  | 'canceled';
+
 export class MockControl {
   constructor(private readonly baseUrl: string) { }
 
@@ -35,7 +43,7 @@ export class MockControl {
     await this.configure({ submit_status: code });
   }
 
-  async setTaskStatus(status: string): Promise<void> {
+  async setTaskStatus(status: MockTaskStatus): Promise<void> {
     await this.configure({ task_status: status });
   }
 
