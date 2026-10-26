@@ -113,15 +113,20 @@ class Settings(BaseSettings):
     )
 
     upstream_url: str = "http://127.0.0.1:8002"
+    # MinerU 4.0 services started with `--api-key` require this Bearer token.
+    upstream_api_key: str = ""
     # Read timeout for sync parses/result downloads; `/tasks` uses 30s (see
-    # `upstream/client.py`). Must cover MinerU's `wait_timeout` (default 300s).
+    # `upstream/client.py`). MinerU 4.0's `/v1/file_parse` waits up to
+    # `wait_timeout` (default 300s), so the default covers a full parse.
     upstream_timeout_read: float = Field(default=600.0, gt=0)
     database_url: str = "sqlite+aiosqlite:///./gateway.db"
     admin_token: str = "change-me"
     allow_anonymous: bool = False
 
     gateway_url: str = "http://127.0.0.1:8000"
-    max_upload_size: int = 524_288_000  # 500MB
+    max_upload_size: int = 524_288_000  # 500MB total per request
+    # MinerU 4.0 rejects files larger than 200 MiB.
+    max_file_size: int = 209_715_200
     rate_limit_per_key: int = 10
     task_retention_days: int = 90
 

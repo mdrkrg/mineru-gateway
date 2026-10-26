@@ -60,8 +60,8 @@ async def test_probes_use_a_short_read_timeout():
     finally:
         await client.aclose()
 
-    assert seen["/health"] == probe_read
-    assert seen["/tasks/t1"] == probe_read
+    assert seen["/v1/health"] == probe_read
+    assert seen["/v1/tasks/t1"] == probe_read
     assert probe_read < settings.upstream_timeout_read
 
 
@@ -85,8 +85,8 @@ async def test_default_probe_timeout_is_finite():
     finally:
         await client.aclose()
 
-    assert seen["/health"] == 10.0
-    assert seen["/tasks/t1"] == 10.0
+    assert seen["/v1/health"] == 10.0
+    assert seen["/v1/tasks/t1"] == 10.0
 
 
 async def test_submit_uses_a_short_read_timeout():
@@ -114,8 +114,8 @@ async def test_submit_uses_a_short_read_timeout():
     finally:
         await client.aclose()
 
-    assert seen["/tasks"] == 30.0
-    assert seen["/file_parse"] == 600.0
+    assert seen["/v1/tasks"] == 30.0
+    assert seen["/v1/file_parse"] == 600.0
 
 
 def test_upstream_timeouts_must_be_positive():
