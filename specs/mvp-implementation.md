@@ -462,47 +462,62 @@ async def status_sync_loop(interval: float = 5.0):
 
 ```python
 async def retry_loop(interval: float = 10.0):
-    """上游恢复后重提可重试（pending 且暂存文件仍在）的任务"""
+    """上游恢复后重提 retry_pending 且暂存文件仍在的任务。"""
     while True:
         await asyncio.sleep(interval)
 
-        for task in await task_service.get_retryable():
-            try:
-                health = await upstream_client.get_health(task.upstream_url)
-            except Exception:
-                continue  # 还没恢复，等下一轮
-            if health.status != "healthy":
-                continue
+        tasks = await task_service.get_retryable()
+        if not tasks:
+            continue
+        try:
+            health = await upstream_client.get_health()
+        except Exception:
+            continue  # 还没恢复，等下一轮
+        if health.status != "healthy":
+            continue
 
+        # 当前只有一个上游，一轮只需探测一次。
+        for task in tasks:
             try:
-                files, form_data = await file_cache.restore(task.cache_dir)
-                upstream_resp = await upstream_client.submit_task(form_data, files)
-                try:
-                    payload = upstream_resp.json()
-                except ValueError as e:
-                    # 上游返回非 JSON 202：格式异常，非瞬时故障，直接判失败，不消耗重试
-                    body_text = upstream_resp.text[:500]
+                form_data, files = await file_cache.restore(task.cache_dir)
+                params = parse_v1_params(form_data, sync=False, include_zip=True)
+                upstream_resp = await upstream_client.submit_task(params, files)
+                if upstream_resp.status_code != 202:
+                    transient = (
+                        upstream_resp.status_code == 429
+                        or upstream_resp.status_code >= 500
+                    )
+                    if transient:
+                        # 容量不足、无健康 worker 或上游故障：保留缓存，消耗重试。
+                        raise RuntimeError(
+                            f"transient upstream response: {upstream_resp.status_code}"
+                        )
+                    # 明确的请求错误不可通过重试恢复。
                     await task_service.mark_failed(
-                        task.id, f"non-JSON upstream response: {e} - {body_text}"
+                        task.id,
+                        f"unexpected upstream response: {upstream_resp.status_code}",
                     )
                     await file_cache.release(task.cache_dir)
                     continue
-                if upstream_resp.status_code != 202 or "task_id" not in payload:
-                    # 上游返回格式异常：非瞬时故障，直接判失败，不消耗重试
+                try:
+                    payload = validate_submission_payload(upstream_resp.json())
+                except ValueError as e:
+                    # malformed 202 直接失败，不消耗重试。
                     body_text = upstream_resp.text[:500]
                     await task_service.mark_failed(
-                        task.id, f"unexpected upstream response: {upstream_resp.status_code} - {body_text}"
+                        task.id, f"invalid upstream response: {e} - {body_text}"
                     )
                     await file_cache.release(task.cache_dir)
                     continue
                 await task_service.update(task.id, dict(
-                    upstream_task_id=payload["task_id"],
-                    status="pending",
+                    upstream_task_id=payload.task_id,
+                    status=gateway_task_status(payload.status),
+                    tier=payload.tier,
                     retry_count=task.retry_count + 1,
                     consecutive_poll_failures=0,
                     started_at=None, completed_at=None, error_message=None,
                 ))
-                logger.info(f"Retried task {task.id} → {payload['task_id']} "
+                logger.info(f"Retried task {task.id} → {payload.task_id} "
                             f"(attempt {task.retry_count + 1})")
             except Exception as e:
                 # 瞬时故障（网络/连接等）：消耗一次重试
