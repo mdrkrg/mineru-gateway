@@ -1,14 +1,25 @@
 :80 {
-  log
+	log
 	encode zstd gzip
 
-	handle_path /api/* {
+	# 规范化前端挂载路径
+	@base expression `{path} == "{$FRONTEND_BASE_PATH:}"`
+	redir @base {$FRONTEND_BASE_PATH:}/{?query} 308
+
+	# 防止 /api 落入 SPA fallback
+	redir {$FRONTEND_BASE_PATH:}/api {$FRONTEND_BASE_PATH:}/api/{?query} 308
+
+	# API：剥离 <base>/api
+	handle_path {$FRONTEND_BASE_PATH:}/api/* {
 		reverse_proxy gateway:8000
 	}
 
-	handle {
+	# Frontend：剥离 <base>，支持 SPA
+	handle_path {$FRONTEND_BASE_PATH:}/* {
 		root * /usr/share/caddy
 		try_files {path} /index.html
 		file_server
 	}
+
+	respond 404
 }

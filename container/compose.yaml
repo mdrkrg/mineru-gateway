@@ -29,9 +29,11 @@ services:
       GATEWAY_DATABASE_URL: postgresql+asyncpg://gateway:${POSTGRES_PASSWORD:?set in .env}@db:5432/gateway
       GATEWAY_ADMIN_TOKEN: ${GATEWAY_ADMIN_TOKEN:?set in .env}
       GATEWAY_ALLOW_ANONYMOUS: "false"
-      GATEWAY_GATEWAY_URL: ${GATEWAY_GATEWAY_URL:-http://localhost:8000}
+      GATEWAY_GATEWAY_URL: ${GATEWAY_GATEWAY_URL:?set public API URL}
+      # The bundled Caddy strips this public prefix before proxying.
+      GATEWAY_ROOT_PATH: ${FRONTEND_BASE_PATH:-}/api
       GATEWAY_FILE_CACHE_DIR: /cache
-      GATEWAY_MAX_UPLOAD_SIZE: "524288000"          # 500MB
+      GATEWAY_MAX_UPLOAD_SIZE: "524288000"          # 500 MiB
       GATEWAY_RATE_LIMIT_PER_KEY: "10"              # per key, per second
       GATEWAY_MAX_CONCURRENT_TASKS: "0"             # 0 disables the global cap
       GATEWAY_TASK_RETENTION_DAYS: "90"
@@ -47,7 +49,12 @@ services:
     build:
       context: ..
       dockerfile: container/Containerfile.frontend
+      args:
+        # No trailing slash. Empty keeps the existing root deployment.
+        FRONTEND_BASE_PATH: ${FRONTEND_BASE_PATH:-}
     restart: unless-stopped
+    environment:
+      FRONTEND_BASE_PATH: ${FRONTEND_BASE_PATH:-}
     volumes:
       - ./caddy:/etc/caddy:ro
     ports:
