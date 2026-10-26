@@ -1,9 +1,10 @@
 import * as stylex from '@stylexjs/stylex';
 import { Show, createSignal, onMount } from 'solid-js';
 import { Link, createFileRoute } from '@tanstack/solid-router';
+import { Popover } from '@kobalte/core/popover';
 import { Upload } from 'lucide-solid';
 import { getTaskStats } from '@/api/functions/tasks';
-import type { TaskStatsResponse } from '@/api/schemas/tasks';
+import type { TaskStatsResponse, TaskStatus } from '@/api/schemas/tasks';
 import NoActiveKey from '@/components/NoActiveKey';
 import { t } from '@/i18n';
 import { taskStatusLabel } from '@/i18n/labels';
@@ -13,11 +14,18 @@ import { errorMessage } from '@/utils/api-error';
 import { ROUTES, STATS_POLL_INTERVAL_MS } from '@/utils/constants';
 import { formatFileSize, formatMilliseconds } from '@/utils/format';
 import { createPolling } from '@/utils/polling';
-import type { TaskStatus } from '@/api/schemas/tasks';
 import { controls } from '@/styles/controls.stylex';
 import { icons } from '@/styles/icons.stylex';
 import { layout } from '@/styles/layout.stylex';
-import { breakpoint, fontSize, lineHeight, space } from '@/styles/tokens.stylex';
+import {
+  breakpoint,
+  colors,
+  fontSize,
+  lineHeight,
+  radius,
+  shadow,
+  space,
+} from '@/styles/tokens.stylex';
 import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/')({
@@ -34,9 +42,8 @@ const styles = stylex.create({
   statusGrid: {
     display: 'grid',
     gridTemplateColumns: {
-      default: 'repeat(2, minmax(0, 1fr))',
+      default: 'minmax(0, 1fr)',
       [breakpoint.sm]: 'repeat(3, minmax(0, 1fr))',
-      [breakpoint.lg]: 'repeat(6, minmax(0, 1fr))',
     },
     gap: space.px12,
   },
@@ -56,7 +63,47 @@ const styles = stylex.create({
     lineHeight: lineHeight.px32,
     fontWeight: 700,
   },
-
+  headingReset: {
+    marginBottom: 0,
+  },
+  statHint: {
+    marginTop: space.px4,
+  },
+  failedBadge: {
+    borderRadius: radius.px4,
+    paddingInline: space.px6,
+    color: colors.red700,
+    backgroundColor: colors.red50,
+    fontSize: fontSize.px12,
+    lineHeight: lineHeight.px16,
+    fontWeight: 600,
+  },
+  statusPopover: {
+    zIndex: 10,
+    width: space.px224,
+    padding: space.px16,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: colors.gray200,
+    borderRadius: radius.px8,
+    boxShadow: shadow.lg,
+    outlineStyle: 'none',
+  },
+  statusList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: space.px8,
+  },
+  statusRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.px16,
+  },
+  statusCount: {
+    fontWeight: 600,
+  },
 });
 
 function DashboardPage() {
@@ -97,18 +144,42 @@ function DashboardPage() {
   const statusCards = (): StatCard[] => {
     const s = stats();
     if (!s) return [];
-    const byStatus: [TaskStatus, number][] = [
+    return [
+      {
+        label: taskStatusLabel('pending'),
+        value: String(s.pending),
+      },
+      {
+        label: taskStatusLabel('processing'),
+        value: String(s.processing + s.retryPending),
+        hint:
+          s.retryPending > 0
+            ? t('dashboard.retryPendingHint', { count: s.retryPending })
+            : undefined,
+      },
+      {
+        label: t('dashboard.resultsAvailable'),
+        value: String(s.completed + s.partial),
+        hint:
+          s.partial > 0
+            ? t('dashboard.partialHint', { count: s.partial })
+            : undefined,
+      },
+    ];
+  };
+
+  const detailedStatuses = (): [TaskStatus, number][] => {
+    const s = stats();
+    if (!s) return [];
+    return [
       ['pending', s.pending],
       ['processing', s.processing],
       ['retry_pending', s.retryPending],
       ['completed', s.completed],
+      ['partial', s.partial],
       ['failed', s.failed],
       ['cancelled', s.cancelled],
     ];
-    return byStatus.map(([status, count]) => ({
-      label: taskStatusLabel(status),
-      value: String(count),
-    }));
   };
 
   const overviewCards = (): StatCard[] => {
@@ -159,9 +230,55 @@ function DashboardPage() {
 
           <Show when={stats()}>
             <section {...stylex.attrs(layout.column)}>
-              <h3 {...stylex.attrs(typography.subsectionTitle)}>
-                {t('dashboard.statusSection')}
-              </h3>
+              <div {...stylex.attrs(layout.rowBetween, layout.mb8)}>
+                <h3
+                  {...stylex.attrs(typography.subsectionTitle, styles.headingReset)}
+                >
+                  {t('dashboard.statusSection')}
+                </h3>
+                <Popover placement="bottom-end" gutter={8}>
+                  <Popover.Trigger
+                    type="button"
+                    class={stylex.attrs(controls.button, controls.buttonOutline).class}
+                  >
+                    {t('dashboard.allStatuses')}
+                    <Show when={(stats()?.failed ?? 0) > 0}>
+                      <span class={stylex.attrs(styles.failedBadge).class}>
+                        {t('dashboard.failedBadge', {
+                          count: stats()?.failed ?? 0,
+                        })}
+                      </span>
+                    </Show>
+                  </Popover.Trigger>
+                  <Popover.Portal>
+                    <Popover.Content class={stylex.attrs(styles.statusPopover).class}>
+                      <Popover.Title
+                        class={stylex.attrs(
+                          typography.body,
+                          typography.emphasis,
+                          layout.mb12,
+                        ).class}
+                      >
+                        {t('dashboard.allStatuses')}
+                      </Popover.Title>
+                      <div {...stylex.attrs(styles.statusList)}>
+                        {detailedStatuses().map(([status, count]) => (
+                          <div {...stylex.attrs(styles.statusRow)}>
+                            <span {...stylex.attrs(typography.bodySecondary)}>
+                              {taskStatusLabel(status)}
+                            </span>
+                            <span
+                              {...stylex.attrs(typography.body, styles.statusCount)}
+                            >
+                              {count}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </Popover.Content>
+                  </Popover.Portal>
+                </Popover>
+              </div>
               <div {...stylex.attrs(styles.statusGrid)}>
                 {statusCards().map((card) => (
                   <div {...stylex.attrs(controls.card, styles.statCard)}>
@@ -169,6 +286,15 @@ function DashboardPage() {
                       {card.label}
                     </p>
                     <p {...stylex.attrs(styles.statValue)}>{card.value}</p>
+                    <Show when={card.hint}>
+                      {(hint) => (
+                        <p
+                          {...stylex.attrs(typography.metaMuted, styles.statHint)}
+                        >
+                          {hint()}
+                        </p>
+                      )}
+                    </Show>
                   </div>
                 ))}
               </div>
