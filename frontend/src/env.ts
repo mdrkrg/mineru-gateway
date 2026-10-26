@@ -7,6 +7,11 @@
  */
 interface AppEnv {
   /**
+   * Browser-visible path where the SPA is mounted. Vite normalizes this to
+   * include both leading and trailing slashes.
+   */
+  readonly appBasePath: string;
+  /**
    * API base URL prefix for all gateway requests.
    * Defaults to `''` (same-origin; use a reverse proxy or Vite dev proxy).
    */
@@ -35,6 +40,7 @@ function readEnv(): AppEnv {
   const rawMaxUpload = Number(import.meta.env.VITE_MAX_UPLOAD_SIZE);
   const rawMaxFile = Number(import.meta.env.VITE_MAX_FILE_SIZE);
   return {
+    appBasePath: import.meta.env.BASE_URL ?? '/',
     apiPrefix: import.meta.env.VITE_API_PREFIX ?? '',
     dev: import.meta.env.DEV === true,
     prod: import.meta.env.PROD === true,

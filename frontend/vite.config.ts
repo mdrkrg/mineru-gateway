@@ -4,10 +4,34 @@ import solidPlugin from 'vite-plugin-solid';
 import devtools from 'solid-devtools/vite';
 import { tanstackRouter } from '@tanstack/router-plugin/vite';
 import stylex from '@stylexjs/unplugin';
+import {
+  escapeRegExp,
+  normalizeApiPrefix,
+  normalizeAppBasePath,
+  stripPathPrefix,
+} from './config/base-path';
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '')
+  const env = loadEnv(mode, process.cwd(), '');
+  const appBasePath = normalizeAppBasePath(env.VITE_APP_BASE_PATH);
+  const apiPrefix = normalizeApiPrefix(env.VITE_API_PREFIX);
+  const proxy = apiPrefix
+    ? {
+        [`^${escapeRegExp(apiPrefix)}(?:/|$)`]: {
+          target: env.VITE_API_BASE,
+          changeOrigin: true,
+          secure: false,
+          ws: true,
+          rewrite: (path: string) => stripPathPrefix(path, apiPrefix),
+        },
+      }
+    : {};
+
   return {
+    base: appBasePath,
+    define: {
+      'import.meta.env.VITE_API_PREFIX': JSON.stringify(apiPrefix),
+    },
     plugins: [
       stylex.vite({
         sxPropName: false,
@@ -34,18 +58,10 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 3000,
-      proxy: {
-        '^/api/': {
-          target: env.VITE_API_BASE,
-          changeOrigin: true,
-          secure: false,
-          ws: true,
-          rewrite: (path) => path.replace(/^\/api/, ''),
-        },
-      },
+      proxy,
     },
     build: {
       target: 'esnext',
     },
-  }
+  };
 });

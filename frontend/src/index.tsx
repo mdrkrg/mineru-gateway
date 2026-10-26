@@ -16,6 +16,7 @@ import { createToastStore } from '@/stores/toast';
 import { ToastProvider } from '@/stores/toast-context';
 import { createConfirmStore } from '@/stores/confirm';
 import { ConfirmProvider } from '@/stores/confirm-context';
+import { env } from '@/env';
 
 const apiKeyStore = createApiKeyStore();
 const authStore = createAuthStore({
@@ -37,6 +38,7 @@ registerAuthHooks(
 
 const router = createRouter({
   routeTree,
+  basepath: env.appBasePath,
   context: { auth: authStore },
   defaultPreload: 'intent',
   defaultStaleTime: 5000,
