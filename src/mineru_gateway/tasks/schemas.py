@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TaskListItem(BaseModel):
@@ -64,8 +64,19 @@ class TaskStatsResponse(BaseModel):
     avg_duration_ms: float | None = None
 
 
-class ResultZipRequest(BaseModel):
+class _BatchTaskRequest(BaseModel):
     task_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+
+    @field_validator("task_ids")
+    @classmethod
+    def _task_ids_must_be_unique(cls, task_ids: list[uuid.UUID]) -> list[uuid.UUID]:
+        if len(task_ids) != len(set(task_ids)):
+            raise ValueError("task_ids must not contain duplicates")
+        return task_ids
+
+
+class ResultZipRequest(_BatchTaskRequest):
+    pass
 
 
 class NonDownloadableItem(BaseModel):
@@ -79,8 +90,8 @@ class NonDownloadableError(BaseModel):
     non_downloadable: list[NonDownloadableItem]
 
 
-class BatchCancelRequest(BaseModel):
-    task_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+class BatchCancelRequest(_BatchTaskRequest):
+    pass
 
 
 class BatchCancelError(BaseModel):
