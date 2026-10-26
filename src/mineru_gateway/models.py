@@ -75,11 +75,10 @@ class TaskRecord(Base):
     file_count: Mapped[int] = mapped_column(Integer, default=0)
     file_total_bytes: Mapped[int] = mapped_column(Integer, default=0)
 
-    # Parse parameters
-    backend: Mapped[str] = mapped_column(String(50), default="hybrid-engine")
-    parse_method: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    effort: Mapped[str | None] = mapped_column(String(50), nullable=True)
-
+    # MinerU 4.0 parse parameters
+    # MinerU 4.0 quality tier (flash/basic/standard/advanced); NULL for rows
+    # where the upstream selected its configured default.
+    tier: Mapped[str | None] = mapped_column(String(20), nullable=True)
     parse_params: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     # Upstream mapping

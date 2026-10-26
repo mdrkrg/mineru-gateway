@@ -23,61 +23,43 @@ from ..models import ApiKey
 from ..tasks import service as task_service
 from ..tasks.cache import FileCache
 from ..upstream.client import UpstreamClient
-from ..upstream.health import check_free_slot
+from ..upstream.params import (
+    VALID_TIERS,
+    parse_v1_params,
+    v1_files,
+)
 
 logger = logging.getLogger(__name__)
 
-_BOOL_FIELDS = {
-    "formula_enable",
-    "table_enable",
-    "image_analysis",
-    "return_md",
-    "return_middle_json",
-    "return_model_output",
-    "return_content_list",
-    "return_images",
-    "response_format_zip",
-    "return_original_file",
-    "client_side_output_generation",
-}
-_INT_FIELDS = {"start_page_id", "end_page_id"}
+_MAX_FORM_BYTES = 1024 * 1024
+
+_REPEATABLE_FORM_FIELDS = {"output_formats"}
 
 
-_STR_FIELDS = {"parse_method", "effort", "server_url"}
-_LIST_FIELDS = {"lang_list"}
+def _store_form_field(data: dict, name: str, value: str) -> None:
+    if name not in _REPEATABLE_FORM_FIELDS or name not in data:
+        data[name] = value
+        return
+    existing = data[name]
+    if isinstance(existing, list):
+        existing.append(value)
+    else:
+        data[name] = [existing, value]
 
 
-def _coerce(name: str, value: str):
-    if name in _BOOL_FIELDS:
-        return value.lower() in ("1", "true", "yes", "on")
-    if name in _INT_FIELDS:
-        try:
-            return int(value)
-        except ValueError:
-            return None
-    return value
-
-
-def _extract_parse_params(data: dict) -> dict:
-    """Extract all parse parameters from the multipart form into the JSON blob.
-
-    Returns a dict containing all upstream parse parameters (including backend,
-    parse_method, effort), suitable for storage in TaskRecord.parse_params.
-    """
-    params: dict = {}
-    if "backend" in data:
-        params["backend"] = data["backend"]
-    for name in _BOOL_FIELDS | _INT_FIELDS | _STR_FIELDS:
-        if name in data:
-            params[name] = _coerce(name, data[name])
-    for name in _LIST_FIELDS:
-        if name in data:
-            params[name] = [v for v in data[name].split(",") if v]
-    return params
+def _parse_options(
+    data: dict, *, sync: bool, include_zip: bool = False
+) -> tuple[dict, str | None]:
+    """Validate form fields and build V1 query params for one request."""
+    try:
+        params = parse_v1_params(data, sync=sync, include_zip=include_zip)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return params, params.get("tier")
 
 
 async def _extract_multipart(
-    request: Request, max_upload_size: int
+    request: Request, max_upload_size: int, max_file_size: int
 ) -> tuple[dict, list[tuple[str, tuple[str, bytes, str]]], list[str], int]:
     """Read the incoming multipart form into (data, files, file_names, total_bytes)."""
     form = await request.form()
@@ -88,9 +70,19 @@ async def _extract_multipart(
 
     for field, value in form.multi_items():
         if isinstance(value, UploadFile):
+            if field != "files":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Every upload part must be named files",
+                )
             content = await value.read()
+            if len(content) > max_file_size:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File exceeds max size ({max_file_size} bytes)",
+                )
             total_bytes += len(content)
-            if len(content) > max_upload_size or total_bytes > max_upload_size:
+            if total_bytes > max_upload_size:
                 raise HTTPException(
                     status_code=413,
                     detail=f"Upload exceeds max size ({max_upload_size} bytes)",
@@ -108,13 +100,13 @@ async def _extract_multipart(
                 )
             )
         else:
-            data[field] = value
+            _store_form_field(data, field, value)
 
     return data, files, file_names, total_bytes
 
 
 async def _extract_multipart_streaming(
-    request: Request, max_upload_size: int, cache: FileCache
+    request: Request, max_upload_size: int, max_file_size: int, cache: FileCache
 ) -> tuple[dict, str, list[str], int]:
     """Streaming multipart parser using request.stream().
 
@@ -123,9 +115,11 @@ async def _extract_multipart_streaming(
     Reads the multipart body in bounded chunks via request.stream() and
     delegates each part to a MultipartParser.  Form-field values accumulate
     in memory; file bytes are written directly to disk via CacheWriter.
-    Cumulative byte count (all received bytes) is checked per chunk — if
-    *max_upload_size* is exceeded the stream is abandoned, the partial
-    cache is cancelled, and a 413 is raised.
+
+    Limits match the synchronous path: *max_file_size* applies to every file
+    part and *max_upload_size* to the sum of file bytes (multipart framing is
+    not counted).  Form fields are capped separately so a malformed request
+    cannot grow the in-memory buffer without bound.
     """
     from python_multipart.multipart import MultipartParser, parse_options_header
 
@@ -139,7 +133,7 @@ async def _extract_multipart_streaming(
     data: dict = {}
     file_names: list[str] = []
     total_bytes = 0
-    file_bytes = 0
+    form_bytes = 0
     # (field, filename, content_type, chunk, is_first_chunk_of_part)
     pending: list[tuple[str, str, str, bytes, bool]] = []
 
@@ -148,17 +142,20 @@ async def _extract_multipart_streaming(
     current_content_type = "application/octet-stream"
     current_is_file = False
     current_file_part_started = False
+    current_file_bytes = 0
     current_form_buf = bytearray()
     header_field = ""
 
     def on_part_begin() -> None:
         nonlocal current_field, current_filename, current_content_type
         nonlocal current_is_file, current_form_buf, current_file_part_started
+        nonlocal current_file_bytes
         current_field = None
         current_filename = None
         current_content_type = "application/octet-stream"
         current_is_file = False
         current_file_part_started = False
+        current_file_bytes = 0
         current_form_buf = bytearray()
 
     def on_header_field(data: bytes, start: int, end: int) -> None:
@@ -175,25 +172,35 @@ async def _extract_multipart_streaming(
             current_field = name.decode("utf-8") if name else None
             fn = params.get(b"filename")
             if fn:
+                if current_field != "files":
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Every upload part must be named files",
+                    )
                 current_filename = fn.decode("utf-8")
                 current_is_file = True
         elif header_field == "content-type" and current_is_file:
             current_content_type = value
 
     def on_part_data(data: bytes, start: int, end: int) -> None:
-        nonlocal total_bytes, file_bytes, current_file_part_started
+        nonlocal total_bytes, form_bytes, current_file_bytes, current_file_part_started
         chunk = data[start:end]
         chunk_len = len(chunk)
-        total_bytes += chunk_len
-        if total_bytes > max_upload_size:
-            # Cancellation happens in the caller's except block: this callback
-            # is synchronous, so it cannot await the async cancel().
-            raise HTTPException(
-                status_code=413,
-                detail=f"Upload exceeds max size ({max_upload_size} bytes)",
-            )
         if current_is_file:
-            file_bytes += chunk_len
+            current_file_bytes += chunk_len
+            if current_file_bytes > max_file_size:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File exceeds max size ({max_file_size} bytes)",
+                )
+            total_bytes += chunk_len
+            if total_bytes > max_upload_size:
+                # Cancellation happens in the caller's except block: this
+                # callback is synchronous, so it cannot await the async cancel().
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Upload exceeds max size ({max_upload_size} bytes)",
+                )
             pending.append(
                 (
                     current_field or "file",
@@ -205,12 +212,18 @@ async def _extract_multipart_streaming(
             )
             current_file_part_started = True
         else:
+            form_bytes += chunk_len
+            if form_bytes > _MAX_FORM_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Form fields exceed max size",
+                )
             current_form_buf.extend(chunk)
 
     def on_part_end() -> None:
         nonlocal current_form_buf
         if not current_is_file and current_field is not None:
-            data[current_field] = current_form_buf.decode("utf-8")
+            _store_form_field(data, current_field, current_form_buf.decode("utf-8"))
             current_form_buf = bytearray()
         if current_is_file and current_filename:
             file_names.append(current_filename)
@@ -246,12 +259,18 @@ async def _extract_multipart_streaming(
             )
         raise
 
-    return data, cache_dir, file_names, file_bytes
+    return data, cache_dir, file_names, total_bytes
 
 
 def _relay_response(resp) -> Response:
     """Relay an upstream httpx.Response byte-for-byte."""
-    excluded = {"content-length", "content-encoding", "transfer-encoding", "connection"}
+    excluded = {
+        "content-length",
+        "content-encoding",
+        "transfer-encoding",
+        "connection",
+        "x-request-id",
+    }
     headers = {k: v for k, v in resp.headers.items() if k.lower() not in excluded}
     return Response(
         content=resp.content,
@@ -281,7 +300,7 @@ def _build_replay_response(task, settings: Settings) -> JSONResponse:
         content={
             "task_id": str(task.id),
             "status": "pending",
-            "backend": task.backend,
+            "tier": task.tier,
             "file_names": task.file_names,
             "created_at": task.created_at.isoformat(),
             "status_url": f"{settings.gateway_url}/tasks/{task.id}",
@@ -333,8 +352,15 @@ async def handle_task_submission(
         )
 
     data, cache_dir, file_names, total_bytes = await _extract_multipart_streaming(
-        request, settings.max_upload_size, cache
+        request, settings.max_upload_size, settings.max_file_size, cache
     )
+    try:
+        params, tier = _parse_options(data, sync=False, include_zip=True)
+    except BaseException:
+        # The streaming parser has already finalized the cache directory. It
+        # is not attached to a task yet, so no background cleanup can find it.
+        await cache.release(cache_dir)
+        raise
 
     # Anonymous: read files from on-disk cache, forward to upstream,
     # then release the cache directory immediately (no record kept).
@@ -342,7 +368,7 @@ async def handle_task_submission(
     if api_key is None:
         try:
             _, files = await cache.restore(cache_dir)
-            upstream_resp = await upstream.submit_task(data, files)
+            upstream_resp = await upstream.submit_task(params, v1_files(files))
         except Exception:
             await cache.release(cache_dir)
             raise
@@ -367,7 +393,7 @@ async def handle_task_submission(
 
     try:
         _, files = await cache.restore(cache_dir)
-        upstream_resp = await upstream.submit_task(data, files)
+        upstream_resp = await upstream.submit_task(params, v1_files(files))
     except Exception:
         # The staged upload is kept in the task record on success, so it must
         # be released whenever the submission never produced one.
@@ -384,7 +410,9 @@ async def handle_task_submission(
 
     qa = payload.get("queued_ahead")
     queued_ahead: int | None = qa if isinstance(qa, int) else None
-
+    upstream_tier = payload.get("tier")
+    if isinstance(upstream_tier, str) and upstream_tier in VALID_TIERS:
+        tier = upstream_tier
     try:
         task = await task_service.create(
             session,
@@ -395,11 +423,11 @@ async def handle_task_submission(
             file_names=payload.get("file_names", file_names),
             file_count=len(file_names),
             file_total_bytes=total_bytes,
-            backend=data.get("backend", "hybrid-engine"),
+            tier=tier,
             cache_dir=cache_dir,
             queued_ahead=queued_ahead,
             idempotency_key=idempotency_key,
-            parse_params=_extract_parse_params(data),
+            parse_params=params,
         )
     except IntegrityError:
         await session.rollback()
@@ -422,7 +450,7 @@ async def handle_task_submission(
                     "idempotency_key": idempotency_key,
                     "api_key_id": str(api_key_id) if api_key_id else None,
                     "upstream_url": settings.upstream_url,
-                    "backend": data.get("backend", "hybrid-engine"),
+                    "tier": tier,
                     "file_names": file_names[:10],
                     "file_count": len(file_names),
                 },
@@ -441,7 +469,7 @@ async def handle_task_submission(
         content={
             "task_id": str(task.id),
             "status": "pending",
-            "backend": task.backend,
+            "tier": task.tier,
             "file_names": task.file_names,
             "created_at": task.created_at.isoformat(),
             "status_url": f"{settings.gateway_url}/tasks/{task.id}",
@@ -478,13 +506,12 @@ async def handle_file_parse(
             headers={"Retry-After": "60"},
         )
 
-    await check_free_slot(upstream)
-
     data, files, file_names, total_bytes = await _extract_multipart(
-        request, settings.max_upload_size
+        request, settings.max_upload_size, settings.max_file_size
     )
+    params, tier = _parse_options(data, sync=True)
 
-    upstream_resp = await upstream.parse_file(data, files)
+    upstream_resp = await upstream.parse_file(params, v1_files(files))
 
     # Authenticated: record the (synchronous) task for history/ownership.
     if api_key is not None and upstream_resp.status_code == 200:
@@ -496,8 +523,8 @@ async def handle_file_parse(
             file_names=file_names,
             file_count=len(file_names),
             file_total_bytes=total_bytes,
-            backend=data.get("backend", "hybrid-engine"),
-            parse_params=_extract_parse_params(data),
+            tier=tier,
+            parse_params=params,
         )
 
     return _relay_response(upstream_resp)

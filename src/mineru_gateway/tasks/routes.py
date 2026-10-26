@@ -62,7 +62,7 @@ def _require_key(api_key: ApiKey | None) -> ApiKey:
 @router.get("", response_model=TaskListResponse)
 async def list_tasks(
     status: str | None = None,
-    backend: str | None = None,
+    tier: str | None = None,
     file_name: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -77,7 +77,7 @@ async def list_tasks(
         session,
         key.id,
         status=status,
-        backend=backend,
+        tier=tier,
         file_name=file_name,
         date_from=date_from,
         date_to=date_to,
@@ -89,12 +89,12 @@ async def list_tasks(
         TaskListItem(
             task_id=t.id,
             status=t.status,
-            backend=t.backend,
+            tier=t.tier,
             file_names=t.file_names or [],
             created_at=t.created_at,
             started_at=t.started_at,
             completed_at=t.completed_at,
-            error=t.error_message,
+            error=t.error_message or t.upstream_error,
             retry_count=t.retry_count,
             queued_ahead=t.queued_ahead,
             has_result=service.task_has_result(t),
@@ -127,13 +127,13 @@ async def get_task(
     return TaskDetail(
         task_id=task.id,
         status=task.status,
-        backend=task.backend,
+        tier=task.tier,
         file_names=task.file_names or [],
         file_count=task.file_count,
         created_at=task.created_at,
         started_at=task.started_at,
         completed_at=task.completed_at,
-        error=task.error_message,
+        error=task.error_message or task.upstream_error,
         retry_count=task.retry_count,
         queued_ahead=task.queued_ahead,
         has_result=service.task_has_result(task),
@@ -164,7 +164,14 @@ async def get_task_result(
             detail=f"Task has no upstream result (status={task.status})",
         )
 
-    upstream_resp = await upstream.get_task_result(task.upstream_task_id)
+    parse_params = task.parse_params or {}
+    output_formats = parse_params.get("output_formats") or []
+    if isinstance(output_formats, str):
+        output_formats = output_formats.split(",")
+    response_format = "zip" if "zip" in output_formats else None
+    upstream_resp = await upstream.get_task_result(
+        task.upstream_task_id, response_format=response_format
+    )
     excluded = {"content-length", "content-encoding", "transfer-encoding", "connection"}
     headers = {
         k: v for k, v in upstream_resp.headers.items() if k.lower() not in excluded
@@ -197,10 +204,11 @@ async def cancel_task(
     task = await service.get_owned(session, task_id, key.id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    if task.status != "pending":
+    if task.status not in service.CANCELLABLE_STATES:
         raise HTTPException(
             status_code=409,
-            detail=f"Only pending tasks can be cancelled (status={task.status})",
+            detail=f"Only pending or processing tasks can be cancelled "
+            f"(status={task.status})",
         )
 
     # Best-effort: forward cancellation to upstream if reachable.
@@ -274,7 +282,9 @@ async def result_zip(
             upstream_task_id: str = task.upstream_task_id  # type: ignore[assignment]
 
             try:
-                upstream_resp = await upstream.get_task_result(upstream_task_id)
+                upstream_resp = await upstream.get_task_result(
+                    upstream_task_id, response_format="zip"
+                )
             except Exception as exc:
                 skipped.append(
                     {
@@ -492,7 +502,7 @@ async def batch_cancel(
             errors.append(BatchCancelError(task_id=task_id, reason="not_found"))
             continue
 
-        if task.status != "pending":
+        if task.status not in service.CANCELLABLE_STATES:
             errors.append(
                 BatchCancelError(
                     task_id=task_id,

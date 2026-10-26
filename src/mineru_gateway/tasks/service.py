@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 from ..models import TaskRecord
+from ..upstream.params import VALID_TIERS
 
 
 async def create(session: AsyncSession, **fields: Any) -> TaskRecord:
@@ -49,7 +50,7 @@ async def get_owned(
 def _build_filters(
     api_key_id: uuid.UUID,
     status: str | None,
-    backend: str | None,
+    tier: str | None,
     file_name: str | None,
     date_from: date | None,
     date_to: date | None,
@@ -58,8 +59,8 @@ def _build_filters(
     conditions = [TaskRecord.api_key_id == api_key_id]
     if status:
         conditions.append(TaskRecord.status == status)
-    if backend:
-        conditions.append(TaskRecord.backend == backend)
+    if tier:
+        conditions.append(TaskRecord.tier == tier)
     if file_name:
         # file_names is stored as serialized JSON text; a substring match over
         # the serialized list is sufficient for the MVP fuzzy search.
@@ -93,7 +94,7 @@ async def list_tasks(
     api_key_id: uuid.UUID,
     *,
     status: str | None = None,
-    backend: str | None = None,
+    tier: str | None = None,
     file_name: str | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
@@ -102,7 +103,7 @@ async def list_tasks(
     page_size: int = 50,
 ) -> tuple[list[TaskRecord], int]:
     conditions = _build_filters(
-        api_key_id, status, backend, file_name, date_from, date_to, has_result
+        api_key_id, status, tier, file_name, date_from, date_to, has_result
     )
 
     total = await session.scalar(
@@ -133,11 +134,15 @@ async def mark_cancelled(session: AsyncSession, task: TaskRecord) -> str | None:
 # --- Phase 3: background recovery helpers ---
 
 # Statuses that are settled and no longer change.
-TERMINAL_STATES = ("completed", "failed", "cancelled")
+TERMINAL_STATES = ("completed", "partial", "failed", "cancelled")
 
-# Terminal statuses whose upstream result may still be downloadable. Cancelled
-# is excluded: the gateway only cancels pending tasks, which have no result.
-RESULT_STATES = ("completed", "failed")
+# MinerU 4.0 serves results for completed and partially completed jobs. Failed
+# and cancelled jobs return 409 from the upstream result endpoint.
+RESULT_STATES = ("completed", "partial")
+
+# Statuses the gateway can still cancel upstream: MinerU 4.0 cancels queued
+# and running jobs, but not terminal ones.
+CANCELLABLE_STATES = ("pending", "processing")
 
 
 def task_has_result(task: TaskRecord) -> bool:
@@ -154,11 +159,34 @@ _UPSTREAM_STATUS_MAP = {
     "completed": "completed",
     "success": "completed",
     "done": "completed",
+    "partial": "partial",
     "failed": "failed",
     "error": "failed",
     "cancelled": "cancelled",
     "canceled": "cancelled",
 }
+
+
+def _upstream_error(payload: dict) -> str | None:
+    """Extract a human-readable error from a V1 job payload."""
+    error = payload.get("error")
+    if isinstance(error, str) and error:
+        return error
+    if isinstance(error, dict):
+        message = error.get("message") or error.get("code")
+        if message:
+            return str(message)
+    for file in payload.get("files") or []:
+        if not isinstance(file, dict):
+            continue
+        file_error = file.get("error")
+        if isinstance(file_error, str) and file_error:
+            return file_error
+        if isinstance(file_error, dict):
+            message = file_error.get("message") or file_error.get("code")
+            if message:
+                return str(message)
+    return None
 
 
 async def get_non_terminal(session: AsyncSession) -> list[TaskRecord]:
@@ -218,8 +246,17 @@ async def update_from_upstream(
         task.started_at = now
     if mapped in TERMINAL_STATES and task.completed_at is None:
         task.completed_at = now
-    if mapped == "failed":
-        task.upstream_error = upstream_status.get("error") or task.upstream_error
+    if mapped in {"failed", "partial"}:
+        error = _upstream_error(upstream_status)
+        if error:
+            task.upstream_error = error
+    upstream_tier = upstream_status.get("tier")
+    if (
+        task.tier is None
+        and isinstance(upstream_tier, str)
+        and upstream_tier in VALID_TIERS
+    ):
+        task.tier = upstream_tier
 
     task.status = mapped
     task.consecutive_poll_failures = 0
@@ -287,6 +324,7 @@ async def get_stats(session: AsyncSession, api_key_id: uuid.UUID) -> dict:
             .filter(TaskRecord.status == "retry_pending")
             .label("retry_pending"),
             func.count().filter(TaskRecord.status == "completed").label("completed"),
+            func.count().filter(TaskRecord.status == "partial").label("partial"),
             func.count().filter(TaskRecord.status == "failed").label("failed"),
             func.count().filter(TaskRecord.status == "cancelled").label("cancelled"),
             func.count()
@@ -325,6 +363,7 @@ async def get_stats(session: AsyncSession, api_key_id: uuid.UUID) -> dict:
         "processing": row.processing,
         "retry_pending": row.retry_pending,
         "completed": row.completed,
+        "partial": row.partial,
         "failed": row.failed,
         "cancelled": row.cancelled,
         "today_completed": row.today_completed,

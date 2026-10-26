@@ -37,17 +37,3 @@ class ApiKeyInfo(BaseModel):
 
 class ApiKeyList(BaseModel):
     keys: list[ApiKeyInfo]
-
-
-# ===== Task submission response (authenticated superset) =====
-
-
-class TaskSubmitResponse(BaseModel):
-    task_id: uuid.UUID
-    status: str
-    backend: str
-    file_names: list[str]
-    created_at: datetime
-    status_url: str
-    result_url: str
-    message: str = "Task submitted successfully"

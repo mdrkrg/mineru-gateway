@@ -116,7 +116,7 @@ def main() -> None:
         files = [
             ("files", ("perf-data.bin", payload, "application/octet-stream")),
         ]
-        data = {"backend": "pipeline"}
+        data = {"tier": "basic"}
 
         # Start RSS sampler thread
         proc = psutil.Process(gateway_proc.pid)

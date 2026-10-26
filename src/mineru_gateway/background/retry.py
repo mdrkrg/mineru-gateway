@@ -14,6 +14,7 @@ from ..db import Database
 from ..tasks import service
 from ..tasks.cache import FileCache
 from ..upstream.client import UpstreamClient
+from ..upstream.params import parse_v1_params, v1_files
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,8 @@ async def retry_once(
 
         try:
             data, files = await cache.restore(str(task.cache_dir))
-            resp = await upstream.submit_task(data, files)
+            params = parse_v1_params(data, sync=False, include_zip=True)
+            resp = await upstream.submit_task(params, v1_files(files))
             try:
                 payload = resp.json()
             except ValueError as e:
@@ -81,6 +83,7 @@ async def retry_once(
                     {
                         "upstream_task_id": payload["task_id"],
                         "status": "pending",
+                        "tier": payload.get("tier") or task.tier,
                         "retry_count": task.retry_count + 1,
                         "consecutive_poll_failures": 0,
                         "started_at": None,

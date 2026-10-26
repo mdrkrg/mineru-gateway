@@ -13,7 +13,7 @@ class TaskListItem(BaseModel):
 
     task_id: uuid.UUID
     status: str
-    backend: str
+    tier: str | None = None
     file_names: list[str]
     created_at: datetime
     started_at: datetime | None = None
@@ -34,7 +34,7 @@ class TaskListResponse(BaseModel):
 class TaskDetail(BaseModel):
     task_id: uuid.UUID
     status: str
-    backend: str
+    tier: str | None = None
     file_names: list[str]
     file_count: int
     created_at: datetime
@@ -57,6 +57,7 @@ class TaskStatsResponse(BaseModel):
     processing: int
     retry_pending: int
     completed: int
+    partial: int = 0
     failed: int
     cancelled: int
     today_completed: int

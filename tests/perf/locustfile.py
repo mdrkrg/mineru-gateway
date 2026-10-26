@@ -89,7 +89,7 @@ class GatewayUser(HttpUser):
             "/tasks",
             headers={"X-API-Key": self.key},
             files=files,
-            data={"backend": "pipeline"},
+            data={"tier": "basic"},
             timeout=120,
         )
         if resp.status_code == 202:
@@ -108,7 +108,7 @@ class GatewayUser(HttpUser):
             "/tasks",
             headers={"X-API-Key": self.key},
             files=_small_file(),
-            data={"backend": "pipeline"},
+            data={"tier": "basic"},
             timeout=30,
         )
         if resp.status_code == 202:
@@ -127,7 +127,7 @@ class GatewayUser(HttpUser):
             "/file_parse",
             headers={"X-API-Key": self.key},
             files=_small_file(),
-            data={"backend": "pipeline"},
+            data={"tier": "basic"},
             timeout=30,
         )
 
