@@ -6,6 +6,9 @@ An API-key gateway in front of **mineru-api / mineru-router**. It keeps the pars
 - Architecture & tradeoffs: [`specs/architecture-design.md`](specs/architecture-design.md)
 - Roadmap: [`plans/future-enhancements.md`](plans/future-enhancements.md)
 
+> **API contract**: the gateway targets **MinerU 4.0** and its native `/v1`
+> API.
+
 > **Deployment constraint**: single instance, single worker (`uvicorn --workers 1`). Rate limiting and recovery state live in-process; running more than one worker is refused at startup.
 
 ## Features
@@ -14,7 +17,7 @@ An API-key gateway in front of **mineru-api / mineru-router**. It keeps the pars
 - **API-key auth** for parsing endpoints, with an admin token for key management and opt-in anonymous passthrough.
 - **Task history** scoped per key, with list, detail, and result endpoints.
 - **Crash recovery**: interrupted tasks are resubmitted automatically.
-- **Protection**: health-aware submission gating, per-key rate limiting, an optional global concurrency cap, and an upload size limit.
+- **Protection**: per-key rate limiting, an optional global concurrency cap, and per-file/total upload limits.
 - **Optional user accounts**: JWT/OAuth login and email verification (`GATEWAY_USER_AUTH_ENABLED`).
 - **Observability**: structured JSON logs and an aggregated health endpoint.
 
@@ -45,7 +48,7 @@ Submit an async task with the returned key:
 curl -X POST http://localhost:8000/tasks \
   -H "X-API-Key: mru_..." \
   -F "files=@document.pdf" \
-  -F "backend=pipeline"
+  -F "tier=standard"
 ```
 
 Interactive API docs are served at `/docs` (OpenAPI at `/openapi.json`).
@@ -69,13 +72,15 @@ All settings use the `GATEWAY_` env prefix. The most important ones:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GATEWAY_UPSTREAM_URL` | `http://127.0.0.1:8002` | Upstream router/api address |
+| `GATEWAY_UPSTREAM_URL` | `http://127.0.0.1:8002` | Upstream router/api address (MinerU 4.0, `/v1` API) |
+| `GATEWAY_UPSTREAM_API_KEY` | `""` | Bearer token when the upstream runs with `--api-key` |
 | `GATEWAY_UPSTREAM_TIMEOUT_READ` | `600` | Upstream read timeout for sync parse/result, seconds (`/tasks` uses 30s) |
 | `GATEWAY_DATABASE_URL` | `sqlite+aiosqlite:///./gateway.db` | SQLite (default) or PostgreSQL |
 | `GATEWAY_ADMIN_TOKEN` | `change-me` | Token required to manage API keys — **set this** |
 | `GATEWAY_ALLOW_ANONYMOUS` | `false` | Allow keyless passthrough |
 | `GATEWAY_GATEWAY_URL` | `http://127.0.0.1:8000` | Public base URL used in status/result links |
-| `GATEWAY_MAX_UPLOAD_SIZE` | `524288000` | Max upload per request, bytes (500 MB) |
+| `GATEWAY_MAX_UPLOAD_SIZE` | `524288000` | Max total file bytes per request (500 MiB) |
+| `GATEWAY_MAX_FILE_SIZE` | `209715200` | Max bytes per file (200 MiB, MinerU 4.0's limit) |
 | `GATEWAY_RATE_LIMIT_PER_KEY` | `10` | Requests per key per second |
 | `GATEWAY_MAX_CONCURRENT_TASKS` | `0` | Global in-flight cap; `0` disables |
 | `GATEWAY_FILE_CACHE_DIR` | `/tmp/gateway-cache` | Staged upload directory |

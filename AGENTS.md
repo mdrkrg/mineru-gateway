@@ -7,6 +7,10 @@
 background loops, rate limiting, and structured logging. See `README.md` for
 the user-facing overview and `specs/` for design docs.
 
+The upstream and public parse-option contract is **MinerU 4.0's `/v1` API**.
+`upstream/params.py` validates the native `tier`, `ocr_mode`, `page_range`, and
+`output_formats` fields.
+
 The frontend SPA is a separate project at `frontend/`. See `frontend/AGENTS.md`
 for its stack, conventions, and commands.
 
@@ -72,7 +76,8 @@ See `docs/mock-upstream.md` for the mock control API reference.
   Alembic migrations. The Docker entrypoint runs `alembic upgrade head` on boot.
 - **Tests must not hit the network.** `tests/conftest.py` swaps the upstream
   `httpx.AsyncClient` with an `ASGITransport` pointed at `tests/mock_upstream.py`.
-  Keep that pattern when adding tests that call upstream.
+  Keep that pattern when adding tests that call upstream. The mocks emulate the
+  4.0 V1 contract: query-string options, `files`-only multipart, `/v1` paths.
 
 ## Code organization
 
@@ -173,7 +178,9 @@ test(auth): cover anonymous passthrough toggle
 All settings use the `GATEWAY_` env prefix. Full table is in `README.md` and
 `.env.example`. Key ones to know:
 
-- `GATEWAY_UPSTREAM_URL` - the mineru-router/api to proxy to.
+- `GATEWAY_UPSTREAM_URL` - the MinerU 4.0 router/api to proxy to.
+- `GATEWAY_UPSTREAM_API_KEY` - Bearer token when the upstream runs with `--api-key`.
+- `GATEWAY_MAX_FILE_SIZE` - per-file limit (default 200 MiB, MinerU 4.0's cap).
 - `GATEWAY_ADMIN_TOKEN` - required to issue/revoke API keys. **Set this in any
   non-test environment.**
 - `GATEWAY_USER_AUTH_ENABLED` - toggles the JWT/OAuth/user-management routers

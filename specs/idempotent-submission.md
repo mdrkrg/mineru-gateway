@@ -77,7 +77,7 @@ X-Idempotency-Key-Replayed: true
 
 ### 3.3 响应体（幂等命中时）
 
-幂等命中时返回的 JSON body 与首次提交时完全一致。字段从已有 `TaskRecord` 重构：`task_id`、`status`、`backend`、`file_names`、`created_at`、`status_url`、`result_url`、`started_at`（null）、`completed_at`（null）、`error`（null）、`message`。
+幂等命中时返回的 JSON body 与首次提交时完全一致。字段从已有 `TaskRecord` 重构：`task_id`、`status`、`tier`、`file_names`、`created_at`、`status_url`、`result_url`、`started_at`（null）、`completed_at`（null）、`error`（null）、`message`。
 
 同时携带与首次提交相同的响应头：`X-MinerU-Task-Id`、`X-MinerU-Task-Status`、`X-MinerU-Task-Status-Url`、`X-MinerU-Task-Result-Url`。
 

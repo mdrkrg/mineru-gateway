@@ -1,9 +1,9 @@
 # Mock upstream API reference
 
-The e2e mock upstream (`tests/e2e/mock_server.py`) emulates mineru-api /
-mineru-router behind a real HTTP interface. It exposes **control endpoints**
-so that frontend and backend e2e tests can simulate upstream states without
-a real deployment.
+The e2e mock upstream (`tests/e2e/mock_server.py`) emulates **MinerU 4.0**
+(mineru-api / mineru-router, `/v1` API) behind a real HTTP interface. It
+exposes **control endpoints** so frontend and backend e2e tests can simulate
+upstream states without a real deployment.
 
 ## Starting the mock
 
@@ -23,48 +23,45 @@ uv run python tests/e2e/run_mock.py --frontend # + frontend dev server
 ## MockState fields
 
 All fields are settable via `POST /_mock/configure {"<field>": <value>}`.
-`null` means the field is optional and defaults to absent.
 
-### Upstream health
+### Upstream health (`GET /v1/health`)
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `health_status` | `str` | `"healthy"` | `"healthy"` \| `"degraded"` — non-healthy → 503 |
-| `health_raises` | `bool` | `false` | Raise `RuntimeError` in `/health` handler. FastAPI returns 500; gateway defaults to `status="unknown"` and returns 503. Does NOT simulate true unreachability (connection error). |
-| `max_concurrent` | `int` | `4` | Reported `max_concurrent_requests` in `/health` |
-| `queued` | `int` | `0` | Reported `queued_tasks` in `/health` |
-| `processing` | `int` | `0` | Reported `processing_tasks` in `/health` |
-| `version` | `str` | `"3.4.0"` | Reported `version` in `/health` |
-| `protocol_version` | `int` | `2` | Reported `protocol_version` in `/health` |
-| `completed_tasks` | `int` | `0` | Reported `completed_tasks` in `/health` |
-| `failed_tasks` | `int` | `0` | Reported `failed_tasks` in `/health` |
-| `processing_window_size` | `int` | `64` | Reported `processing_window_size` in `/health` |
+| `health_status` | `str` | `"healthy"` | `"healthy"` → `{status:"ok"}`; anything else → 503 `{status:"degraded"}` |
+| `health_raises` | `bool` | `false` | Raise `RuntimeError` in the health handler. FastAPI returns 500; the gateway normalises it to `status="degraded"` and returns 503. Does NOT simulate true unreachability (connection error). |
+| `version` | `str` | `"4.0.12"` | Reported `version` |
+| `features` | `dict` | `{webhook, output_formats, sources}` | Reported capability object |
 
-### Task submission (`POST /tasks`)
+### Task submission (`POST /v1/tasks`)
+
+Parse options are **query parameters** (`tier`, `ocr_mode`, `page_range`,
+`output_formats`). The multipart body may only contain parts named `files`;
+extra form fields return 400, matching 4.0's `max_fields=0`.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `submit_status` | `int` | `202` | Status code of the submit response |
-| `submit_raises` | `bool` | `false` | Simulate `POST /tasks` unreachable |
-| `submit_malformed` | `bool` | `false` | Return 202 but omit `task_id` from body |
+| `submit_raises` | `bool` | `false` | Simulate `POST /v1/tasks` unreachable |
+| `submit_malformed` | `bool` | `false` | Return 202 but omit `task_id` from the body |
 | `submit_raw_body` | `str \| null` | `null` | Return 202 with a raw text body (non-JSON) |
-| `queued_ahead` | `int \| null` | `null` | `queued_ahead` field in the 202 response |
 | `content_validation` | `bool` | `true` | Reject non-PDF files with 400 `"Unsupported file type: …"` |
 
-### Task status (`GET /tasks/{id}`)
+### Task status (`GET /v1/tasks/{id}`)
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `task_status` | `str` | `"processing"` | Status the upstream returns: `"queued"` \| `"running"` \| `"processing"` \| `"done"` \| `"success"` \| `"completed"` \| `"error"` \| `"failed"` \| `"canceled"` |
-| `status_raises` | `bool` | `false` | Simulate `GET /tasks/{id}` unreachable |
+| `task_status` | `str` | `"running"` | `"queued"` \| `"running"` \| `"completed"` \| `"partial"` \| `"failed"` \| `"canceled"` |
+| `task_error` | `dict \| null` | `null` | Per-file `error` object returned on `files[]` |
+| `status_raises` | `bool` | `false` | Simulate `GET /v1/tasks/{id}` unreachable |
 
-### Task cancel (`DELETE /tasks/{id}`)
+### Task cancel (`DELETE /v1/tasks/{id}`)
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `cancel_raises` | `bool` | `false` | Simulate `DELETE /tasks/{id}` unreachable |
+| `cancel_raises` | `bool` | `false` | Simulate `DELETE /v1/tasks/{id}` unreachable |
 
-### Task result (`GET /tasks/{id}/result`)
+### Task result (`GET /v1/tasks/{id}/result`)
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -72,7 +69,10 @@ All fields are settable via `POST /_mock/configure {"<field>": <value>}`.
 | `result_content_type` | `str \| null` | `null` | `Content-Type` header (e.g. `"application/zip"`) |
 | `result_content_disposition` | `str \| null` | `null` | `Content-Disposition` header (e.g. `"attachment; filename=out.zip"`) |
 
-### File parse (`POST /file_parse`)
+`?response_format=zip` is accepted and ignored by default; tests that care
+about ZIP contents set the headers above.
+
+### File parse (`POST /v1/file_parse`)
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|

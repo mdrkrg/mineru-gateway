@@ -39,7 +39,7 @@ Content-Type: application/json
    - 若任意 task 不属于当前 Key → **`404`**（整请求拒绝，不区分单个与全部）。
    - 原因：若允许跳过无权限 task，则此端点将成为他人的 task 所有权探测泄露源。
 4. **可下载性校验**：从步骤 3 通过的 task 中全部校验：
-   - 须同时满足 `status == 'completed'` 且 `upstream_task_id IS NOT NULL`
+   - 须同时满足 `status IN ('completed', 'partial')` 且 `upstream_task_id IS NOT NULL`
    - 若任一 task 不符合 → **`409`**，响应体列出所有不合格 task 的 `task_id`、`status` 及 `reason`。
 5. **流式构建 zip**：维护内存中的 manifest 对象（`included`、`skipped` 列表），对校验通过的 task 逐条执行：
    a. 请求上游 `GET /tasks/{upstream_task_id}/result`
@@ -78,9 +78,8 @@ Content-Type: application/json
 - `included` — 成功写入 zip 的 task，含 `task_id` 及实际 `entry` 路径名
 - `skipped` — 上游请求失败的 task，`reason` 固定为 `"upstream_error"`，`detail` 包含实际 HTTP 状态码或异常信息
 
-> 单任务 `GET /tasks/{id}/result` 允许下载 `completed`/`failed`/`cancelled` 的结果——它是透明代理，
-> 不屏蔽上游返回的任何内容（`failed` 可能含部分输出、`cancelled` 可能在取消前已生成结果）。
-> 本批量端点语义为「收集成功产出」，故仅接受 `completed`，避免将失败/取消的中间产物混入 zip。
+> MinerU 4.0 对 `completed`/`partial` 提供结果；`failed`/`canceled` 的结果端点返回 `409`。
+> 单任务与批量端点使用相同的可下载状态集合。
 
 ### 1.3 响应
 
@@ -94,7 +93,7 @@ HTTP body 为流式 zip 流。客户端应将其视为标准 zip 下载。zip �
 |:---:|------|--------|
 | `401` | 未提供有效 API Key | `{"detail": "API key required"}` |
 | `404` | 任一 task_id 不存在或不属于当前 Key | `{"detail": "Task not found for one or more task_ids"}` |
-| `409` | 提交的 tasks 中存在非 completed 或缺少 upstream_task_id 的 task | `{"detail": "One or more tasks are not available for download", "non_downloadable": [{"task_id": "..", "status": "..", "reason": "not_completed"\|"missing_upstream_task_id"}]}` |
+| `409` | 提交的 tasks 中存在非 completed/partial 或缺少 upstream_task_id 的 task | `{"detail": "One or more tasks are not available for download", "non_downloadable": [{"task_id": "..", "status": "..", "reason": "not_completed"\|"missing_upstream_task_id"}]}` |
 | `422` | `task_ids` 为空数组，或长度 > 200 | FastAPI 自动校验的 ValidationError |
 
 #### 流式传输中的异常
