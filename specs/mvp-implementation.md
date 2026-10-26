@@ -1,5 +1,9 @@
 # mineru-gateway MVP 实现规约
 
+> **MinerU 4.0 适配说明**：上游使用 4.0 `/v1` API。该 health contract
+> 不提供队列容量，因此网关不执行提交前健康门控。
+> 当前契约以 `docs/mineru-reference.md` 为准；本文件保留为历史 MVP 规约。
+>
 > **MVP 阶段已完成。** 本规约作为实现参考冻结，除非有逻辑错误，不再修改。未包含在 MVP 中但已后续实现的能力（幂等提交、`/tasks/stats`、用户体系/OAuth、流式上传等）见对应 `specs/` 文档。
 
 > 本文件是 **MVP 阶段**的实现规约（数据模型、接口、模块设计、配置），是 `architecture-design.md` 的精简收敛版。
@@ -190,21 +194,12 @@ class TaskRecord(Base):
     file_count:      int
     file_total_bytes: int
 
-    # 解析参数 - 查询/过滤依赖的保留为独立列
-    backend:         str
-    parse_method:    str | None
-    effort:          str | None
-
-    # 解析参数 - 全部字段在此存一份副本（含上述 3 个列）
-    # 职责：读路径展开为 API 响应、Batch 复制参数；gateway 不决策，上游新增参数无需 migration
+    # MinerU 4.0 解析参数
+    tier:            str | None      # 查询/过滤使用；以上游提交响应为准
     parse_params:    JSON (default={})
-    # 包含全部上游提交参数，与旧有 17 列一一对应：
-    #   backend, parse_method, effort,
-    #   lang_list, formula_enable, table_enable, image_analysis,
-    #   return_md, return_middle_json, return_model_output,
-    #   return_content_list, return_images,
-    #   response_format_zip, return_original_file, client_side_output_generation,
-    #   server_url, start_page_id, end_page_id
+    # 保存实际发送给 upstream 的 V1 参数：
+    #   tier, ocr_mode, page_range, output_formats
+    # 同步请求还可包含 response_format / wait_timeout
 
     # 上游映射
     upstream_url:        str
@@ -253,7 +248,7 @@ class TaskRecord(Base):
 
 ### 5.2 旧端点的响应头
 
-> **数据层简化保证**：TaskRecord 中 `backend` / `parse_method` / `effort` 保留列供 SQL 查询，全部解析参数（含这 3 个）均存一份在 `parse_params: JSON`。所有对外响应中，`parse_params` 通过一行 `response.update(task.parse_params)` 展开全部字段，客户端看到的字段名、层级与上游原 API 完全一致，零特殊处理。
+> `TaskRecord.tier` 用于查询和展示，`parse_params` 保存实际发送给 MinerU 4.0 upstream 的完整 V1 参数快照，供结果下载和灾难恢复使用。
 
 ```http
 HTTP/1.1 202 Accepted
@@ -309,7 +304,7 @@ GET /tasks:
   security: X-API-Key
   parameters:
     - status: str (optional)      # pending|processing|completed|failed|cancelled
-    - backend: str (optional)
+    - tier: str (optional)
     - file_name: str (optional)   # 模糊搜索
     - date_from: str (optional)   # ISO date
     - date_to: str (optional)
@@ -319,7 +314,7 @@ GET /tasks:
     items:
       - task_id: str
         status: str
-        backend: str
+        tier: str | null
         file_names: [str]
         created_at: str
         started_at: str | null
@@ -420,14 +415,13 @@ async def handle_task_submission(
     - 认证门控：默认拒绝匿名；ALLOW_ANONYMOUS=true 时匿名请求纯透传不记录
     - 速率限制：按 Key 内存令牌桶拦截
     - 文件暂存：认证请求的 multipart 落盘后转发上游（用于崩溃重提）
-    - 参数存储：backend / parse_method / effort 独立列 + 全部参数入 parse_params JSON 副本
+    - 参数存储：实际 V1 参数写入 parse_params，解析后的 tier 单独存列供查询
     - 任务记录：DB 持久化上游 task_id 映射 + 文件元信息 + 解析参数
-    - 响应兼容：response.update(task.parse_params) 展开为顶层平铺字段，一行完成，零特殊字段
+    - 响应：返回 Gateway task_id、实际 tier、状态与结果链接
     """
 ```
 
-> **响应格式说明**：认证模式下，`task_id` 被替换为 **Gateway 的 ID**，响应体通过展开 `parse_params` 将 JSON blob 变为顶层平铺字段，客户端看到与原 API 一致的 `lang_list`、`formula_enable` 等字段，兼容性不变。匿名模式下为**原样透传**：状态码与响应体不变，仅剥离 h
-op-by-hop 头（见 §5.1），响应体与上游一致。§3.3/§5.1 所述「格式一致」即指此兼容关系。
+> **响应格式说明**：认证模式下，`task_id` 被替换为 **Gateway 的 ID**，并返回 Gateway 状态与结果链接。匿名模式下为原样透传：状态码与响应体不变，仅剥离 hop-by-hop 头（见 §5.1）。
 
 ### 6.3 后台状态同步 (`background/status_sync.py`)
 
@@ -679,31 +673,7 @@ volumes:
 |---|----|------|
 | R1 | 同步与取消竞态 | `sync_once` 取快照后逐任务处理；若期间任务经 API 取消，上游 `completed` 可能覆盖本地 `cancelled` 状态。窗口窄，`cache_dir` 已清空故无重复释放；暂不处理 |
 
-### 8.2 parse_params 精简迁移
+### 8.2 Day 0 MinerU 4.0 schema
 
-> MVP 第一阶段已实现 17 列解析参数，以下为向 3+1 JSON 模式的迁移方案。
-
-**迁移步骤**（1 个 Alembic migration）：
-
-1. 新增 `tasks.parse_params` 列（`JSON, NOT NULL, default={}`）
-2. 将全部 17 个旧列的值序列化写入 `parse_params`（含 `backend` / `parse_method` / `effort`；它们保留为列但也入 JSON，供读路径一行展开）
-3. 删除 14 个旧列（保留下来的 3 列除外）：
-   `lang_list`, `formula_enable`, `table_enable`, `image_analysis`,
-   `return_md`, `return_middle_json`, `return_model_output`, `return_content_list`,
-   `return_images`, `response_format_zip`, `return_original_file`,
-   `client_side_output_generation`, `server_url`, `start_page_id`, `end_page_id`
-4. 回退路径：恢复 14 个旧列，从 `parse_params` 反序列化填充，再删 `parse_params`
-
-**影响的模块**：
-
-| 模块 | 需要发生的改动 |
-|------|--------------|
-| `models.py` | 14 列 → 1 列 `parse_params`（`default={}`） |
-| `proxy/handler.py` | `_parse_params()` 输出从 17 kwarg → `backend` / `parse_method` / `effort` 列 + 全部 17 字段的 `parse_params` dict |
-| `tasks/service.py` | 读出时 `response.update(task.parse_params)` 一行展开全部字段（含 `backend` 等），无特判 |
-| `tasks/schemas.py` | 响应模型移除 14 个可选字段，改为 `parse_params: dict = {}` |
-
-**设计约束**：
-- `backend` / `parse_method` / `effort` 同时存在于列和 JSON 中：列供 SQL 查询，JSON 供读路径展开
-- 三者在任务创建后不可变，一致性问题可忽略
-- API 响应对客户端透明：`parse_params` 在返回时展开为平铺字段（见 §5.2）
+初始 migration 直接创建 MinerU 4.0 任务结构：`tier` 用于查询，
+`parse_params` 保存原生 V1 参数。

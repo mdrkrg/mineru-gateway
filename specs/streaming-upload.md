@@ -288,7 +288,7 @@ create_streaming_cache() → CacheWriter
 - 缓存目录下有 3 个 blob 文件（`blob-0`、`blob-1`、`blob-2`），各自内容正确。
 
 **T3 — Form 字段透传（回归）**
-提交包含 form 字段（`backend`、`parse_method`、布尔标志如 `return_md=true`）和文件的请求。验证：
+提交包含原生 V1 form 字段（`tier`、`ocr_mode`、`output_formats`）和文件的请求。验证：
 
 - TaskRecord 的 `parse_params` 中正确记录了这些字段。
 - 上游收到的 multipart body 中包含相同的 form 字段值。
