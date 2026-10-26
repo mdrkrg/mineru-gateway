@@ -462,6 +462,153 @@ async def test_streaming_parser_accumulates_fragmented_headers(tmp_path):
     ]
 
 
+async def test_streaming_parser_rejects_oversized_part_header(tmp_path):
+    from fastapi import HTTPException
+
+    from mineru_gateway.proxy.handler import _extract_multipart_streaming
+    from mineru_gateway.tasks.cache import FileCache
+
+    boundary = b"oversized-header"
+    filename = b"a" * (17 * 1024)
+    body = b"".join(
+        [
+            b"--" + boundary + b"\r\n",
+            b'Content-Disposition: form-data; name="files"; filename="',
+            filename,
+            b'"\r\nContent-Type: application/pdf\r\n\r\ndata\r\n',
+            b"--" + boundary + b"--\r\n",
+        ]
+    )
+    cache_base = tmp_path / "oversized-header-cache"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _extract_multipart_streaming(
+            _chunked_request(boundary, [body]),
+            100_000,
+            100_000,
+            FileCache(str(cache_base)),
+        )
+
+    assert exc_info.value.status_code == 413
+    assert _count_cache_dirs(str(cache_base)) == 0
+
+
+async def test_streaming_parser_rejects_too_many_part_headers(tmp_path):
+    from fastapi import HTTPException
+
+    from mineru_gateway.proxy.handler import _extract_multipart_streaming
+    from mineru_gateway.tasks.cache import FileCache
+
+    boundary = b"many-headers"
+    headers = [
+        b'Content-Disposition: form-data; name="files"; filename="file.pdf"\r\n',
+        *(f"X-Metadata-{index}: value\r\n".encode() for index in range(32)),
+    ]
+    body = b"".join(
+        [
+            b"--" + boundary + b"\r\n",
+            *headers,
+            b"\r\ndata\r\n",
+            b"--" + boundary + b"--\r\n",
+        ]
+    )
+    cache_base = tmp_path / "many-headers-cache"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _extract_multipart_streaming(
+            _chunked_request(boundary, [body]),
+            100_000,
+            100_000,
+            FileCache(str(cache_base)),
+        )
+
+    assert exc_info.value.status_code == 413
+    assert _count_cache_dirs(str(cache_base)) == 0
+
+
+async def test_streaming_parser_rejects_oversized_boundary_without_orphan(tmp_path):
+    from fastapi import HTTPException
+
+    from mineru_gateway.proxy.handler import _extract_multipart_streaming
+    from mineru_gateway.tasks.cache import FileCache
+
+    boundary = b"x" * 257
+    cache_base = tmp_path / "oversized-boundary-cache"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _extract_multipart_streaming(
+            _chunked_request(boundary, []),
+            100_000,
+            100_000,
+            FileCache(str(cache_base)),
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Malformed multipart body"
+    assert _count_cache_dirs(str(cache_base)) == 0
+
+
+async def test_streaming_parser_limits_empty_form_parts(tmp_path):
+    from fastapi import HTTPException
+
+    from mineru_gateway.proxy.handler import _extract_multipart_streaming
+    from mineru_gateway.tasks.cache import FileCache
+
+    boundary = b"many-fields"
+    parts = []
+    for index in range(101):
+        parts.extend(
+            [
+                b"--" + boundary + b"\r\n",
+                f'Content-Disposition: form-data; name="field-{index}"\r\n\r\n'.encode(),
+                b"\r\n",
+            ]
+        )
+    parts.append(b"--" + boundary + b"--\r\n")
+    cache_base = tmp_path / "many-fields-cache"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _extract_multipart_streaming(
+            _chunked_request(boundary, [b"".join(parts)]),
+            100_000,
+            100_000,
+            FileCache(str(cache_base)),
+        )
+
+    assert exc_info.value.status_code == 413
+    assert _count_cache_dirs(str(cache_base)) == 0
+
+
+async def test_streaming_parser_rejects_empty_file(tmp_path):
+    from fastapi import HTTPException
+
+    from mineru_gateway.proxy.handler import _extract_multipart_streaming
+    from mineru_gateway.tasks.cache import FileCache
+
+    boundary = b"empty-file"
+    body = b"".join(
+        [
+            b"--" + boundary + b"\r\n",
+            b'Content-Disposition: form-data; name="files"; filename="empty.pdf"\r\n',
+            b"Content-Type: application/pdf\r\n\r\n",
+            b"\r\n--" + boundary + b"--\r\n",
+        ]
+    )
+    cache_base = tmp_path / "empty-file-cache"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _extract_multipart_streaming(
+            _chunked_request(boundary, [body]),
+            100_000,
+            100_000,
+            FileCache(str(cache_base)),
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Empty files are not supported"
+    assert _count_cache_dirs(str(cache_base)) == 0
+
+
 # ---------------------------------------------------------------------------
 # T6 -- Over-limit immediate rejection
 # spec: streaming-upload.md sec 6.2 S6

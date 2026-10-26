@@ -7,7 +7,7 @@
 
 ### 目标
 
-1. `POST /v1/tasks` 端点在上传阶段（接收客户端 multipart body）的内存占用量与单个文件大小解耦：任意大小的文件均以固定窗口大小的 chunk 为单位流式处理，不会因文件大小增长而线性增长内存。
+1. `POST /v1/tasks` 端点在上传阶段（接收客户端 multipart body）的内存占用量与单个文件大小解耦：限制内的文件均以固定窗口大小的 chunk 为单位流式处理，不会因文件大小增长而线性增长内存。
 2. 上传大小检查从「完整读取后判断」改为「文件字节实时累计」：单文件超过 `max_file_size` 或文件总量超过 `max_upload_size` 时，立即中止流并返回 413。
 3. 流式处理与现有幂等提交、限流、全局并发检查的交互行为定义清晰，不引入状态不一致。
 4. FileCache 的磁盘暂存行为与 crash recovery（retry 循环）保持兼容：retry 循环从磁盘恢复文件并重提的路径不受影响。
@@ -66,7 +66,10 @@ _extract_multipart_streaming(request, max_upload_size, max_file_size, cache)
 
 > **注意**：`total_bytes` 与 `max_upload_size` 都只统计文件内容，不统计 multipart
 > framing 或普通表单字段。普通字段另设 **1 MiB** 累计上限；每任务另限
-> **100 个文件**。
+> **100 个文件**。为避免零字节字段和超长 part header 绕过字节限制，解析器
+> 还限制 **100 个普通字段**、每 part **32 个 header**、单 header **16 KiB**，
+> 且 multipart part 总数不超过文件与普通字段上限之和；零字节文件返回 400。
+
 - 布尔字段转换（`_coerce`）、`_extract_parse_params` 对 data dict 的处理完全不变——它们只读取 `data`，不依赖 `files`。
 
 ### 1.2 后续流程适应性变更
@@ -333,6 +336,11 @@ create_streaming_cache() → CacheWriter
 将同一合法 multipart body 按单字节切分，并使用带引号且后接其他参数的
 boundary。验证被拆分的 header field/value 会累计到 `on_header_end` 后再解析，
 文件名、类型、字段值和内容均保持完整。
+
+**T8d — multipart 元数据限制与空文件**
+分别提交超长 part header、超过 100 个普通字段以及零字节文件。验证前两者
+返回 413，零字节文件按 MinerU 4.0 行为返回 400，且三种情况均无缓存目录或
+TaskRecord 残留。
 
 ### 6.3 错误恢复
 

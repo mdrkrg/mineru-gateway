@@ -42,6 +42,10 @@ from ..upstream.response import relay_headers, relay_response
 logger = logging.getLogger(__name__)
 
 _MAX_FORM_BYTES = 1024 * 1024
+_MAX_FORM_FIELDS = 100
+_MAX_HEADERS_PER_PART = 32
+_MAX_HEADER_BYTES = 16 * 1024
+_MAX_MULTIPART_PARTS = MAX_TASK_FILES + _MAX_FORM_FIELDS
 
 _REPEATABLE_FORM_FIELDS = {"output_formats"}
 
@@ -135,6 +139,7 @@ async def _extract_multipart_streaming(
     not counted).  Form fields are capped separately so a malformed request
     cannot grow the in-memory buffer without bound.
     """
+    from python_multipart.exceptions import FormParserError, MultipartParseError
     from python_multipart.multipart import MultipartParser, parse_options_header
 
     content_type = request.headers.get("content-type", "")
@@ -159,6 +164,8 @@ async def _extract_multipart_streaming(
     current_file_part_counted = False
     current_file_bytes = 0
     file_count = 0
+    form_field_count = 0
+    part_count = 0
     current_form_buf = bytearray()
     header_field_buf = bytearray()
     header_value_buf = bytearray()
@@ -167,6 +174,13 @@ async def _extract_multipart_streaming(
         nonlocal current_field, current_filename, current_content_type
         nonlocal current_is_file, current_form_buf, current_file_part_started
         nonlocal current_file_bytes, current_file_part_counted
+        nonlocal part_count
+        part_count += 1
+        if part_count > _MAX_MULTIPART_PARTS:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Too many multipart parts (maximum {_MAX_MULTIPART_PARTS})",
+            )
         current_field = None
         current_filename = None
         current_content_type = "application/octet-stream"
@@ -257,10 +271,22 @@ async def _extract_multipart_streaming(
 
     def on_part_end() -> None:
         nonlocal current_form_buf, current_file_part_counted, file_count
+        nonlocal form_field_count
         if not current_is_file and current_field is not None:
+            form_field_count += 1
+            if form_field_count > _MAX_FORM_FIELDS:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Too many form fields (maximum {_MAX_FORM_FIELDS})",
+                )
             _store_form_field(data, current_field, current_form_buf.decode("utf-8"))
             current_form_buf = bytearray()
         if current_is_file and current_filename:
+            if current_file_bytes == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Empty files are not supported",
+                )
             if not current_file_part_counted:
                 file_count += 1
                 current_file_part_counted = True
@@ -281,9 +307,14 @@ async def _extract_multipart_streaming(
         "on_header_end": on_header_end,
     }
 
-    parser = MultipartParser(boundary, callbacks, max_size=float("inf"))
-
     try:
+        parser = MultipartParser(
+            boundary,
+            callbacks,
+            max_size=float("inf"),
+            max_header_count=_MAX_HEADERS_PER_PART,
+            max_header_size=_MAX_HEADER_BYTES,
+        )
         async for chunk in request.stream():
             parser.write(chunk)
             for args in pending:
@@ -291,7 +322,7 @@ async def _extract_multipart_streaming(
             pending.clear()
 
         cache_dir = await writer.finish(data)
-    except BaseException:
+    except BaseException as exc:
         # Covers disconnect, parse errors, 413 (size limit) and finish()
         # failures: the partial cache directory must never be orphaned.
         try:
@@ -302,6 +333,19 @@ async def _extract_multipart_streaming(
             logger.warning(
                 "Failed to cancel cache dir after aborted upload", exc_info=True
             )
+        if isinstance(exc, (FormParserError, UnicodeDecodeError)):
+            message = str(exc)
+            header_limit = isinstance(exc, MultipartParseError) and message.startswith(
+                "Maximum header"
+            )
+            raise HTTPException(
+                status_code=413 if header_limit else 400,
+                detail=(
+                    "Multipart headers exceed configured limits"
+                    if header_limit
+                    else "Malformed multipart body"
+                ),
+            ) from exc
         raise
 
     return data, cache_dir, file_names, total_bytes
