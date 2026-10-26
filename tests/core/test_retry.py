@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from mineru_gateway.background import retry
 from mineru_gateway.tasks import service
 from mineru_gateway.tasks.cache import FileCache
@@ -165,3 +167,29 @@ async def test_retry_captures_upstream_error_body_on_reject(
         assert refreshed.status == "failed"
         assert refreshed.retry_count == 0
         assert "upstream error" in refreshed.error_message
+
+
+@pytest.mark.parametrize("status_code", [429, 500, 502, 503, 504])
+async def test_retry_consumes_retry_on_transient_http_response(
+    app, upstream_client, tmp_path, status_code
+):
+    """MinerU/router capacity and availability errors remain retryable."""
+    db = app.state.db
+    upstream = UpstreamClient(upstream_client)
+    cache = FileCache(str(tmp_path))
+    async with db.session_factory() as session:
+        key_id = await _seed_key(session)
+        task = await _retryable_task(session, cache, key_id)
+        task_id = task.id
+        cache_dir = str(task.cache_dir)
+
+    mock_state.submit_status = status_code
+    await retry.retry_once(db, upstream, cache, max_retries=3)
+
+    async with db.session_factory() as session:
+        refreshed = await service.get(session, task_id)
+        assert refreshed.status == "retry_pending"
+        assert refreshed.retry_count == 1
+        assert refreshed.error_message is None
+
+    assert os.path.exists(cache_dir)

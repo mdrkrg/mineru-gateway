@@ -2,7 +2,8 @@
 
 Resubmits ``retry_pending`` tasks once upstream is healthy again, restoring the
 staged multipart from the file cache. Transient failures consume a retry;
-malformed upstream responses fail immediately without consuming one.
+HTTP 429/5xx and transport failures consume a retry, while rejected requests
+and malformed accepted responses fail immediately without consuming one.
 """
 
 from __future__ import annotations
@@ -20,6 +21,11 @@ from ..upstream.schemas import gateway_task_status, validate_submission_payload
 logger = logging.getLogger(__name__)
 
 
+def _is_transient_submission_status(status_code: int) -> bool:
+    """MinerU may temporarily reject work while its engine/router recovers."""
+    return status_code == 429 or 500 <= status_code < 600
+
+
 async def retry_once(
     db: Database,
     upstream: UpstreamClient,
@@ -29,16 +35,19 @@ async def retry_once(
 ) -> None:
     async with db.session_factory() as session:
         tasks = await service.get_retryable(session)
+    if not tasks:
+        return
+
+    # All records target the single configured upstream, so one probe is
+    # sufficient for the whole pass.
+    try:
+        health = await upstream.get_health()
+    except Exception:
+        return
+    if health.status != "healthy":
+        return
 
     for task in tasks:
-        # Only resubmit once upstream is healthy again.
-        try:
-            health = await upstream.get_health()
-        except Exception:
-            continue
-        if health.status != "healthy":
-            continue
-
         # Staged files must still exist to resubmit.
         if not cache.exists(task.cache_dir):
             async with db.session_factory() as session:
@@ -52,9 +61,13 @@ async def retry_once(
             params = parse_v1_params(data, sync=False, include_zip=True)
             resp = await upstream.submit_task(params, files)
             if resp.status_code != 202:
-                # Non-transient: upstream rejected the request. Fail without
-                # consuming a retry.
                 body_text = resp.text[:500]
+                if _is_transient_submission_status(resp.status_code):
+                    raise RuntimeError(
+                        f"transient upstream response: {resp.status_code} - {body_text}"
+                    )
+                # The upstream rejected this request permanently. Fail
+                # without consuming a retry.
                 async with db.session_factory() as session:
                     await service.mark_failed(
                         session,
