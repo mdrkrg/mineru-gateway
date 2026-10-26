@@ -90,6 +90,39 @@ def _mock_boundary_request(boundary: bytes) -> AsyncMock:
     return request
 
 
+def _chunked_request(boundary: bytes, chunks: list[bytes]) -> AsyncMock:
+    request = AsyncMock()
+    request.headers = MagicMock()
+    request.headers.get.return_value = (
+        "multipart/form-data; boundary=" + boundary.decode()
+    )
+
+    async def stream():
+        for chunk in chunks:
+            yield chunk
+
+    request.stream = MagicMock(return_value=stream())
+    return request
+
+
+def _fragmented_header_body(boundary: bytes) -> bytes:
+    return b"".join(
+        [
+            b"--" + boundary + b"\r\n",
+            b'Content-Disposition: form-data; name="tier"\r\n\r\n',
+            b"basic\r\n",
+            b"--" + boundary + b"\r\n",
+            # Header order is not significant; Content-Type may precede the
+            # disposition header that identifies this part as a file.
+            b"Content-Type: application/pdf\r\n",
+            b'Content-Disposition: form-data; name="files"; ',
+            b'filename="fragmented.pdf"\r\n\r\n',
+            b"fragmented-file-data\r\n",
+            b"--" + boundary + b"--\r\n",
+        ]
+    )
+
+
 async def _make_streaming_app(
     tmp_path,
     *,
@@ -398,6 +431,35 @@ async def test_t5_streaming_parser_uses_request_stream(tmp_path):
     await _extract_multipart_streaming(request, 10_000_000, 10_000_000, cache)
 
     request.form.assert_not_called()
+
+
+async def test_streaming_parser_accumulates_fragmented_headers(tmp_path):
+    from mineru_gateway.proxy.handler import _extract_multipart_streaming
+    from mineru_gateway.tasks.cache import FileCache
+
+    boundary = b"fragment-boundary"
+    body = _fragmented_header_body(boundary)
+    chunks = [body[i : i + 1] for i in range(len(body))]
+    request = _chunked_request(boundary, chunks)
+    request.headers.get.return_value = (
+        'multipart/form-data; boundary="fragment-boundary"; charset=utf-8'
+    )
+    cache = FileCache(str(tmp_path / "fragmented-cache"))
+
+    data, cache_dir, file_names, total_bytes = await _extract_multipart_streaming(
+        request, 10_000, 10_000, cache
+    )
+    cached_data, files = await cache.restore(cache_dir)
+
+    assert data == cached_data == {"tier": "basic"}
+    assert file_names == ["fragmented.pdf"]
+    assert total_bytes == len(b"fragmented-file-data")
+    assert files == [
+        (
+            "files",
+            ("fragmented.pdf", b"fragmented-file-data", "application/pdf"),
+        )
+    ]
 
 
 # ---------------------------------------------------------------------------
