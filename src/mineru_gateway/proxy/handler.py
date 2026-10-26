@@ -1,15 +1,16 @@
-"""Core proxy handlers for POST /tasks and POST /file_parse.
+"""Core proxy handlers for POST /v1/tasks and POST /v1/file_parse.
 
-Authenticated `POST /tasks` stages the original multipart to the file cache
+Authenticated `POST /v1/tasks` stages the original multipart to the file cache
 (for crash recovery, §6.2/§6.4) before forwarding, records the task with its
 cache_dir, and returns the Gateway-flavored response. Anonymous requests are a
-pure passthrough. `POST /file_parse` normally returns its result directly; if
+pure passthrough. `POST /v1/file_parse` normally returns its result directly; if
 MinerU's wait budget expires, the accepted task is persisted and staged for
 the same polling/recovery path as an asynchronous submission.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -29,7 +30,6 @@ from ..upstream.client import UpstreamClient
 from ..upstream.params import (
     MAX_TASK_FILES,
     parse_v1_params,
-    v1_files,
 )
 from ..upstream.schemas import (
     UpstreamTaskPayload,
@@ -38,12 +38,17 @@ from ..upstream.schemas import (
     task_reference_from_headers,
     validate_submission_payload,
 )
+from ..upstream.response import relay_headers, relay_response
 
 logger = logging.getLogger(__name__)
 
 _MAX_FORM_BYTES = 1024 * 1024
 
 _REPEATABLE_FORM_FIELDS = {"output_formats"}
+
+
+def _task_url(settings: Settings, task_id: object) -> str:
+    return f"{settings.gateway_url.rstrip('/')}/v1/tasks/{task_id}"
 
 
 def _store_form_field(data: dict, name: str, value: str) -> None:
@@ -292,27 +297,6 @@ async def _extract_multipart_streaming(
     return data, cache_dir, file_names, total_bytes
 
 
-def _relay_headers(resp) -> dict[str, str]:
-    excluded = {
-        "content-length",
-        "content-encoding",
-        "transfer-encoding",
-        "connection",
-        "x-request-id",
-    }
-    return {k: v for k, v in resp.headers.items() if k.lower() not in excluded}
-
-
-def _relay_response(resp) -> Response:
-    """Relay an upstream httpx.Response byte-for-byte."""
-    return Response(
-        content=resp.content,
-        status_code=resp.status_code,
-        headers=_relay_headers(resp),
-        media_type=resp.headers.get("content-type"),
-    )
-
-
 def _file_parse_task_metadata(
     resp,
 ) -> tuple[UpstreamTaskReference, dict[str, Any] | None]:
@@ -346,10 +330,10 @@ def _tracked_response_headers(resp, task, settings: Settings) -> dict[str, str]:
     """Relay response headers while replacing upstream task references."""
     headers = {
         key: value
-        for key, value in _relay_headers(resp).items()
+        for key, value in relay_headers(resp).items()
         if not key.lower().startswith("x-mineru-task-")
     }
-    task_url = f"{settings.gateway_url}/tasks/{task.id}"
+    task_url = _task_url(settings, task.id)
     headers.update(
         {
             "X-MinerU-Task-Id": str(task.id),
@@ -368,7 +352,7 @@ def _tracked_task_response(
     settings: Settings,
 ) -> JSONResponse:
     """Replace an upstream task reference with its gateway-owned identity."""
-    task_url = f"{settings.gateway_url}/tasks/{task.id}"
+    task_url = _task_url(settings, task.id)
     content = dict(payload)
     content.update(
         {
@@ -411,6 +395,7 @@ def _normalize_idempotency_key(raw: str | None) -> str | None:
 
 
 def _build_replay_response(task, settings: Settings) -> JSONResponse:
+    task_url = _task_url(settings, task.id)
     return JSONResponse(
         status_code=202,
         content={
@@ -419,8 +404,8 @@ def _build_replay_response(task, settings: Settings) -> JSONResponse:
             "tier": task.tier,
             "file_names": task.file_names,
             "created_at": task.created_at.isoformat(),
-            "status_url": f"{settings.gateway_url}/tasks/{task.id}",
-            "result_url": f"{settings.gateway_url}/tasks/{task.id}/result",
+            "status_url": task_url,
+            "result_url": f"{task_url}/result",
             "started_at": None,
             "completed_at": None,
             "error": None,
@@ -429,8 +414,8 @@ def _build_replay_response(task, settings: Settings) -> JSONResponse:
         headers={
             "X-MinerU-Task-Id": str(task.id),
             "X-MinerU-Task-Status": "pending",
-            "X-MinerU-Task-Status-Url": f"{settings.gateway_url}/tasks/{task.id}",
-            "X-MinerU-Task-Result-Url": f"{settings.gateway_url}/tasks/{task.id}/result",
+            "X-MinerU-Task-Status-Url": task_url,
+            "X-MinerU-Task-Result-Url": f"{task_url}/result",
             "X-Idempotency-Key-Replayed": "true",
         },
     )
@@ -480,12 +465,12 @@ async def handle_task_submission(
     if api_key is None:
         try:
             _, files = await cache.restore(cache_dir)
-            upstream_resp = await upstream.submit_task(params, v1_files(files))
-        except Exception:
+            upstream_resp = await upstream.submit_task(params, files)
+        except Exception, asyncio.CancelledError:
             await cache.release(cache_dir)
             raise
         await cache.release(cache_dir)
-        return _relay_response(upstream_resp)
+        return relay_response(upstream_resp)
 
     # Authenticated: stage the original multipart for crash recovery, then
     # forward. Release the cache if the upstream rejects the submission.
@@ -505,15 +490,15 @@ async def handle_task_submission(
 
     try:
         _, files = await cache.restore(cache_dir)
-        upstream_resp = await upstream.submit_task(params, v1_files(files))
-    except Exception:
+        upstream_resp = await upstream.submit_task(params, files)
+    except Exception, asyncio.CancelledError:
         # The staged upload is kept in the task record on success, so it must
         # be released whenever the submission never produced one.
         await cache.release(cache_dir)
         raise
     if upstream_resp.status_code != 202:
         await cache.release(cache_dir)
-        return _relay_response(upstream_resp)
+        return relay_response(upstream_resp)
     try:
         raw_payload = upstream_resp.json()
         payload = validate_submission_payload(raw_payload)
@@ -572,6 +557,7 @@ async def handle_task_submission(
             return _build_replay_response(existing, settings)
         raise
 
+    task_url = _task_url(settings, task.id)
     return JSONResponse(
         status_code=202,
         content={
@@ -580,8 +566,8 @@ async def handle_task_submission(
             "tier": task.tier,
             "file_names": task.file_names,
             "created_at": task.created_at.isoformat(),
-            "status_url": f"{settings.gateway_url}/tasks/{task.id}",
-            "result_url": f"{settings.gateway_url}/tasks/{task.id}/result",
+            "status_url": task_url,
+            "result_url": f"{task_url}/result",
             "started_at": None,
             "completed_at": None,
             "error": None,
@@ -590,8 +576,8 @@ async def handle_task_submission(
         headers={
             "X-MinerU-Task-Id": str(task.id),
             "X-MinerU-Task-Status": task.status,
-            "X-MinerU-Task-Status-Url": f"{settings.gateway_url}/tasks/{task.id}",
-            "X-MinerU-Task-Result-Url": f"{settings.gateway_url}/tasks/{task.id}/result",
+            "X-MinerU-Task-Status-Url": task_url,
+            "X-MinerU-Task-Result-Url": f"{task_url}/result",
         },
     )
 
@@ -617,10 +603,10 @@ async def handle_file_parse(
     )
     params, tier = _parse_options(data, sync=True)
 
-    upstream_resp = await upstream.parse_file(params, v1_files(files))
+    upstream_resp = await upstream.parse_file(params, files)
 
     if api_key is None or upstream_resp.status_code not in {200, 202, 409}:
-        return _relay_response(upstream_resp)
+        return relay_response(upstream_resp)
 
     try:
         reference, raw_payload = _file_parse_task_metadata(upstream_resp)

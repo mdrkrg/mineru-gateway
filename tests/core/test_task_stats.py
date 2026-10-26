@@ -1,4 +1,4 @@
-"""Spec: GET /tasks/stats - Task Statistics Endpoint
+"""Spec: GET /v1/tasks/stats - Task Statistics Endpoint
 
 Returns per-status task counts and aggregate metrics scoped to the
 authenticated API key's owner.  Designed for dashboard overviews and
@@ -6,7 +6,7 @@ frontends that need a summary without paginating through all tasks.
 
 Endpoint
 --------
-GET /tasks/stats
+GET /v1/tasks/stats
   Security: X-API-Key (required; anonymous requests are rejected)
   Scope:    statistics cover only tasks owned by the key making the request.
             A different key sees only its own data.
@@ -58,13 +58,13 @@ from mineru_gateway.models import TaskRecord
 
 # Spec: "Missing X-API-Key -> 401"
 async def test_task_stats_requires_auth(client):
-    resp = await client.get("/tasks/stats")
+    resp = await client.get("/v1/tasks/stats")
     assert resp.status_code == 401
 
 
 # Spec: "Invalid X-API-Key -> 401"
 async def test_task_stats_rejects_invalid_key(client):
-    resp = await client.get("/tasks/stats", headers={"X-API-Key": "not-a-valid-key"})
+    resp = await client.get("/v1/tasks/stats", headers={"X-API-Key": "not-a-valid-key"})
     assert resp.status_code == 401
 
 
@@ -79,21 +79,21 @@ async def test_task_stats_ownership_isolation(client, api_key, admin_headers):
 
     # Submit a task under the first key.
     files = [("files", ("doc.pdf", b"%PDF-1.4 data", "application/pdf"))]
-    resp = await client.post("/tasks", headers={"X-API-Key": api_key}, files=files)
+    resp = await client.post("/v1/tasks", headers={"X-API-Key": api_key}, files=files)
     assert resp.status_code == 202
     task_id = resp.json()["task_id"]
 
     # Verify the first key can still see its own task.
-    detail = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+    detail = await client.get(f"/v1/tasks/{task_id}", headers={"X-API-Key": api_key})
     assert detail.status_code == 200
 
     # First key should see non-zero pending count.
-    first = await client.get("/tasks/stats", headers={"X-API-Key": api_key})
+    first = await client.get("/v1/tasks/stats", headers={"X-API-Key": api_key})
     assert first.status_code == 200
     assert first.json()["pending"] >= 1
 
     # Second key with no tasks should see zero counts.
-    second = await client.get("/tasks/stats", headers={"X-API-Key": other_key})
+    second = await client.get("/v1/tasks/stats", headers={"X-API-Key": other_key})
     assert second.status_code == 200
     body = second.json()
     for field in (
@@ -127,14 +127,14 @@ async def test_task_stats_ownership_isolation_same_user(client, user_headers):
     key2 = resp2.json()["api_key"]
 
     files = [("files", ("doc.pdf", b"%PDF-1.4 data", "application/pdf"))]
-    resp = await client.post("/tasks", headers={"X-API-Key": key1}, files=files)
+    resp = await client.post("/v1/tasks", headers={"X-API-Key": key1}, files=files)
     assert resp.status_code == 202
 
-    first = await client.get("/tasks/stats", headers={"X-API-Key": key1})
+    first = await client.get("/v1/tasks/stats", headers={"X-API-Key": key1})
     assert first.status_code == 200
     assert first.json()["pending"] >= 1
 
-    second = await client.get("/tasks/stats", headers={"X-API-Key": key2})
+    second = await client.get("/v1/tasks/stats", headers={"X-API-Key": key2})
     assert second.status_code == 200
     body = second.json()
     for field in (
@@ -158,7 +158,7 @@ async def test_task_stats_ownership_isolation_same_user(client, user_headers):
 
 # Spec: "A key with no tasks returns all counts as 0 and null for avg_duration_ms"
 async def test_task_stats_defaults_to_zero_when_no_tasks(client, api_key):
-    resp = await client.get("/tasks/stats", headers={"X-API-Key": api_key})
+    resp = await client.get("/v1/tasks/stats", headers={"X-API-Key": api_key})
     assert resp.status_code == 200
     body = resp.json()
 
@@ -177,8 +177,8 @@ async def test_task_stats_defaults_to_zero_when_no_tasks(client, api_key):
 # Spec: "The endpoint is read-only and has no side effects"
 # Verifies deterministic output for identical state.
 async def test_task_stats_is_idempotent(client, api_key):
-    first = await client.get("/tasks/stats", headers={"X-API-Key": api_key})
-    second = await client.get("/tasks/stats", headers={"X-API-Key": api_key})
+    first = await client.get("/v1/tasks/stats", headers={"X-API-Key": api_key})
+    second = await client.get("/v1/tasks/stats", headers={"X-API-Key": api_key})
     assert first.status_code == 200
     assert second.status_code == 200
     assert first.json() == second.json()
@@ -187,9 +187,9 @@ async def test_task_stats_is_idempotent(client, api_key):
 # Spec: "Query parameters (status, date range, etc.) are intentionally NOT
 #        supported -- this is a fixed aggregate, not a filtered list."
 async def test_task_stats_ignores_query_params(client, api_key):
-    no_params = await client.get("/tasks/stats", headers={"X-API-Key": api_key})
+    no_params = await client.get("/v1/tasks/stats", headers={"X-API-Key": api_key})
     with_params = await client.get(
-        "/tasks/stats?status=completed&date_from=2020-01-01",
+        "/v1/tasks/stats?status=completed&date_from=2020-01-01",
         headers={"X-API-Key": api_key},
     )
     assert no_params.status_code == 200
@@ -252,7 +252,7 @@ async def test_task_stats_counts_by_status(app, client, admin_headers):
     await _seed_task(app, api_key_id, "failed")
     await _seed_task(app, api_key_id, "cancelled")
 
-    resp = await client.get("/tasks/stats", headers={"X-API-Key": api_key_str})
+    resp = await client.get("/v1/tasks/stats", headers={"X-API-Key": api_key_str})
     assert resp.status_code == 200
     body = resp.json()
     assert body["pending"] == 2
@@ -298,7 +298,7 @@ async def test_task_stats_today_counts_are_utc_scoped(app, client, admin_headers
         "datetime.date.today",
         return_value=_date(2026, 7, 2),
     ):
-        resp = await client.get("/tasks/stats", headers={"X-API-Key": api_key_str})
+        resp = await client.get("/v1/tasks/stats", headers={"X-API-Key": api_key_str})
     assert resp.status_code == 200
     body = resp.json()
     # All-time counts include everything
@@ -326,7 +326,7 @@ async def test_task_stats_total_bytes(app, client, admin_headers):
     await _seed_task(app, api_key_id, "failed", file_bytes=50)
     await _seed_task(app, api_key_id, "cancelled", file_bytes=75)
 
-    resp = await client.get("/tasks/stats", headers={"X-API-Key": api_key_str})
+    resp = await client.get("/v1/tasks/stats", headers={"X-API-Key": api_key_str})
     assert resp.status_code == 200
     body = resp.json()
     assert body["total_bytes"] == 475
@@ -380,7 +380,7 @@ async def test_task_stats_avg_duration(app, client, admin_headers):
         completed_at=now,
     )
 
-    resp = await client.get("/tasks/stats", headers={"X-API-Key": api_key_str})
+    resp = await client.get("/v1/tasks/stats", headers={"X-API-Key": api_key_str})
     assert resp.status_code == 200
     body = resp.json()
 
@@ -400,13 +400,13 @@ async def test_task_stats_avg_duration(app, client, admin_headers):
     await _seed_task(app, empty_key_id, "processing")
     await _seed_task(app, empty_key_id, "failed", completed_at=now)
 
-    resp3 = await client.get("/tasks/stats", headers={"X-API-Key": empty_key})
+    resp3 = await client.get("/v1/tasks/stats", headers={"X-API-Key": empty_key})
     assert resp3.status_code == 200
     assert resp3.json()["avg_duration_ms"] is None
 
 
 async def test_task_stats_response_has_only_expected_keys(client, api_key):
-    resp = await client.get("/tasks/stats", headers={"X-API-Key": api_key})
+    resp = await client.get("/v1/tasks/stats", headers={"X-API-Key": api_key})
     assert resp.status_code == 200
     body = resp.json()
     expected_keys = {

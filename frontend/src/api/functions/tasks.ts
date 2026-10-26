@@ -28,7 +28,7 @@ import {
 
 /**
  * ky defaults to a 10s timeout, which aborts slow uploads and fires long
- * before the gateway's 30s `/tasks` control-plane timeout. Submission covers
+ * before the gateway's 30s `/v1/tasks` control-plane timeout. Submission covers
  * the multipart upload plus that upstream call, so use a generous bound.
  */
 const TASK_SUBMIT_TIMEOUT_MS = 10 * 60_000;
@@ -52,7 +52,7 @@ export function submitTask(options: TaskSubmissionOptions) {
   if (options.apiKey) headers['X-API-Key'] = options.apiKey;
   if (options.idempotencyKey) headers['X-Idempotency-Key'] = options.idempotencyKey;
 
-  return request('tasks', {
+  return request('v1/tasks', {
     method: 'POST',
     body: createParseFormData(options.parseFields),
     headers,
@@ -77,7 +77,7 @@ export function parseFile(
   const headers: Record<string, string> = {};
   if (options.apiKey) headers['X-API-Key'] = options.apiKey;
 
-  return request('file_parse', {
+  return request('v1/file_parse', {
     method: 'POST',
     body: createParseFormData(options.parseFields),
     headers,
@@ -118,7 +118,7 @@ export function listTasks(
   if (params.page !== undefined) searchParams.set('page', String(params.page));
   if (params.pageSize !== undefined) searchParams.set('page_size', String(params.pageSize));
 
-  return fetchAndValidate(`tasks?${searchParams}`, {
+  return fetchAndValidate(`v1/tasks?${searchParams}`, {
     success: TaskListResponseSchema,
     failures: { 401: ErrorDetailSchema },
   }, {
@@ -134,7 +134,7 @@ export function getTaskStats(
   TaskStatsResponse,
   ApiError<HttpError<401, { detail: string }>>
 > {
-  return fetchAndValidate('tasks/stats', {
+  return fetchAndValidate('v1/tasks/stats', {
     success: TaskStatsResponseSchema,
     failures: { 401: ErrorDetailSchema },
   }, {
@@ -151,7 +151,7 @@ export function getTaskDetail(
   TaskDetail,
   ApiError<HttpError<401, { detail: string }> | HttpError<404, { detail: string }>>
 > {
-  return fetchAndValidate(`tasks/${taskId}`, {
+  return fetchAndValidate(`v1/tasks/${taskId}`, {
     success: TaskDetailSchema,
     failures: { 401: ErrorDetailSchema, 404: ErrorDetailSchema },
   }, {
@@ -175,7 +175,7 @@ export function cancelTask(
     | HttpError<409, { detail: string }>
   >
 > {
-  return fetchAndValidate(`tasks/${taskId}`, {
+  return fetchAndValidate(`v1/tasks/${taskId}`, {
     success: TaskCancelResponseSchema,
     failures: { 401: ErrorDetailSchema, 404: ErrorDetailSchema, 409: ErrorDetailSchema },
   }, {
@@ -197,7 +197,7 @@ export function getTaskResult(
   taskId: string,
   apiKey: string,
 ): ResultAsync<BlobResult, ApiError<HttpError<number, unknown>>> {
-  return request(`tasks/${taskId}/result`, {
+  return request(`v1/tasks/${taskId}/result`, {
     headers: { 'X-API-Key': apiKey },
     timeout: TASK_RESULT_TIMEOUT_MS,
   }).andThen(parseBlob);
@@ -215,7 +215,7 @@ export function downloadResultZip(
   const validated = validateRequest(ResultZipRequestSchema)({ taskIds });
   if (validated.isErr()) return validated as never;
 
-  return fetchBinaryAndValidate('tasks/result-zip', {
+  return fetchBinaryAndValidate('v1/tasks/result-zip', {
     failures: { 409: NonDownloadableErrorSchema, 404: ErrorDetailSchema },
   }, {
     method: 'POST',
@@ -240,7 +240,7 @@ export function batchCancelTasks(
   const validated = validateRequest(BatchCancelRequestSchema)({ taskIds });
   if (validated.isErr()) return validated as never;
 
-  return fetchAndValidate('tasks/cancel', {
+  return fetchAndValidate('v1/tasks/cancel', {
     success: BatchCancelResponseSchema,
     failures: { 401: ErrorDetailSchema },
   }, {

@@ -2,20 +2,21 @@
 
 Spec: mvp-implementation.md §3.2, §5.1, §5.3. All endpoints require X-API-Key
 and enforce per-key ownership (§3.3).
-Also batch-endpoints.md: POST /tasks/result-zip, POST /tasks/cancel.
+Also batch-endpoints.md: POST /v1/tasks/result-zip, POST /v1/tasks/cancel.
 """
 
 from __future__ import annotations
 
 import io
 import json
+import logging
 import mimetypes
 import re
 import uuid
 import zipfile
 from datetime import date
 from email.message import Message
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -25,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth.dependencies import get_session, require_api_key
 from ..models import ApiKey, TaskRecord
 from ..upstream.client import UpstreamClient
+from ..upstream.response import relay_headers, relay_response
 from . import service
 from .cache import FileCache
 from .schemas import (
@@ -41,7 +43,9 @@ from .schemas import (
     TaskStatsResponse,
 )
 
-router = APIRouter(prefix="/tasks", tags=["tasks"])
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/v1/tasks", tags=["tasks"])
 
 
 async def _upstream(request: Request) -> UpstreamClient:
@@ -53,10 +57,36 @@ async def _cache(request: Request) -> FileCache:
 
 
 def _require_key(api_key: ApiKey | None) -> ApiKey:
-    # Task endpoints are always owner-scoped; anonymous access is meaningless.
+    # Gateway-owned list, stats, and batch operations always require an owner.
     if api_key is None:
         raise HTTPException(status_code=401, detail="API key required")
     return api_key
+
+
+def _local_task_id(task_id: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Task not found") from exc
+
+
+async def _cancel_upstream_best_effort(
+    upstream: UpstreamClient, task: TaskRecord
+) -> None:
+    if not task.upstream_task_id:
+        return
+    try:
+        await upstream.cancel_task(task.upstream_task_id)
+    except Exception as exc:
+        logger.warning(
+            "Upstream cancellation failed for task %s: %s",
+            task.id,
+            exc,
+            extra={
+                "task_id": str(task.id),
+                "upstream_task_id": task.upstream_task_id,
+            },
+        )
 
 
 @router.get("", response_model=TaskListResponse)
@@ -115,12 +145,15 @@ async def task_stats(
 
 @router.get("/{task_id}", response_model=TaskDetail)
 async def get_task(
-    task_id: uuid.UUID,
+    task_id: str,
     api_key: ApiKey | None = Depends(require_api_key),
     session: AsyncSession = Depends(get_session),
-) -> TaskDetail:
+    upstream: UpstreamClient = Depends(_upstream),
+) -> TaskDetail | Response:
+    if api_key is None:
+        return relay_response(await upstream.get_task_status(task_id))
     key = _require_key(api_key)
-    task = await service.get_owned(session, task_id, key.id)
+    task = await service.get_owned(session, _local_task_id(task_id), key.id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return TaskDetail(
@@ -140,13 +173,18 @@ async def get_task(
 
 @router.get("/{task_id}/result")
 async def get_task_result(
-    task_id: uuid.UUID,
+    task_id: str,
+    response_format: Literal["json", "zip"] | None = None,
     api_key: ApiKey | None = Depends(require_api_key),
     session: AsyncSession = Depends(get_session),
     upstream: UpstreamClient = Depends(_upstream),
 ) -> Response:
+    if api_key is None:
+        return relay_response(
+            await upstream.get_task_result(task_id, response_format=response_format)
+        )
     key = _require_key(api_key)
-    task = await service.get_owned(session, task_id, key.id)
+    task = await service.get_owned(session, _local_task_id(task_id), key.id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     if task.status not in service.TERMINAL_STATES:
@@ -166,14 +204,14 @@ async def get_task_result(
     output_formats = parse_params.get("output_formats") or []
     if isinstance(output_formats, str):
         output_formats = output_formats.split(",")
-    response_format = "zip" if "zip" in output_formats else None
+    effective_response_format = response_format
+    if effective_response_format is None and "zip" in output_formats:
+        effective_response_format = "zip"
     upstream_resp = await upstream.get_task_result(
-        task.upstream_task_id, response_format=response_format
+        task.upstream_task_id,
+        response_format=effective_response_format,
     )
-    excluded = {"content-length", "content-encoding", "transfer-encoding", "connection"}
-    headers = {
-        k: v for k, v in upstream_resp.headers.items() if k.lower() not in excluded
-    }
+    headers = relay_headers(upstream_resp)
     # UX: name the download after the user's original file instead of the
     # upstream task UUID. Only download-like responses are rewritten; JSON
     # results and tasks without file_names pass through unchanged.
@@ -192,14 +230,16 @@ async def get_task_result(
 
 @router.delete("/{task_id}", response_model=TaskCancelResponse)
 async def cancel_task(
-    task_id: uuid.UUID,
+    task_id: str,
     api_key: ApiKey | None = Depends(require_api_key),
     session: AsyncSession = Depends(get_session),
     upstream: UpstreamClient = Depends(_upstream),
     cache: FileCache = Depends(_cache),
-) -> TaskCancelResponse:
+) -> TaskCancelResponse | Response:
+    if api_key is None:
+        return relay_response(await upstream.cancel_task(task_id))
     key = _require_key(api_key)
-    task = await service.get_owned(session, task_id, key.id)
+    task = await service.get_owned(session, _local_task_id(task_id), key.id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     if task.status not in service.CANCELLABLE_STATES:
@@ -210,11 +250,7 @@ async def cancel_task(
         )
 
     # Best-effort: forward cancellation to upstream if reachable.
-    if task.upstream_task_id:
-        try:
-            await upstream.cancel_task(task.upstream_task_id)
-        except Exception:
-            pass
+    await _cancel_upstream_best_effort(upstream, task)
 
     released = await service.mark_cancelled(session, task)
     # Staged files are no longer needed once the task is terminal (§3.4).
@@ -510,11 +546,7 @@ async def batch_cancel(
             )
             continue
 
-        if task.upstream_task_id:
-            try:
-                await upstream.cancel_task(task.upstream_task_id)
-            except Exception:
-                pass
+        await _cancel_upstream_best_effort(upstream, task)
 
         released = await service.mark_cancelled(session, task)
         await cache.release(released)

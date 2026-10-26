@@ -137,15 +137,15 @@ def _open_pdf(sample_pdf_path: str) -> tuple[IO[bytes], list[tuple]]:
 
 @pytest.mark.real_upstream
 def test_real_health_fields(_real_client):
-    """Verify that the real upstream /health payload is compatible with
+    """Verify that the real upstream /v1/health payload is compatible with
     the gateway's `UpstreamHealth` model.
 
-    1. GET /health on the gateway -> 200.
+    1. GET /v1/health on the gateway -> 200.
     2. The top-level `status` is `"healthy"` when upstream is ok.
     3. The nested `upstream` object contains the 4.0 fields
        (version, features) with the correct types.
     """
-    resp = _real_client.get("/health")
+    resp = _real_client.get("/v1/health")
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "healthy"
@@ -160,11 +160,11 @@ def test_real_pdf_parse_lifecycle(
 ):
     """Submit a real PDF and verify the full async parse lifecycle.
 
-    1. POST /tasks with real minimal.pdf -> 202 with task_id,
+    1. POST /v1/tasks with real minimal.pdf -> 202 with task_id,
        status_url, result_url.
-    2. Poll GET /tasks/{id} until the task reaches a terminal status
+    2. Poll GET /v1/tasks/{id} until the task reaches a terminal status
        (completed, partial or failed).  Timeout after 120 s.
-    3. Require a downloadable terminal state and GET /tasks/{id}/result ->
+    3. Require a downloadable terminal state and GET /v1/tasks/{id}/result ->
        200 with a non-empty body.
     4. The result content-type is either application/zip or
        application/json (mineru-router output formats).
@@ -172,7 +172,7 @@ def test_real_pdf_parse_lifecycle(
     fh, files = _open_pdf(sample_pdf_path)
     try:
         submit = _real_client.post(
-            "/tasks",
+            "/v1/tasks",
             headers=_real_key_headers,
             files=files,
             data={"tier": "basic", "output_formats": "markdown,zip"},
@@ -190,7 +190,7 @@ def test_real_pdf_parse_lifecycle(
         deadline = time.monotonic() + 120
         terminal_status: str | None = None
         while time.monotonic() < deadline:
-            detail = _real_client.get(f"/tasks/{task_id}", headers=_real_key_headers)
+            detail = _real_client.get(f"/v1/tasks/{task_id}", headers=_real_key_headers)
             assert detail.status_code == 200
             status = detail.json()["status"]
             if status in ("completed", "partial", "failed", "cancelled"):
@@ -204,7 +204,9 @@ def test_real_pdf_parse_lifecycle(
         assert terminal_status in {"completed", "partial"}, (
             f"task did not produce a downloadable result: {terminal_status}"
         )
-        result = _real_client.get(f"/tasks/{task_id}/result", headers=_real_key_headers)
+        result = _real_client.get(
+            f"/v1/tasks/{task_id}/result", headers=_real_key_headers
+        )
         assert result.status_code == 200
         assert len(result.content) > 0
 
@@ -223,7 +225,7 @@ def test_real_status_transitions(
     """Observe upstream status transitions over real HTTP.
 
     1. Submit a PDF -> 202.
-    2. Poll GET /tasks/{id} every second for up to 60 s.
+    2. Poll GET /v1/tasks/{id} every second for up to 60 s.
     3. Record the sequence of status values observed.
     4. Verify the transition follows a valid ordered path:
        pending -> processing (optional) -> completed/failed.
@@ -232,7 +234,7 @@ def test_real_status_transitions(
     fh, files = _open_pdf(sample_pdf_path)
     try:
         submit = _real_client.post(
-            "/tasks",
+            "/v1/tasks",
             headers=_real_key_headers,
             files=files,
             data={"tier": "basic"},
@@ -257,7 +259,7 @@ def test_real_status_transitions(
         deadline = time.monotonic() + 60
         last = None
         while time.monotonic() < deadline:
-            detail = _real_client.get(f"/tasks/{task_id}", headers=_real_key_headers)
+            detail = _real_client.get(f"/v1/tasks/{task_id}", headers=_real_key_headers)
             assert detail.status_code == 200
             status = detail.json()["status"]
             if status != last:
@@ -291,12 +293,12 @@ def test_real_status_transitions(
 def test_real_bad_file(_real_client, _real_key_headers):
     """Submit a non-PDF payload and verify the upstream handles it gracefully.
 
-    1. POST /tasks with a plain-text file claiming MIME type
+    1. POST /v1/tasks with a plain-text file claiming MIME type
        application/pdf.
     2. Two possible outcomes are valid:
        a) Gateway returns 202 (upstream queued it - mock behaviour, or
           upstream that doesn't validate content at submission time).
-          In this case, poll GET /tasks/{id} up to 30 s; the task
+          In this case, poll GET /v1/tasks/{id} up to 30 s; the task
           should reach a terminal status (completed/failed/cancelled)
           rather than hang forever.
        b) Gateway returns a non-202 status (upstream rejected the file
@@ -307,7 +309,7 @@ def test_real_bad_file(_real_client, _real_key_headers):
         ("files", ("bad.pdf", b"this is not a PDF file", "application/pdf")),
     ]
     submit = _real_client.post(
-        "/tasks",
+        "/v1/tasks",
         headers=_real_key_headers,
         files=files,
         data={"tier": "basic"},
@@ -326,7 +328,7 @@ def test_real_bad_file(_real_client, _real_key_headers):
     terminal = {"completed", "partial", "failed", "cancelled"}
     status = "pending"
     while time.monotonic() < deadline:
-        detail = _real_client.get(f"/tasks/{task_id}", headers=_real_key_headers)
+        detail = _real_client.get(f"/v1/tasks/{task_id}", headers=_real_key_headers)
         assert detail.status_code == 200
         status = detail.json()["status"]
         if status in terminal:

@@ -1,13 +1,14 @@
 """Tests for Phase 2 task management: list, detail, result, cancel.
 
 Spec: mvp-implementation.md §3.2, §5.1, §5.3, §3.3, §4.
-Also covers batch-endpoints.md: POST /tasks/result-zip and POST /tasks/cancel.
+Also covers batch-endpoints.md: POST /v1/tasks/result-zip and POST /v1/tasks/cancel.
 """
 
 from __future__ import annotations
 
 import io
 import json
+import logging
 import uuid
 import zipfile
 from datetime import date, datetime, timedelta, timezone
@@ -23,19 +24,19 @@ from mineru_gateway.tasks import service
 async def _submit(client, api_key, data=None):
     files = [("files", ("doc.pdf", b"%PDF-1.4 data", "application/pdf"))]
     resp = await client.post(
-        "/tasks", headers={"X-API-Key": api_key}, files=files, data=data or {}
+        "/v1/tasks", headers={"X-API-Key": api_key}, files=files, data=data or {}
     )
     assert resp.status_code == 202, resp.text
     return resp.json()["task_id"]
 
 
-# ===== GET /tasks/{id} — detail + ownership (§3.2, §5.1) =====
+# ===== GET /v1/tasks/{id} — detail + ownership (§3.2, §5.1) =====
 
 
 async def test_get_task_detail_returns_db_state(client, api_key):
     """§5.1: 先校验所有权, 返回该任务的 DB 镜像状态 + 文件列表 + 时间戳."""
     task_id = await _submit(client, api_key)
-    resp = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+    resp = await client.get(f"/v1/tasks/{task_id}", headers={"X-API-Key": api_key})
     assert resp.status_code == 200
     body = resp.json()
     assert body["task_id"] == task_id
@@ -56,17 +57,17 @@ async def test_task_responses_surface_upstream_file_error(client, api_key):
         task.upstream_error = "page 2 failed"
         await session.commit()
 
-    detail = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
-    listing = await client.get("/tasks", headers={"X-API-Key": api_key})
+    detail = await client.get(f"/v1/tasks/{task_id}", headers={"X-API-Key": api_key})
+    listing = await client.get("/v1/tasks", headers={"X-API-Key": api_key})
 
     assert detail.json()["error"] == "page 2 failed"
     assert listing.json()["items"][0]["error"] == "page 2 failed"
 
 
 async def test_get_task_detail_unknown_id_404(client, api_key):
-    """§3.2: 格式错误的 UUID 返回 422."""
-    resp = await client.get("/tasks/does-not-exist", headers={"X-API-Key": api_key})
-    assert resp.status_code == 422
+    """Opaque IDs are accepted by the V1 route; an unknown local ID returns 404."""
+    resp = await client.get("/v1/tasks/does-not-exist", headers={"X-API-Key": api_key})
+    assert resp.status_code == 404
 
 
 async def test_get_task_detail_enforces_ownership(client, admin_headers, api_key):
@@ -75,18 +76,18 @@ async def test_get_task_detail_enforces_ownership(client, admin_headers, api_key
     other = (
         await client.post("/auth/keys", json={"label": "other"}, headers=admin_headers)
     ).json()["api_key"]
-    resp = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": other})
+    resp = await client.get(f"/v1/tasks/{task_id}", headers={"X-API-Key": other})
     assert resp.status_code == 404
 
 
 async def test_get_task_detail_requires_auth(client, api_key):
     """§3.2: 未带 Key 访问详情被拒 (401)."""
     task_id = await _submit(client, api_key)
-    resp = await client.get(f"/tasks/{task_id}")
+    resp = await client.get(f"/v1/tasks/{task_id}")
     assert resp.status_code == 401
 
 
-# ===== GET /tasks — list, filter, pagination (§3.2, §5.3) =====
+# ===== GET /v1/tasks — list, filter, pagination (§3.2, §5.3) =====
 
 
 async def test_list_only_returns_own_tasks(client, admin_headers, api_key):
@@ -98,7 +99,7 @@ async def test_list_only_returns_own_tasks(client, admin_headers, api_key):
     ).json()["api_key"]
     await _submit(client, other)
 
-    resp = await client.get("/tasks", headers={"X-API-Key": api_key})
+    resp = await client.get("/v1/tasks", headers={"X-API-Key": api_key})
     assert resp.status_code == 200
     body = resp.json()
     assert body["total"] == 2
@@ -110,13 +111,13 @@ async def test_list_filter_by_status(client, api_key):
     """§5.3: 支持按 status 筛选."""
     await _submit(client, api_key)
     resp = await client.get(
-        "/tasks", headers={"X-API-Key": api_key}, params={"status": "completed"}
+        "/v1/tasks", headers={"X-API-Key": api_key}, params={"status": "completed"}
     )
     assert resp.status_code == 200
     assert resp.json()["total"] == 0
 
     resp = await client.get(
-        "/tasks", headers={"X-API-Key": api_key}, params={"status": "pending"}
+        "/v1/tasks", headers={"X-API-Key": api_key}, params={"status": "pending"}
     )
     assert resp.json()["total"] == 1
 
@@ -126,7 +127,7 @@ async def test_list_filter_by_tier(client, api_key):
     await _submit(client, api_key, data={"tier": "basic"})
     await _submit(client, api_key, data={"tier": "advanced"})
     resp = await client.get(
-        "/tasks", headers={"X-API-Key": api_key}, params={"tier": "advanced"}
+        "/v1/tasks", headers={"X-API-Key": api_key}, params={"tier": "advanced"}
     )
     assert resp.json()["total"] == 1
 
@@ -134,13 +135,13 @@ async def test_list_filter_by_tier(client, api_key):
 async def test_list_filter_by_file_name_fuzzy(client, api_key):
     """§5.3: file_name 为模糊搜索."""
     files = [("files", ("report_2024.pdf", b"data", "application/pdf"))]
-    await client.post("/tasks", headers={"X-API-Key": api_key}, files=files)
+    await client.post("/v1/tasks", headers={"X-API-Key": api_key}, files=files)
     resp = await client.get(
-        "/tasks", headers={"X-API-Key": api_key}, params={"file_name": "report"}
+        "/v1/tasks", headers={"X-API-Key": api_key}, params={"file_name": "report"}
     )
     assert resp.json()["total"] == 1
     resp = await client.get(
-        "/tasks", headers={"X-API-Key": api_key}, params={"file_name": "invoice"}
+        "/v1/tasks", headers={"X-API-Key": api_key}, params={"file_name": "invoice"}
     )
     assert resp.json()["total"] == 0
 
@@ -154,7 +155,7 @@ async def test_list_filter_by_date_range(client, api_key):
 
     # Today's task falls within [past, today].
     resp = await client.get(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": api_key},
         params={"date_from": past, "date_to": today},
     )
@@ -162,7 +163,7 @@ async def test_list_filter_by_date_range(client, api_key):
 
     # A future-only window excludes it.
     resp = await client.get(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": api_key},
         params={"date_from": future},
     )
@@ -174,7 +175,7 @@ async def test_list_pagination(client, api_key):
     for _ in range(5):
         await _submit(client, api_key)
     resp = await client.get(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": api_key},
         params={"page": 1, "page_size": 2},
     )
@@ -185,7 +186,7 @@ async def test_list_pagination(client, api_key):
     assert len(body["items"]) == 2
 
     resp = await client.get(
-        "/tasks",
+        "/v1/tasks",
         headers={"X-API-Key": api_key},
         params={"page": 3, "page_size": 2},
     )
@@ -195,7 +196,7 @@ async def test_list_pagination(client, api_key):
 async def test_list_page_size_capped_at_200(client, api_key):
     """§5.3: page_size 上限 200, 超出应被拒 (422 校验错误)."""
     resp = await client.get(
-        "/tasks", headers={"X-API-Key": api_key}, params={"page_size": 500}
+        "/v1/tasks", headers={"X-API-Key": api_key}, params={"page_size": 500}
     )
     assert resp.status_code == 422
 
@@ -213,18 +214,18 @@ async def test_list_sorted_by_created_desc(client, api_key):
     for _ in range(3):
         ids.append(await _submit(client, api_key))
         await asyncio.sleep(0.01)
-    resp = await client.get("/tasks", headers={"X-API-Key": api_key})
+    resp = await client.get("/v1/tasks", headers={"X-API-Key": api_key})
     returned = [it["task_id"] for it in resp.json()["items"]]
     assert returned == list(reversed(ids))
 
 
 async def test_list_requires_auth(client):
     """§3.2: 列表需要 X-API-Key (401)."""
-    resp = await client.get("/tasks")
+    resp = await client.get("/v1/tasks")
     assert resp.status_code == 401
 
 
-# ===== GET /tasks/{id}/result — stream from upstream (§5.1) =====
+# ===== GET /v1/tasks/{id}/result — stream from upstream (§5.1) =====
 
 
 async def test_get_result_streams_from_upstream(client, api_key):
@@ -237,7 +238,9 @@ async def test_get_result_streams_from_upstream(client, api_key):
         task = await session.get(models.TaskRecord, uuid.UUID(task_id))
         task.status = "completed"
         await session.commit()
-    resp = await client.get(f"/tasks/{task_id}/result", headers={"X-API-Key": api_key})
+    resp = await client.get(
+        f"/v1/tasks/{task_id}/result", headers={"X-API-Key": api_key}
+    )
     assert resp.status_code == 200
     assert "result content" in resp.text
 
@@ -250,7 +253,9 @@ async def test_get_result_honors_native_zip_output(client, api_key):
         task.status = "completed"
         await session.commit()
 
-    resp = await client.get(f"/tasks/{task_id}/result", headers={"X-API-Key": api_key})
+    resp = await client.get(
+        f"/v1/tasks/{task_id}/result", headers={"X-API-Key": api_key}
+    )
 
     assert resp.status_code == 200
     assert mock_state.result_requests[-1]["response_format"] == "zip"
@@ -262,7 +267,7 @@ async def test_get_result_enforces_ownership(client, admin_headers, api_key):
     other = (
         await client.post("/auth/keys", json={"label": "o3"}, headers=admin_headers)
     ).json()["api_key"]
-    resp = await client.get(f"/tasks/{task_id}/result", headers={"X-API-Key": other})
+    resp = await client.get(f"/v1/tasks/{task_id}/result", headers={"X-API-Key": other})
     assert resp.status_code == 404
 
 
@@ -294,17 +299,19 @@ async def test_get_result_409_when_no_upstream_task_id(client, api_key):
         )
         task_id = task.id
 
-    resp = await client.get(f"/tasks/{task_id}/result", headers={"X-API-Key": api_key})
+    resp = await client.get(
+        f"/v1/tasks/{task_id}/result", headers={"X-API-Key": api_key}
+    )
     assert resp.status_code == 409
 
 
-# ===== DELETE /tasks/{id} — cancel (§3.2, §5.3) =====
+# ===== DELETE /v1/tasks/{id} — cancel (§3.2, §5.3) =====
 
 
 async def test_cancel_pending_task(client, api_key):
     """§5.3: 取消 pending 任务 → status=cancelled; 上游可连通则转发取消."""
     task_id = await _submit(client, api_key)
-    resp = await client.delete(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+    resp = await client.delete(f"/v1/tasks/{task_id}", headers={"X-API-Key": api_key})
     assert resp.status_code == 200
     body = resp.json()
     assert body["task_id"] == task_id
@@ -312,7 +319,7 @@ async def test_cancel_pending_task(client, api_key):
     assert body["message"]
 
     # State persisted.
-    detail = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+    detail = await client.get(f"/v1/tasks/{task_id}", headers={"X-API-Key": api_key})
     assert detail.json()["status"] == "cancelled"
 
 
@@ -320,9 +327,9 @@ async def test_cancel_only_allowed_for_pending(client, api_key):
     """§5.3: 仅 pending 可取消; 已终态任务取消应被拒 (409)."""
     task_id = await _submit(client, api_key)
     # First cancel succeeds.
-    await client.delete(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+    await client.delete(f"/v1/tasks/{task_id}", headers={"X-API-Key": api_key})
     # Second cancel (now cancelled, not pending) is rejected.
-    resp = await client.delete(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+    resp = await client.delete(f"/v1/tasks/{task_id}", headers={"X-API-Key": api_key})
     assert resp.status_code == 409
 
 
@@ -332,24 +339,26 @@ async def test_cancel_enforces_ownership(client, admin_headers, api_key):
     other = (
         await client.post("/auth/keys", json={"label": "o4"}, headers=admin_headers)
     ).json()["api_key"]
-    resp = await client.delete(f"/tasks/{task_id}", headers={"X-API-Key": other})
+    resp = await client.delete(f"/v1/tasks/{task_id}", headers={"X-API-Key": other})
     assert resp.status_code == 404
 
 
-async def test_cancel_succeeds_when_upstream_unreachable(client, api_key):
+async def test_cancel_succeeds_when_upstream_unreachable(client, api_key, caplog):
     """§5.3: 上游不可连通时仍在本地标记 cancelled (best-effort 转发).
 
-    cancel_raises makes the mock's DELETE /tasks/{id} raise, exercising the
-    best-effort `except Exception: pass` branch in the route.
+    cancel_raises makes the mock's DELETE /v1/tasks/{id} raise, exercising the
+    best-effort warning path in the route.
     """
+    caplog.set_level(logging.WARNING, logger="mineru_gateway.tasks.routes")
     task_id = await _submit(client, api_key)
     mock_state.cancel_raises = True
-    resp = await client.delete(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+    resp = await client.delete(f"/v1/tasks/{task_id}", headers={"X-API-Key": api_key})
     assert resp.status_code == 200
     assert resp.json()["status"] == "cancelled"
+    assert "Upstream cancellation failed" in caplog.text
 
     # State persisted despite upstream forward failing.
-    detail = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+    detail = await client.get(f"/v1/tasks/{task_id}", headers={"X-API-Key": api_key})
     assert detail.json()["status"] == "cancelled"
 
 
@@ -366,7 +375,7 @@ async def test_cancel_releases_cache(client, api_key, app):
         cache_dir = task.cache_dir
     assert cache_dir and os.path.isdir(cache_dir)
 
-    resp = await client.delete(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+    resp = await client.delete(f"/v1/tasks/{task_id}", headers={"X-API-Key": api_key})
     assert resp.status_code == 200
 
     assert not os.path.exists(cache_dir)
@@ -378,7 +387,7 @@ async def test_cancel_releases_cache(client, api_key, app):
 async def test_cancel_requires_auth(client, api_key):
     """§3.2: 取消需要 X-API-Key (401)."""
     task_id = await _submit(client, api_key)
-    resp = await client.delete(f"/tasks/{task_id}")
+    resp = await client.delete(f"/v1/tasks/{task_id}")
     assert resp.status_code == 401
 
 
@@ -390,13 +399,13 @@ async def test_get_result_409_for_pending_task_with_upstream_id(
 
     ms.task_status = "queued"
     resp = await client.post(
-        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+        "/v1/tasks", headers={"X-API-Key": api_key}, files=sample_files
     )
     assert resp.status_code == 202
     task_id = resp.json()["task_id"]
 
     result_resp = await client.get(
-        f"/tasks/{task_id}/result", headers={"X-API-Key": api_key}
+        f"/v1/tasks/{task_id}/result", headers={"X-API-Key": api_key}
     )
     assert result_resp.status_code == 409
     assert "status=pending" in result_resp.json()["detail"]
@@ -407,10 +416,10 @@ async def test_get_result_409_for_failed_task_with_upstream_id(client, api_key):
     tid, upstream_id = await _submit_and_set_status(client, api_key, "failed")
     assert upstream_id is not None
 
-    detail = await client.get(f"/tasks/{tid}", headers={"X-API-Key": api_key})
+    detail = await client.get(f"/v1/tasks/{tid}", headers={"X-API-Key": api_key})
     assert detail.json()["has_result"] is False
 
-    resp = await client.get(f"/tasks/{tid}/result", headers={"X-API-Key": api_key})
+    resp = await client.get(f"/v1/tasks/{tid}/result", headers={"X-API-Key": api_key})
     assert resp.status_code == 409
     assert resp.json()["detail"] == "Task has no upstream result (status=failed)"
 
@@ -425,10 +434,10 @@ async def test_get_result_409_for_cancelled_task(client, api_key):
     tid, upstream_id = await _submit_and_set_status(client, api_key, "cancelled")
     assert upstream_id is not None
 
-    detail = await client.get(f"/tasks/{tid}", headers={"X-API-Key": api_key})
+    detail = await client.get(f"/v1/tasks/{tid}", headers={"X-API-Key": api_key})
     assert detail.json()["has_result"] is False
 
-    resp = await client.get(f"/tasks/{tid}/result", headers={"X-API-Key": api_key})
+    resp = await client.get(f"/v1/tasks/{tid}/result", headers={"X-API-Key": api_key})
     assert resp.status_code == 409
     assert resp.json()["detail"] == "Task has no upstream result (status=cancelled)"
 
@@ -452,7 +461,7 @@ async def _submit_and_set_status(
         return str(task_id), task.upstream_task_id
 
 
-# ===== GET /tasks/{id}/result - friendly download filename =====
+# ===== GET /v1/tasks/{id}/result - friendly download filename =====
 #
 # Download-like responses (attachment / zip / octet-stream) should get a
 # Content-Disposition named after file_names[0].
@@ -465,7 +474,7 @@ async def test_result_download_filename_from_original_file(client, api_key):
     mock_state.result_content_type = "application/zip"
     mock_state.result_content_disposition = 'attachment; filename="0197ab-uuid.zip"'
 
-    resp = await client.get(f"/tasks/{tid}/result", headers={"X-API-Key": api_key})
+    resp = await client.get(f"/v1/tasks/{tid}/result", headers={"X-API-Key": api_key})
     assert resp.status_code == 200
     assert resp.headers["content-disposition"] == 'attachment; filename="doc.zip"'
     assert "result content" in resp.text
@@ -476,7 +485,7 @@ async def test_result_download_filename_zip_content_type_without_cd(client, api_
     tid, _ = await _submit_and_set_status(client, api_key, "completed")
     mock_state.result_content_type = "application/zip"
 
-    resp = await client.get(f"/tasks/{tid}/result", headers={"X-API-Key": api_key})
+    resp = await client.get(f"/v1/tasks/{tid}/result", headers={"X-API-Key": api_key})
     assert resp.status_code == 200
     assert resp.headers["content-disposition"] == 'attachment; filename="doc.zip"'
 
@@ -494,7 +503,7 @@ async def test_result_download_filename_non_ascii_rfc5987(client, api_key):
     mock_state.result_content_type = "application/zip"
     mock_state.result_content_disposition = 'attachment; filename="uuid.zip"'
 
-    resp = await client.get(f"/tasks/{tid}/result", headers={"X-API-Key": api_key})
+    resp = await client.get(f"/v1/tasks/{tid}/result", headers={"X-API-Key": api_key})
     cd = resp.headers["content-disposition"]
     assert "filename*=UTF-8''" in cd
     assert "%E8%AE%BA%E6%96%87%E8%8D%89%E7%A8%BF.zip" in cd
@@ -514,7 +523,7 @@ async def test_result_download_filename_sanitized(client, api_key):
     mock_state.result_content_type = "application/zip"
     mock_state.result_content_disposition = 'attachment; filename="uuid.zip"'
 
-    resp = await client.get(f"/tasks/{tid}/result", headers={"X-API-Key": api_key})
+    resp = await client.get(f"/v1/tasks/{tid}/result", headers={"X-API-Key": api_key})
     cd = resp.headers["content-disposition"]
     assert 'filename="evil _name_.zip"' in cd
 
@@ -538,7 +547,9 @@ async def test_result_download_no_filenames_keeps_upstream_disposition(client, a
     mock_state.result_content_type = "application/zip"
     mock_state.result_content_disposition = 'attachment; filename="uuid.zip"'
 
-    resp = await client.get(f"/tasks/{task_id}/result", headers={"X-API-Key": api_key})
+    resp = await client.get(
+        f"/v1/tasks/{task_id}/result", headers={"X-API-Key": api_key}
+    )
     assert resp.status_code == 200
     assert resp.headers["content-disposition"] == 'attachment; filename="uuid.zip"'
 
@@ -554,12 +565,12 @@ async def test_result_download_json_response_untouched(client, api_key):
     mock_state.result_content_type = "application/json"
     mock_state.result_content_disposition = None
 
-    resp = await client.get(f"/tasks/{tid}/result", headers={"X-API-Key": api_key})
+    resp = await client.get(f"/v1/tasks/{tid}/result", headers={"X-API-Key": api_key})
     assert resp.status_code == 200
     assert "content-disposition" not in resp.headers
 
 
-# ===== POST /tasks/result-zip (spec: batch-endpoints.md §1) =====
+# ===== POST /v1/tasks/result-zip (spec: batch-endpoints.md §1) =====
 
 
 async def test_result_zip_all_completed_200(client, api_key):
@@ -578,7 +589,7 @@ async def test_result_zip_all_completed_200(client, api_key):
             await session.commit()
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": ids},
         headers={"X-API-Key": api_key},
     )
@@ -614,7 +625,7 @@ async def test_result_zip_partial_non_completed(client, api_key):
     tid_pe, _ = await _submit_and_set_status(client, api_key, "pending")
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": [tid_c, tid_p, tid_pe]},
         headers={"X-API-Key": api_key},
     )
@@ -636,7 +647,7 @@ async def test_result_zip_all_non_downloadable(client, api_key):
         ids.append(tid)
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": ids},
         headers={"X-API-Key": api_key},
     )
@@ -655,7 +666,7 @@ async def test_result_zip_not_owned(client, admin_headers, api_key):
     ).json()["api_key"]
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": [tid]},
         headers={"X-API-Key": other_key},
     )
@@ -667,7 +678,7 @@ async def test_result_zip_too_many_ids(client, api_key):
     """§1.4 Z5: 201 task_ids -> 422."""
     fake_ids = [str(uuid.uuid4()) for _ in range(201)]
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": fake_ids},
         headers={"X-API-Key": api_key},
     )
@@ -685,7 +696,7 @@ async def test_result_zip_upstream_partial_failure(client, api_key):
     }
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": [tid1, tid2]},
         headers={"X-API-Key": api_key},
     )
@@ -717,7 +728,7 @@ async def test_result_zip_entry_naming_with_filename(client, api_key):
     mock_state.result_content_type = "application/zip"
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": [tid]},
         headers={"X-API-Key": api_key},
     )
@@ -743,7 +754,7 @@ async def test_result_zip_entry_name_sanitized_against_traversal(client, api_key
     mock_state.result_content_type = "application/zip"
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": [tid]},
         headers={"X-API-Key": api_key},
     )
@@ -765,7 +776,7 @@ async def test_result_zip_entry_name_falls_back_when_stem_empty(client, api_key)
     mock_state.result_content_type = "application/zip"
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": [tid]},
         headers={"X-API-Key": api_key},
     )
@@ -789,7 +800,7 @@ async def test_result_zip_entry_naming_fallback_to_task_id(client, api_key):
     mock_state.result_content_type = "application/zip"
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": [tid]},
         headers={"X-API-Key": api_key},
     )
@@ -818,7 +829,7 @@ async def test_result_zip_all_upstream_fail(client, api_key):
     }
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": [tid1, tid2]},
         headers={"X-API-Key": api_key},
     )
@@ -852,7 +863,7 @@ async def test_result_zip_manifest_is_last_entry(client, api_key):
             await session.commit()
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": ids},
         headers={"X-API-Key": api_key},
     )
@@ -870,7 +881,7 @@ async def test_result_zip_manifest_is_last_entry(client, api_key):
             assert len(item["entry"]) > 0
 
 
-# ===== POST /tasks/cancel (spec: batch-endpoints.md §2) =====
+# ===== POST /v1/tasks/cancel (spec: batch-endpoints.md §2) =====
 
 
 async def test_batch_cancel_all_pending(client, api_key):
@@ -881,7 +892,7 @@ async def test_batch_cancel_all_pending(client, api_key):
         ids.append(tid)
 
     resp = await client.post(
-        "/tasks/cancel",
+        "/v1/tasks/cancel",
         json={"task_ids": ids},
         headers={"X-API-Key": api_key},
     )
@@ -892,7 +903,7 @@ async def test_batch_cancel_all_pending(client, api_key):
     assert body["errors"] == []
 
     for tid in ids:
-        detail = await client.get(f"/tasks/{tid}", headers={"X-API-Key": api_key})
+        detail = await client.get(f"/v1/tasks/{tid}", headers={"X-API-Key": api_key})
         assert detail.json()["status"] == "cancelled"
 
 
@@ -906,7 +917,7 @@ async def test_batch_cancel_mixed_statuses(client, api_key):
     tid_co, _ = await _submit_and_set_status(client, api_key, "completed")
 
     resp = await client.post(
-        "/tasks/cancel",
+        "/v1/tasks/cancel",
         json={"task_ids": [tid_pe, tid_pr, tid_co]},
         headers={"X-API-Key": api_key},
     )
@@ -931,7 +942,7 @@ async def test_batch_cancel_not_found_and_not_owned(client, admin_headers, api_k
     fake_id = str(uuid.uuid4())
 
     resp = await client.post(
-        "/tasks/cancel",
+        "/v1/tasks/cancel",
         json={"task_ids": [fake_id, tid_other]},
         headers={"X-API-Key": api_key},
     )
@@ -955,7 +966,7 @@ async def test_batch_cancel_upstream_unreachable(client, api_key):
     mock_state.cancel_raises = True
 
     resp = await client.post(
-        "/tasks/cancel",
+        "/v1/tasks/cancel",
         json={"task_ids": ids},
         headers={"X-API-Key": api_key},
     )
@@ -965,14 +976,14 @@ async def test_batch_cancel_upstream_unreachable(client, api_key):
     assert body["errors"] == []
 
     for tid in ids:
-        detail = await client.get(f"/tasks/{tid}", headers={"X-API-Key": api_key})
+        detail = await client.get(f"/v1/tasks/{tid}", headers={"X-API-Key": api_key})
         assert detail.json()["status"] == "cancelled"
 
 
 async def test_batch_cancel_empty_ids(client, api_key):
     """§2.5 C5: empty task_ids -> 422."""
     resp = await client.post(
-        "/tasks/cancel",
+        "/v1/tasks/cancel",
         json={"task_ids": []},
         headers={"X-API-Key": api_key},
     )
@@ -985,7 +996,7 @@ async def test_batch_cancel_empty_ids(client, api_key):
 async def test_result_zip_empty_ids(client, api_key):
     """§1.2 step 2 review: empty task_ids -> 422."""
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": []},
         headers={"X-API-Key": api_key},
     )
@@ -995,7 +1006,7 @@ async def test_result_zip_empty_ids(client, api_key):
 async def test_result_zip_requires_auth(client):
     """§1.2 step 1 review: no API key -> 401."""
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": [str(uuid.uuid4())]},
     )
     assert resp.status_code == 401
@@ -1025,7 +1036,7 @@ async def test_result_zip_missing_upstream_task_id(client, api_key):
         tid = str(task.id)
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": [tid]},
         headers={"X-API-Key": api_key},
     )
@@ -1049,7 +1060,7 @@ async def test_result_zip_entry_naming_from_content_disposition(client, api_key)
     mock_state.result_content_disposition = 'attachment; filename="upstream-name.zip"'
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": [tid]},
         headers={"X-API-Key": api_key},
     )
@@ -1086,7 +1097,7 @@ async def test_result_zip_entry_name_from_content_disposition_sanitized(
         mock_state.result_content_disposition = disposition
 
         resp = await client.post(
-            "/tasks/result-zip",
+            "/v1/tasks/result-zip",
             json={"task_ids": [tid]},
             headers={"X-API-Key": api_key},
         )
@@ -1110,7 +1121,7 @@ async def test_result_zip_ownership_checked_before_downloadability(
     ).json()["api_key"]
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": [tid_owned]},
         headers={"X-API-Key": other_key},
     )
@@ -1125,7 +1136,7 @@ async def test_result_zip_bin_extension_fallback(client, api_key):
     mock_state.result_content_type = "application/x-unknown-custom"
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": [tid]},
         headers={"X-API-Key": api_key},
     )
@@ -1142,7 +1153,7 @@ async def test_batch_cancel_too_many_ids(client, api_key):
     """§2.2 step 2 review: >200 task_ids -> 422."""
     fake_ids = [str(uuid.uuid4()) for _ in range(201)]
     resp = await client.post(
-        "/tasks/cancel",
+        "/v1/tasks/cancel",
         json={"task_ids": fake_ids},
         headers={"X-API-Key": api_key},
     )
@@ -1152,7 +1163,7 @@ async def test_batch_cancel_too_many_ids(client, api_key):
 async def test_batch_cancel_requires_auth(client):
     """§2.2 step 1 review: no API key -> 401."""
     resp = await client.post(
-        "/tasks/cancel",
+        "/v1/tasks/cancel",
         json={"task_ids": [str(uuid.uuid4())]},
     )
     assert resp.status_code == 401
@@ -1163,7 +1174,7 @@ async def test_batch_cancel_retry_pending_not_cancellable(client, api_key):
     tid, _ = await _submit_and_set_status(client, api_key, "retry_pending")
 
     resp = await client.post(
-        "/tasks/cancel",
+        "/v1/tasks/cancel",
         json={"task_ids": [tid]},
         headers={"X-API-Key": api_key},
     )
@@ -1194,7 +1205,7 @@ async def test_batch_cancel_releases_cache(client, api_key, app):
             cache_dirs.append(task.cache_dir)
 
     resp = await client.post(
-        "/tasks/cancel",
+        "/v1/tasks/cancel",
         json={"task_ids": ids},
         headers={"X-API-Key": api_key},
     )
@@ -1209,10 +1220,10 @@ async def test_batch_cancel_releases_cache(client, api_key, app):
 
 
 async def test_cancel_single_retry_pending_409(client, api_key):
-    """§2.4: single DELETE /tasks/{id} rejects retry_pending with 409."""
+    """§2.4: single DELETE /v1/tasks/{id} rejects retry_pending with 409."""
     tid, _ = await _submit_and_set_status(client, api_key, "retry_pending")
 
-    resp = await client.delete(f"/tasks/{tid}", headers={"X-API-Key": api_key})
+    resp = await client.delete(f"/v1/tasks/{tid}", headers={"X-API-Key": api_key})
     assert resp.status_code == 409
 
 
@@ -1233,7 +1244,7 @@ async def test_result_zip_duplicate_entry_names_deduplicated(client, api_key):
     }
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": [tid1, tid2]},
         headers={"X-API-Key": api_key},
     )
@@ -1258,7 +1269,7 @@ async def test_detail_has_result_for_partial_task(client, api_key):
     task_id, upstream_id = await _submit_and_set_status(client, api_key, "partial")
     assert upstream_id is not None
 
-    resp = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+    resp = await client.get(f"/v1/tasks/{task_id}", headers={"X-API-Key": api_key})
     assert resp.status_code == 200
     assert resp.json()["has_result"] is True
 
@@ -1279,7 +1290,7 @@ async def test_detail_has_no_result_without_upstream_id(client, api_key):
         )
         task_id = task.id
 
-    resp = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+    resp = await client.get(f"/v1/tasks/{task_id}", headers={"X-API-Key": api_key})
     assert resp.status_code == 200
     assert resp.json()["has_result"] is False
 
@@ -1289,7 +1300,7 @@ async def test_list_has_result_filter(client, api_key):
     tid_ok, _ = await _submit_and_set_status(client, api_key, "partial")
     await _submit_and_set_status(client, api_key, "pending")
 
-    resp = await client.get("/tasks?has_result=true", headers={"X-API-Key": api_key})
+    resp = await client.get("/v1/tasks?has_result=true", headers={"X-API-Key": api_key})
     assert resp.status_code == 200
     body = resp.json()
     assert body["total"] == 1
@@ -1297,7 +1308,7 @@ async def test_list_has_result_filter(client, api_key):
     assert body["items"][0]["has_result"] is True
 
     resp_false = await client.get(
-        "/tasks?has_result=false", headers={"X-API-Key": api_key}
+        "/v1/tasks?has_result=false", headers={"X-API-Key": api_key}
     )
     assert resp_false.status_code == 200
     assert resp_false.json()["total"] == 1
@@ -1307,7 +1318,7 @@ async def test_list_items_expose_has_result(client, api_key):
     """List items carry has_result so the download page can filter client-side too."""
     await _submit_and_set_status(client, api_key, "completed")
 
-    resp = await client.get("/tasks", headers={"X-API-Key": api_key})
+    resp = await client.get("/v1/tasks", headers={"X-API-Key": api_key})
     assert resp.status_code == 200
     assert resp.json()["items"][0]["has_result"] is True
 
@@ -1317,7 +1328,7 @@ async def test_result_zip_allows_partial_task(client, api_key):
     tid, _ = await _submit_and_set_status(client, api_key, "partial")
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": [tid]},
         headers={"X-API-Key": api_key},
     )
@@ -1333,7 +1344,7 @@ async def test_cancelled_task_has_no_result(client, api_key):
     task_id, upstream_id = await _submit_and_set_status(client, api_key, "cancelled")
     assert upstream_id is not None
 
-    resp = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
+    resp = await client.get(f"/v1/tasks/{task_id}", headers={"X-API-Key": api_key})
     assert resp.status_code == 200
     assert resp.json()["has_result"] is False
 
@@ -1343,7 +1354,7 @@ async def test_result_zip_rejects_cancelled_task(client, api_key):
     tid, _ = await _submit_and_set_status(client, api_key, "cancelled")
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": [tid]},
         headers={"X-API-Key": api_key},
     )
@@ -1406,7 +1417,7 @@ async def test_result_zip_entry_name_from_rfc5987_filename_star(client, api_key)
     )
 
     resp = await client.post(
-        "/tasks/result-zip",
+        "/v1/tasks/result-zip",
         json={"task_ids": [tid]},
         headers={"X-API-Key": api_key},
     )

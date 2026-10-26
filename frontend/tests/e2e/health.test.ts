@@ -5,11 +5,12 @@
  * health status over a real HTTP connection to a running gateway + mock upstream.
  *
  * The mock upstream exposes health states via its /_mock/configure API:
- *   1. Default (healthy): upstream /health returns 200 with status="healthy"
- *   2. Degraded:           upstream /health returns 503 with status="degraded"
+ *   1. Default: upstream /v1/health returns 200 with status="ok"; the gateway
+ *      normalizes that upstream status to "healthy".
+ *   2. Degraded: upstream /v1/health returns 503 with status="degraded"
  *      Gateway wraps this as 503 with status="degraded" and full upstream
  *      payload (no error field).
- *   3. Upstream raises:    upstream /health raises RuntimeError, FastAPI
+ *   3. Upstream raises: upstream /v1/health raises RuntimeError, FastAPI
  *      returns 500, gateway defaults status to "unknown" and returns 503.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -32,7 +33,7 @@ afterAll(async () => {
   await mock.reset();
 });
 
-describe('GET /health', () => {
+describe('GET /v1/health', () => {
   it('returns healthy upstream info when upstream is healthy', async () => {
     const result = await getHealth();
     expect(result.isOk()).toBe(true);

@@ -89,7 +89,7 @@ function validateFailure<
 - 每个 schema **必须**通过 `defineResponseSchema` 构造（见 [`conventions.md` Schema 构造便利契约](./conventions.md#schema-构造便利契约)），内部统一应用 `.pipe((x) => camelCase(x, Infinity))`（`depth=Infinity` 强制深度递归）与 `.as<>()`（声明精确输出类型）。
 - 举例（说明，非实现约束）：
   - FastAPI 422：`failures: { 422: FastApiValidationErrorSchema }`，其中 `FastApiValidationErrorSchema = defineResponseSchema({ detail: FastApiErrorEntrySchema.array() }, {} as { detail: [...] })`。`detail` 本身无下划线，不变化。
-  - `/tasks/result-zip` 409：`failures: { 409: ResultZipNonDownloadableSchema }`，其中 `ResultZipNonDownloadableSchema = defineResponseSchema({ detail: 'string', non_downloadable: NonDownloadableItemSchema.array() }, {} as { detail: string; nonDownloadable: [...] })`。`inferIn` = `{ non_downloadable: [...] }`（wire format），`infer` = `{ nonDownloadable: [...] }`（domain type）。helper 内部已传 `depth=Infinity`，内层 `non_downloadable[].task_id` 会被转换。
+  - `/v1/tasks/result-zip` 409：`failures: { 409: ResultZipNonDownloadableSchema }`，其中 `ResultZipNonDownloadableSchema = defineResponseSchema({ detail: 'string', non_downloadable: NonDownloadableItemSchema.array() }, {} as { detail: string; nonDownloadable: [...] })`。`inferIn` = `{ non_downloadable: [...] }`（wire format），`infer` = `{ nonDownloadable: [...] }`（domain type）。helper 内部已传 `depth=Infinity`，内层 `non_downloadable[].task_id` 会被转换。
   - 业务错误 `{ detail: 'string' }`：`failures: { 401: defineResponseSchema({ detail: 'string' }, {} as { detail: string }) }`。
 - 调用方未声明的状态码（且无 `fallback`）→ `UnhandledStatusError`，**不**静默吞掉。
 
@@ -124,7 +124,7 @@ request(url, options)                                  // ResultAsync<RawRespons
 
 ### 形式 2：二进制端点（成功取 blob，错误校验 JSON）
 
-适用 `/tasks/result-zip`：200 返回 ZIP，409 返回 JSON。
+适用 `/v1/tasks/result-zip`：200 返回 ZIP，409 返回 JSON。
 
 ```ts
 request(url, { method: 'POST', json: { task_ids } })
@@ -143,7 +143,7 @@ request(url, { method: 'POST', json: { task_ids } })
 
 ### 形式 3：透传端点
 
-适用 `/file_parse`：上游 shape 任意，前端不校验。
+适用 `/v1/file_parse`：上游 shape 任意，前端不校验。
 
 ```ts
 request(url, { method: 'POST', body: formData })
@@ -210,7 +210,7 @@ function fetchBinaryAndValidate<
 - 成功（2xx）：`parseBlob`/`parseArrayBuffer` 产出值；`orElse` 不触发；最终 `ok(...)`。
 - 失败（非 2xx）：请求层返回 `err(HttpError<status, unknown>)`；`andThen(parseBlob/parseArrayBuffer)` 短路；`orElse(validateFailure)` 把 body 校验为对应 schema，返回 `err(HttpError<status, S['infer']>)` 或 `UnhandledStatusError`。
 - 函数名 `fetchBinaryAndValidate` 仅作说明，实现可任意命名；只要满足签名与行为。
-- 用法：`/tasks/result-zip` → `fetchBinaryAndValidate(url, { failures: { 409: ResultZipNonDownloadableSchema } }, { method: 'POST', json: { taskIds } })`。
+- 用法：`/v1/tasks/result-zip` → `fetchBinaryAndValidate(url, { failures: { 409: ResultZipNonDownloadableSchema } }, { method: 'POST', json: { taskIds } })`。
 
 ## 请求体校验（可选 composable）
 
@@ -257,8 +257,8 @@ function logNonHttpErrors<E extends HttpError<number, unknown>>(
 7. `validateFailure({})(createHttpError(500, undefined))` 返回 `err`，`_type === 'UnhandledStatusError'`，`data === undefined`。
 8. `validateFailure({ 422: SchemaA })(createHttpError(422, invalidA))` 返回 `err`，`_type === 'ValidationError'`、`status === 422`（保留原 HttpError 状态码）、`summary` 含 `"422"`。
 9. `validateFailure` 对 `NetworkError` 输入原样透传（`_type` 不变）。
-10. 形式 2 中，`/tasks/result-zip` 返回 409 时，最终结果是 `err(HttpError<409, NonDownloadable>)`，**不**触发 `parseBlob`。
-11. 形式 2 中，`/tasks/result-zip` 返回 200 时，最终结果是 `ok(BlobResult)`，`validateFailure` 不触发。
+10. 形式 2 中，`/v1/tasks/result-zip` 返回 409 时，最终结果是 `err(HttpError<409, NonDownloadable>)`，**不**触发 `parseBlob`。
+11. 形式 2 中，`/v1/tasks/result-zip` 返回 200 时，最终结果是 `ok(BlobResult)`，`validateFailure` 不触发。
 12. `fetchAndValidate(url, { success: S })` 在非 2xx 且无 `failures`/`fallbackFailure` 时返回 `UnhandledStatusError`。
 13. `validateRequest(SchemaA)(invalidBody)` 返回 `err`，`_type === 'ValidationError'`、`status === null`；且请求未发送（可通过 mock 验证 ky 未被调用）。
 14. `fetchBinaryAndValidate(url, { failures: { 409: SchemaA } })` 在 2xx 响应上返回 `ok(BlobResult)`，`BlobResult.headers` 即 `RawResponse.headers`；在 409 响应上返回 `err(HttpError<409, A>)`，**不**触发 `parseBlob`。

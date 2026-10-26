@@ -80,13 +80,13 @@ class GatewayUser(HttpUser):
 
     @task(5)
     def streaming_upload(self):
-        """POST /tasks - streaming upload of ~10 MB PDF."""
+        """POST /v1/tasks - streaming upload of ~10 MB PDF."""
         payload = _MINIMAL_PDF + b"0" * (10 * 1024 * 1024 - len(_MINIMAL_PDF))
         files = [
             ("files", ("large.pdf", payload, "application/pdf")),
         ]
         resp = self.client.post(
-            "/tasks",
+            "/v1/tasks",
             headers={"X-API-Key": self.key},
             files=files,
             data={"tier": "basic"},
@@ -103,9 +103,9 @@ class GatewayUser(HttpUser):
 
     @task(20)
     def small_upload(self):
-        """POST /tasks - tiny file (< 1 KB)."""
+        """POST /v1/tasks - tiny file (< 1 KB)."""
         resp = self.client.post(
-            "/tasks",
+            "/v1/tasks",
             headers={"X-API-Key": self.key},
             files=_small_file(),
             data={"tier": "basic"},
@@ -122,9 +122,9 @@ class GatewayUser(HttpUser):
 
     @task(10)
     def file_parse(self):
-        """POST /file_parse - synchronous file parsing."""
+        """POST /v1/file_parse - synchronous file parsing."""
         self.client.post(
-            "/file_parse",
+            "/v1/file_parse",
             headers={"X-API-Key": self.key},
             files=_small_file(),
             data={"tier": "basic"},
@@ -137,19 +137,19 @@ class GatewayUser(HttpUser):
 
     @task(15)
     def task_status(self):
-        """GET /tasks/{id} - poll status of a previously submitted task."""
+        """GET /v1/tasks/{id} - poll status of a previously submitted task."""
         tid = (
             random.choice(self._submitted_task_ids)
             if self._submitted_task_ids
             else None
         )
         if not tid:
-            self.client.get("/health")
+            self.client.get("/v1/health")
             return
         self.client.get(
-            f"/tasks/{tid}",
+            f"/v1/tasks/{tid}",
             headers={"X-API-Key": self.key},
-            name="/tasks/{id}",
+            name="/v1/tasks/{id}",
             timeout=10,
         )
 
@@ -159,16 +159,16 @@ class GatewayUser(HttpUser):
 
     @task(5)
     def result_zip(self):
-        """POST /tasks/result-zip - batch download of task results."""
+        """POST /v1/tasks/result-zip - batch download of task results."""
         tids = list(self._submitted_task_ids[:3])
         if not tids:
-            self.client.get("/health")
+            self.client.get("/v1/health")
             return
         self.client.post(
-            "/tasks/result-zip",
+            "/v1/tasks/result-zip",
             json={"task_ids": tids},
             headers={"X-API-Key": self.key},
-            name="/tasks/result-zip",
+            name="/v1/tasks/result-zip",
             timeout=30,
         )
 
@@ -178,8 +178,8 @@ class GatewayUser(HttpUser):
 
     @task(5)
     def health_check(self):
-        """GET /health - upstream health gating check."""
-        self.client.get("/health", timeout=5)
+        """GET /v1/health - upstream health gating check."""
+        self.client.get("/v1/health", timeout=5)
 
     # ------------------------------------------------------------------
     # Idempotent replay (weight 3)
@@ -187,7 +187,7 @@ class GatewayUser(HttpUser):
 
     @task(3)
     def idempotent_replay(self):
-        """POST /tasks with X-Idempotency-Key - replays from existing key."""
+        """POST /v1/tasks with X-Idempotency-Key - replays from existing key."""
         idem_key = uuid.uuid4().hex
         headers = {
             "X-API-Key": self.key,
@@ -195,14 +195,14 @@ class GatewayUser(HttpUser):
         }
         # First submission
         self.client.post(
-            "/tasks",
+            "/v1/tasks",
             headers=headers,
             files=_small_file(),
             timeout=30,
         )
         # Replay - should hit idempotency cache
         self.client.post(
-            "/tasks",
+            "/v1/tasks",
             headers=headers,
             files=_small_file(),
             timeout=30,
@@ -214,9 +214,9 @@ class GatewayUser(HttpUser):
 
     @task(2)
     def task_list(self):
-        """GET /tasks - list tasks."""
+        """GET /v1/tasks - list tasks."""
         self.client.get(
-            "/tasks",
+            "/v1/tasks",
             headers={"X-API-Key": self.key},
             params={"status": "pending"},
             timeout=10,

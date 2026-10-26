@@ -1,23 +1,23 @@
 # 流式上传 实现规约
 
 > 基于 `specs/mvp-implementation.md`（提交流程、FileCache）、`specs/idempotent-submission.md`（幂等提交行为）。
-> 本规约定义 `POST /tasks` 端点的流式 multipart 上传行为，消除当前实现中大文件提交的内存双缓冲问题。
+> 本规约定义 `POST /v1/tasks` 端点的流式 multipart 上传行为，消除当前实现中大文件提交的内存双缓冲问题。
 
 ## 0. 目标与非目标
 
 ### 目标
 
-1. `POST /tasks` 端点在上传阶段（接收客户端 multipart body）的内存占用量与单个文件大小解耦：任意大小的文件均以固定窗口大小的 chunk 为单位流式处理，不会因文件大小增长而线性增长内存。
+1. `POST /v1/tasks` 端点在上传阶段（接收客户端 multipart body）的内存占用量与单个文件大小解耦：任意大小的文件均以固定窗口大小的 chunk 为单位流式处理，不会因文件大小增长而线性增长内存。
 2. 上传大小检查从「完整读取后判断」改为「累计字节实时判断」：一旦累计接收的字节数超过 `max_upload_size`，立即中止流并返回 413，不再等待客户端完成上传。
 3. 流式处理与现有幂等提交、限流、健康门控、全局并发检查的交互行为定义清晰，不引入状态不一致。
 4. FileCache 的磁盘暂存行为与 crash recovery（retry 循环）保持兼容：retry 循环从磁盘恢复文件并重提的路径不受影响。
-5. `POST /file_parse` 端点的 `_extract_multipart` 行为不受影响（继续使用现有的全量缓冲方式）。
+5. `POST /v1/file_parse` 端点的 `_extract_multipart` 行为不受影响（继续使用现有的全量缓冲方式）。
 
 ### 非目标
 
 - 匿名请求的端到端内存优化：匿名提交（`api_key is None`）从客户端接收 body 时使用流式解析（内存占用同样 bounded），但转发到上游时仍使用全量读取（与当前行为一致）。匿名路径不是大文件流量的主要入口。
 - 上游转发的内存优化：认证提交在流式缓存到磁盘后，使用现有 buffered 方式从磁盘读取并转发到上游。本规约解决的是「网关接收上传」阶段的内存问题；「网关转发」阶段的内存优化留待后续（见 §1 决策理由）。
-- `POST /tasks/result-zip` 和 `GET /tasks/{id}/result` 的流式改造：属 A10 流式下载规约范围。
+- `POST /v1/tasks/result-zip` 和 `GET /v1/tasks/{id}/result` 的流式改造：属 A10 流式下载规约范围。
 - 磁盘配额检查（B2）：属独立特性，不在此规约中定义。
 
 ### 设计权衡说明
@@ -35,7 +35,7 @@
 
 ## 1. 核心行为变更
 
-以下行为变更仅针对 `POST /tasks` 端点的 `handle_task_submission` 中与 multipart 解析相关的部分。幂等检查、限流、健康门控、全局并发检查、TaskRecord 创建、响应生成等步骤的行为**不变**。
+以下行为变更仅针对 `POST /v1/tasks` 端点的 `handle_task_submission` 中与 multipart 解析相关的部分。幂等检查、限流、健康门控、全局并发检查、TaskRecord 创建、响应生成等步骤的行为**不变**。
 
 ### 1.1 函数变更：新增 `_extract_multipart_streaming`
 
@@ -96,7 +96,7 @@ _extract_multipart_streaming(request, max_upload_size, cache)
 ### 1.4 处理步骤概览（变更后）
 
 ```
-接收 POST /tasks 请求
+接收 POST /v1/tasks 请求
 
 1. 解析 X-API-Key 请求头
    如果 Key 无效且不允许匿名 → 返回 401
@@ -269,12 +269,12 @@ create_streaming_cache() → CacheWriter
 
 ## 6. 测试场景
 
-以下测试场景覆盖流式上传的全部预期行为。所有测试针对 `POST /tasks` 端点，使用有效的 API Key，并 mock 上游返回 `202`。
+以下测试场景覆盖流式上传的全部预期行为。所有测试针对 `POST /v1/tasks` 端点，使用有效的 API Key，并 mock 上游返回 `202`。
 
 ### 6.1 基本功能
 
 **T1 — 小文件正常提交（回归）**
-向 `POST /tasks` 提交一个包含小文件（如 10KB）和若干 form 字段的 multipart 请求。验证：
+向 `POST /v1/tasks` 提交一个包含小文件（如 10KB）和若干 form 字段的 multipart 请求。验证：
 
 - 返回 `202`，响应体包含 `task_id`。
 - 数据库中 TaskRecord 的 `file_names`、`file_count`、`file_total_bytes` 与上传内容一致。
@@ -377,7 +377,7 @@ mock 上游返回 `400 Bad Request`（非 202）。验证：
 ### 6.6 handle_file_parse 不变
 
 **T15 — file_parse 行为不变**
-向 `POST /file_parse` 提交文件。验证：
+向 `POST /v1/file_parse` 提交文件。验证：
 
 - 行为与变更前完全一致：正常返回上游响应。
 - 认证请求的 TaskRecord 正确创建。
@@ -387,7 +387,7 @@ mock 上游返回 `400 Bad Request`（非 202）。验证：
 | 文件 | 变更类型 | 变更说明 |
 |------|----------|----------|
 | `src/mineru_gateway/proxy/handler.py` | 修改 | 新增 `_extract_multipart_streaming` 函数（流式解析）；保留原 `_extract_multipart` 供 `handle_file_parse` 使用；`handle_task_submission` 改用流式解析并适配新返回值（`cache_dir` 替代 `files`）；匿名路径适配 |
-| `src/mineru_gateway/tasks/cache.py` | 修改 | 新增 `create_streaming_cache()` 方法和 `CacheWriter` 类；移除 `store()`；`restore`/`release`/`exists` 保留不变 |
+| `src/mineru_gateway/v1/tasks/cache.py` | 修改 | 新增 `create_streaming_cache()` 方法和 `CacheWriter` 类；移除 `store()`；`restore`/`release`/`exists` 保留不变 |
 | `src/mineru_gateway/upstream/client.py` | 不修改 | `submit_task` 签名不变——仍接受 `(data, files)`；`files` 由调用方从 `cache_dir` 读取后构造 |
 | `src/mineru_gateway/models.py` | 不修改 | 无 schema 变更 |
 | `alembic/versions/` | 不修改 | 无迁移 |

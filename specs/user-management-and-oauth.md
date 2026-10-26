@@ -26,7 +26,7 @@
 
 ```
 X-API-Key ────────────►  require_api_key()
-                 ┌────►  (现有: 业务请求, /tasks, /proxy)
+                 ┌────►  (现有: 业务请求, /v1/tasks, /proxy)
                  │
 X-Admin-Token ───┤──►  require_admin_token()
                  │    (现有: 管理 Key, /auth/keys)
@@ -39,7 +39,7 @@ Authorization: Bearer <JWT> ──►  (新增: 用户管理, OAuth, /me/api-key
 
 | 鉴权方式 | 守卫端点 | 范围 |
 |---------|---------|------|
-| `X-API-Key` | `POST /tasks`, `POST /file_parse`, `GET /tasks/*` 等 | 业务请求（现有） |
+| `X-API-Key` | `POST /v1/tasks`, `POST /v1/file_parse`, `GET /v1/tasks/*` 等 | 业务请求（现有） |
 | `X-Admin-Token` | `POST /auth/keys`, `GET /auth/keys`, `DELETE /auth/keys/{id}`, `POST /auth/users` | 管理员管理 Key 与用户（现有 + 新增） |
 | `Authorization: Bearer <JWT>` | `GET /users/me`, `PATCH /users/me`, `POST /auth/jwt/logout`, `GET /me/api-keys`, `POST /me/api-keys`, `DELETE /me/api-keys/{id}` | 用户自助（新增） |
 
@@ -627,10 +627,10 @@ Location: {frontend_redirect_url}#access_token=eyJ...&refresh_token=eyJ...&token
 | `POST /auth/keys` | `X-Admin-Token` | 不变。`owner_id` 为 `NULL`（管理员创建） |
 | `GET /auth/keys` | `X-Admin-Token` | 不变。列出所有 Key（包括有 owner 的） |
 | `DELETE /auth/keys/{key_id}` | `X-Admin-Token` | 不变。管理员可吊销任何 Key |
-| `POST /tasks` | `X-API-Key` | 不变 |
-| `POST /file_parse` | `X-API-Key` | 不变 |
-| `GET /tasks`, `GET /tasks/{id}`, `DELETE /tasks/{id}`, `GET /tasks/{id}/result` | `X-API-Key` | 不变 |
-| `GET /health` | 无 | 不变 |
+| `POST /v1/tasks` | `X-API-Key` | 不变 |
+| `POST /v1/file_parse` | `X-API-Key` | 不变 |
+| `GET /v1/tasks`, `GET /v1/tasks/{id}`, `DELETE /v1/tasks/{id}`, `GET /v1/tasks/{id}/result` | `X-API-Key` | 不变 |
+| `GET /v1/health` | 无 | 不变 |
 
 ## 5. 核心模块设计
 
@@ -719,7 +719,7 @@ src/mineru_gateway/auth/
 
 ### 6.2 与现有任务鉴权的关系
 
-`POST /tasks`、`GET /tasks` 等端点**仍然使用 `X-API-Key` 鉴权**，不受 JWT 影响。用户通过 `/me/api-keys` 创建的 Key 与管理员创建的 Key 在业务层面**无差别**（均为有效的 API Key）。
+`POST /v1/tasks`、`GET /v1/tasks` 等端点**仍然使用 `X-API-Key` 鉴权**，不受 JWT 影响。用户通过 `/me/api-keys` 创建的 Key 与管理员创建的 Key 在业务层面**无差别**（均为有效的 API Key）。
 
 ### 6.3 用户认证总开关
 
@@ -799,7 +799,7 @@ curl -X POST http://localhost:8000/me/api-keys \
 # → { "key_id": "...", "api_key": "mru_...", "api_key_prefix": "mru_", "message": "..." }
 
 # 使用 Key 提交任务
-curl -X POST http://localhost:8000/tasks \
+curl -X POST http://localhost:8000/v1/tasks \
   -H "X-API-Key: mru_..." \
   -F "files=@doc.pdf"
 
@@ -897,7 +897,7 @@ curl -X POST http://localhost:8000/auth/keys \
 - `GET /me/api-keys` 列出自己的 Key，不包含其他用户的 Key。
 - `DELETE /me/api-keys/{key_id}` 吊销自己的 Key → 204。
 - `DELETE /me/api-keys/{key_id}` 吊销不属于自己的 Key → 404（不区分不存在和无权限）。
-- 创建的 Key 可通过 `/tasks` 等业务端点使用（与现有 Key 行为一致）。
+- 创建的 Key 可通过 `/v1/tasks` 等业务端点使用（与现有 Key 行为一致）。
 - 无 JWT 或无效 JWT 访问 `/me/api-keys` → 401。
 - `POST /me/api-keys`：未验证用户 + `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false`（默认）→ 403，不创建 Key。
 
@@ -942,5 +942,5 @@ curl -X POST http://localhost:8000/auth/keys \
 ### 9.9 现有端点回归
 
 - `POST /auth/keys`、`GET /auth/keys`、`DELETE /auth/keys/{id}` 行为不变。
-- `POST /tasks`、`POST /file_parse` 等业务端点行为不变。
+- `POST /v1/tasks`、`POST /v1/file_parse` 等业务端点行为不变。
 - 通过 `/me/api-keys` 创建的 Key 可用于业务端点。

@@ -50,7 +50,7 @@ describe('task result downloads', () => {
   it('gives single-result downloads more than the ky default', async () => {
     await getTaskResult('task-1', 'key');
 
-    expect(mocks.request).toHaveBeenCalledWith('tasks/task-1/result', {
+    expect(mocks.request).toHaveBeenCalledWith('v1/tasks/task-1/result', {
       headers: { 'X-API-Key': 'key' },
       timeout: TASK_RESULT_TIMEOUT_MS,
     });
@@ -60,7 +60,7 @@ describe('task result downloads', () => {
     await downloadResultZip(['task-1'], 'key');
 
     expect(mocks.fetchBinaryAndValidate).toHaveBeenCalledWith(
-      'tasks/result-zip',
+      'v1/tasks/result-zip',
       expect.objectContaining({ failures: expect.any(Object) }),
       {
         method: 'POST',

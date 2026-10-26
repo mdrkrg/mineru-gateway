@@ -1,19 +1,19 @@
 # 幂等提交 (X-Idempotency-Key) 实现规约
 
 > 基于 `specs/mvp-implementation.md`（数据模型、提交流程）、`plans/future-enhancements.md` B1（幂等提交方案）。
-> 本规约定义 `POST /tasks` 端点的幂等提交行为，使客户端在网络不稳定时安全重试而不产生重复任务。
+> 本规约定义 `POST /v1/tasks` 端点的幂等提交行为，使客户端在网络不稳定时安全重试而不产生重复任务。
 
 ## 0. 目标与非目标
 
 ### 目标
 
-1. 客户端通过 `X-Idempotency-Key` 请求头实现 `POST /tasks` 的幂等提交：同一 API Key 下相同 idempotency key 的重复请求，返回首次请求的结果，不会创建重复任务。
+1. 客户端通过 `X-Idempotency-Key` 请求头实现 `POST /v1/tasks` 的幂等提交：同一 API Key 下相同 idempotency key 的重复请求，返回首次请求的结果，不会创建重复任务。
 2. 幂等命中时跳过限流、multipart body 读取、全局并发检查——重试成本为一次极轻量数据库查询。
 3. 并发场景下（同一 idempotency key 的多个请求几乎同时到达），通过数据库唯一约束保证最终仅有一条任务记录落库。
 
 ### 非目标
 
-- `POST /file_parse` 不实现幂等提交（该端点为同步解析，结果即时返回，无可复用的异步任务记录）。
+- `POST /v1/file_parse` 不实现幂等提交（该端点为同步解析，结果即时返回，无可复用的异步任务记录）。
 - 匿名请求（`api_key is None`）不参与去重——`X-Idempotency-Key` 被忽略，保持纯透传行为不变。
 - 不校验请求 payload 一致性（见 §1）。
 
@@ -38,7 +38,7 @@
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
-| `idempotency_key` | `str \| None` | `String(255)`, nullable | 客户端提供的幂等键；NULL 表示未启用幂等（含迁移前已有记录、不带 X-Idempotency-Key 的 POST /tasks、及 POST /file_parse 记录） |
+| `idempotency_key` | `str \| None` | `String(255)`, nullable | 客户端提供的幂等键；NULL 表示未启用幂等（含迁移前已有记录、不带 X-Idempotency-Key 的 POST /v1/tasks、及 POST /v1/file_parse 记录） |
 
 ### 2.2 新增唯一约束
 
@@ -56,7 +56,7 @@ SQL 标准下 NULL 不参与唯一性比较，因此已有的 `idempotency_key=N
 
 ### 3.1 请求头
 
-`POST /tasks` 新增**可选**请求头：
+`POST /v1/tasks` 新增**可选**请求头：
 
 ```http
 X-Idempotency-Key: <string>
@@ -83,7 +83,7 @@ X-Idempotency-Key-Replayed: true
 
 ## 4. 处理流程详解
 
-本节描述 `POST /tasks` 端点在 `X-Idempotency-Key` 介入后的完整处理流程。每个步骤说明触发条件、执行内容及与现有行为的差异。
+本节描述 `POST /v1/tasks` 端点在 `X-Idempotency-Key` 介入后的完整处理流程。每个步骤说明触发条件、执行内容及与现有行为的差异。
 
 **前置约定** — 以下术语沿用现有实现的行为定义，下文不另行解释：
 
@@ -161,7 +161,7 @@ X-Idempotency-Key-Replayed: true
 
 - 命中时**不消耗限流令牌**，不调用 `limiter.acquire`。
 - 命中时**不读取 multipart body**，不解码请求体，避免大文件内存开销。
-- 命中时不等同于 "任务已完成"。返回的 `status` 始终为 `"pending"`（首次提交时的值），客户端仍需通过 `GET /tasks/{task_id}` 轮询最终状态。
+- 命中时不等同于 "任务已完成"。返回的 `status` 始终为 `"pending"`（首次提交时的值），客户端仍需通过 `GET /v1/tasks/{task_id}` 轮询最终状态。
 - 匿名请求跳过此步骤，`X-Idempotency-Key` 被忽略。
 
 ### 4.4 步骤 3-7：现有提交流程（行为不变，仅新增 idempotency_key 传递）
@@ -188,7 +188,7 @@ X-Idempotency-Key-Replayed: true
 
 **孤儿上游任务**：第二个请求在冲突前可能已成功提交到上游，获得了 `upstream_task_id`。该任务没有 `TaskRecord` 引用，网关无法轮询或下载它；恢复流程会记录该 id（warning 日志）以便排查，任务最终由上游 TTL 清理。不在这里取消：任务可能已开始处理，取消请求也会拖慢 replay 响应。
 
-**客户端重试时机**：幂等 pre-check 发生在 `TaskRecord` 创建之前。客户端必须等第一次 `POST /tasks` 结束后再重试；如果客户端在网关仍在提交上游时用同一 key 重试，第二次请求会通过 pre-check 并再次提交上游。前端 `submitTask` 的超时必须覆盖 multipart 上传时间 + 网关固定的 30s `/tasks` 控制面超时，不能继承 ky 的 10s 默认值（见 `specs/mvp-implementation.md` §5.4）。
+**客户端重试时机**：幂等 pre-check 发生在 `TaskRecord` 创建之前。客户端必须等第一次 `POST /v1/tasks` 结束后再重试；如果客户端在网关仍在提交上游时用同一 key 重试，第二次请求会通过 pre-check 并再次提交上游。前端 `submitTask` 的超时必须覆盖 multipart 上传时间 + 网关固定的 30s `/v1/tasks` 控制面超时，不能继承 ky 的 10s 默认值（见 `specs/mvp-implementation.md` §5.4）。
 
 ### 4.6 幂等键生命周期
 
@@ -218,7 +218,7 @@ SQLite 通过 Alembic 的 `batch_alter_table` 模式支持添加 nullable 列与
 
 ## 6. 测试场景
 
-以下测试场景覆盖幂等提交的全部预期行为。所有测试仅针对 `POST /tasks` 端点，使用有效的 API Key，并 mock 上游返回 `202`。
+以下测试场景覆盖幂等提交的全部预期行为。所有测试仅针对 `POST /v1/tasks` 端点，使用有效的 API Key，并 mock 上游返回 `202`。
 
 ### 6.1 基本功能
 

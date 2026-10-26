@@ -156,7 +156,7 @@ def main() -> None:
         stdout=None,
         stderr=None,
     )
-    _wait_ready(f"{mock_url}/health")
+    _wait_ready(f"{mock_url}/v1/health")
 
     # 2. SMTP capture
     print(f"smtp capture    → smtp 127.0.0.1:{smtp_port}, control {smtp_capture_url}")
@@ -174,7 +174,7 @@ def main() -> None:
         stdout=None,
         stderr=None,
     )
-    _wait_ready(f"{smtp_capture_url}/health")
+    _wait_ready(f"{smtp_capture_url}/v1/health")
 
     # 3. Gateway (private cwd so a developer's local .env is never loaded)
     print(f"gateway         → {gateway_url}  (→ mock)")
@@ -212,7 +212,7 @@ def main() -> None:
         stdout=None,
         stderr=None,
     )
-    _wait_ready(f"{gateway_url}/health")
+    _wait_ready(f"{gateway_url}/v1/health")
 
     # 3. Frontend (optional)
     if args.frontend:
@@ -237,10 +237,10 @@ def main() -> None:
     print("  smtp capture    ", smtp_capture_url)
     print("  gateway         ", gateway_url)
     print("  mock control    ", f"{mock_url}/_mock/configure")
-    print("  mock health     ", f"{mock_url}/health")
-    print("  smtp health     ", f"{smtp_capture_url}/health")
+    print("  mock health     ", f"{mock_url}/v1/health")
+    print("  smtp health     ", f"{smtp_capture_url}/v1/health")
     print("  smtp inbox      ", f"{smtp_capture_url}/emails")
-    print("  gateway health  ", f"{gateway_url}/health")
+    print("  gateway health  ", f"{gateway_url}/v1/health")
     if args.frontend:
         print("  frontend        ", f"http://localhost:{args.port_frontend}")
     print("────────────────────────────────────────────")

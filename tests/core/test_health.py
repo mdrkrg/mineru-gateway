@@ -1,7 +1,7 @@
-"""Tests for GET /health aggregation against the MinerU 4.0 V1 payload.
+"""Tests for GET /v1/health aggregation against the MinerU 4.0 V1 payload.
 
 Spec: mvp-implementation.md §3.6 (可观测性), §3.7 (与上游差异对齐).
-Plan: Phase 1 — "GET /health 聚合".
+Plan: Phase 1 — "GET /v1/health 聚合".
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from tests.mock_upstream import state as mock_state
 
 async def test_health_reports_healthy(client):
     """§3.6: 上游 V1 health 为 ok 时聚合结果为 healthy."""
-    resp = await client.get("/health")
+    resp = await client.get("/v1/health")
     assert resp.status_code == 200
     body = resp.json()
     assert body["gateway"] == "healthy"
@@ -27,7 +27,7 @@ async def test_health_reports_healthy(client):
 async def test_health_returns_503_when_upstream_unreachable(client):
     """§3.7: 上游不可达时返回 503 (与 mineru-router 保持一致)."""
     mock_state.health_raises = True
-    resp = await client.get("/health")
+    resp = await client.get("/v1/health")
     assert resp.status_code == 503
     body = resp.json()
     assert body["status"] == "degraded"
@@ -37,7 +37,7 @@ async def test_health_returns_503_when_upstream_unreachable(client):
 async def test_health_returns_503_when_upstream_not_healthy(client):
     """§3.7: 上游可达但非 ok 状态, 返回 503 (与 mineru-router 保持一致)."""
     mock_state.status = "degraded"
-    resp = await client.get("/health")
+    resp = await client.get("/v1/health")
     assert resp.status_code == 503
     assert resp.json()["status"] == "degraded"
 
@@ -50,7 +50,7 @@ async def test_health_passes_through_v1_fields(client):
         "output_formats": ["markdown", "zip"],
         "sources": ["file_id"],
     }
-    resp = await client.get("/health")
+    resp = await client.get("/v1/health")
     assert resp.status_code == 200
     upstream = resp.json()["upstream"]
     assert upstream["version"] == "4.0.12"

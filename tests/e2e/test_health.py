@@ -1,6 +1,6 @@
 """E2E tests for health endpoint (Layer 1 - real HTTP with mock upstream).
 
-Verify that the gateway /health endpoint correctly aggregates and
+Verify that the gateway /v1/health endpoint correctly aggregates and
 reflects upstream health, and handles upstream unreachability.
 """
 
@@ -23,11 +23,11 @@ from tests.e2e.conftest import _start_gateway, sample_files
 async def test_health_aggregates_upstream_fields(e2e_client):
     """Health endpoint returns aggregated upstream data over real HTTP.
 
-    1. GET /health -> 200.
+    1. GET /v1/health -> 200.
     2. Response includes top-level fields (status, gateway) AND a nested
        ``upstream`` object with the 4.0 capability payload (version, features).
     """
-    resp = await e2e_client.get("/health")
+    resp = await e2e_client.get("/v1/health")
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "healthy"
@@ -46,13 +46,13 @@ async def test_health_aggregates_upstream_fields(e2e_client):
 async def test_health_returns_503_when_upstream_unreachable(
     mock_upstream_url, mock_control, tmp_path
 ):
-    """Gateway /health returns 503 when upstream is unreachable.
+    """Gateway /v1/health returns 503 when upstream is unreachable.
 
-    1. Make the mock upstream /health raise an error (simulate crash).
-    2. GET /health on the gateway -> 503, status field indicates degraded.
-    3. Meanwhile POST /tasks (async submission) still succeeds - it is
+    1. Make the mock upstream /v1/health raise an error (simulate crash).
+    2. GET /v1/health on the gateway -> 503, status field indicates degraded.
+    3. Meanwhile POST /v1/tasks (async submission) still succeeds - it is
        not gated by upstream health.
-    4. After restoring upstream, /health returns 200 again.
+    4. After restoring upstream, /v1/health returns 200 again.
     """
     db = str(tmp_path / "unreach.db")
     cache = str(tmp_path / "unreach_cache")
@@ -72,19 +72,19 @@ async def test_health_returns_503_when_upstream_unreachable(
             key = resp.json()["api_key"]
             h = {"X-API-Key": key}
 
-            health = await c.get("/health")
+            health = await c.get("/v1/health")
             assert health.status_code == 200
 
             # Break upstream
             mock_control.set_health_raises()
 
-            degraded = await c.get("/health")
+            degraded = await c.get("/v1/health")
             assert degraded.status_code == 503
             assert degraded.json()["status"] == "degraded"
 
             # Async submission still works (not health-gated)
             submit = await c.post(
-                "/tasks",
+                "/v1/tasks",
                 headers=h,
                 files=sample_files(),
             )
@@ -93,7 +93,7 @@ async def test_health_returns_503_when_upstream_unreachable(
             # Restore upstream
             mock_control.reset()
 
-            health2 = await c.get("/health")
+            health2 = await c.get("/v1/health")
             assert health2.status_code == 200
             assert health2.json()["status"] == "healthy"
     finally:

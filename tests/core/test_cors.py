@@ -85,7 +85,7 @@ def test_cors_json_with_trailing_comma():
 
 async def test_cors_headers_present_on_response(client):
     """When Origin header is present, response includes Access-Control-Allow-Origin."""
-    resp = await client.get("/health", headers={"Origin": "http://localhost"})
+    resp = await client.get("/v1/health", headers={"Origin": "http://localhost"})
     assert resp.status_code == 200
     assert resp.headers["access-control-allow-origin"] == "*"
 
@@ -93,7 +93,7 @@ async def test_cors_headers_present_on_response(client):
 async def test_cors_preflight_options_returns_204(client):
     """OPTIONS preflight should return 200 with correct CORS headers."""
     resp = await client.options(
-        "/tasks",
+        "/v1/tasks",
         headers={
             "Origin": "http://example.com",
             "Access-Control-Request-Method": "POST",
@@ -115,11 +115,11 @@ async def test_cors_custom_origins_restrict(settings, upstream_client):
         async with httpx.AsyncClient(
             transport=transport, base_url="http://testserver"
         ) as c:
-            resp = await c.get("/health", headers={"Origin": "http://trusted.local"})
+            resp = await c.get("/v1/health", headers={"Origin": "http://trusted.local"})
             assert resp.headers["access-control-allow-origin"] == "http://trusted.local"
             assert resp.headers["access-control-allow-credentials"] == "true"
 
-            resp = await c.get("/health", headers={"Origin": "http://evil.com"})
+            resp = await c.get("/v1/health", headers={"Origin": "http://evil.com"})
             assert "access-control-allow-origin" not in resp.headers
 
 
@@ -132,5 +132,5 @@ async def test_cors_credentials_header(settings, upstream_client):
         async with httpx.AsyncClient(
             transport=transport, base_url="http://testserver"
         ) as c:
-            resp = await c.get("/health", headers={"Origin": "http://example.com"})
+            resp = await c.get("/v1/health", headers={"Origin": "http://example.com"})
             assert resp.headers["access-control-allow-credentials"] == "true"

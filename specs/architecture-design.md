@@ -13,7 +13,7 @@ mineru-gateway 是位于客户端与 mineru-api / mineru-router 之间的**网�
 
 **核心目标**：
 
-- **兼容**：透明代理旧 API（`/file_parse`、`/tasks`、`/health`），请求/响应格式不变。
+- **兼容**：透明代理旧 API（`/v1/file_parse`、`/v1/tasks`、`/v1/health`），请求/响应格式不变。
 - **可控**：以 API Key 为鉴权主体，做访问控制与任务隔离。
 - **可靠**：任务元数据持久化，上游崩溃后可恢复重提。
 - **可保护**：健康感知门控、限流、文件大小限制，避免打垮上游。
@@ -65,8 +65,8 @@ mineru-gateway 是位于客户端与 mineru-api / mineru-router 之间的**网�
 
 ### 3.4 保护：面向上游健康的门控（仅同步端点）与多层背压
 
-- **同步门控**（`POST /file_parse`）：提交前读上游 `/health`，无空闲 slot 直接 503 + `Retry-After`（拒绝而非排队）。同步端点霸占 HTTP 连接并立即消耗信号量位，饱和时快速失败避免客户端无谓等待。
-- **异步排队**（`POST /tasks`）：不做提交前健康门控。MinerU 任务队列为无界 `asyncio.Queue`——提交始终返回 202，信号量（`_request_semaphore`）仅限制并发处理数而非接受数。Gateway 通过按 Key 限流 + 全局并发上限（`max_concurrent_tasks`）提供背压，与 MinerU "总是接受" 的设计一致。
+- **同步门控**（`POST /v1/file_parse`）：提交前读上游 `/v1/health`，无空闲 slot 直接 503 + `Retry-After`（拒绝而非排队）。同步端点霸占 HTTP 连接并立即消耗信号量位，饱和时快速失败避免客户端无谓等待。
+- **异步排队**（`POST /v1/tasks`）：不做提交前健康门控。MinerU 任务队列为无界 `asyncio.Queue`——提交始终返回 202，信号量（`_request_semaphore`）仅限制并发处理数而非接受数。Gateway 通过按 Key 限流 + 全局并发上限（`max_concurrent_tasks`）提供背压，与 MinerU "总是接受" 的设计一致。
 - 按 Key 限流、全局并发上限、单文件大小限制。
 
 ### 3.5 部署：单实例单 worker 起步
@@ -81,7 +81,7 @@ mineru-gateway 是位于客户端与 mineru-api / mineru-router 之间的**网�
 ### MVP（见 `specs/mvp-implementation.md`）
 
 - API Key 管理（Admin Token 签发/吊销）
-- 透明代理：`POST /file_parse`（同步）、`POST /tasks`（异步）、`GET /tasks/{id}`、`GET /tasks/{id}/result`、`GET /health`
+- 透明代理：`POST /v1/file_parse`（同步）、`POST /v1/tasks`（异步）、`GET /v1/tasks/{id}`、`GET /v1/tasks/{id}/result`、`GET /v1/health`
 - 任务管理：列表、详情、取消
 - 容灾：持久化、状态同步、简单重提、清理
 - 保护：健康门控、内存限流、并发上限、文件大小限制

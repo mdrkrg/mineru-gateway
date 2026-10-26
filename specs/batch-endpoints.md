@@ -9,14 +9,14 @@
 > - `upstream.cancel_task(upstream_task_id)` — 向 MinerU 上游发送取消（best-effort，异常吞没）
 > - `require_api_key` — FastAPI 依赖项，从 `X-API-Key` 头提取并验证 API Key
 
-## 1. `POST /tasks/result-zip` — 多任务结果 zip 下载
+## 1. `POST /v1/tasks/result-zip` — 多任务结果 zip 下载
 
 流式返回一个 zip 包，内含所请求的多个 task 的最新结果。
 
 ### 1.1 请求
 
 ```http
-POST /tasks/result-zip
+POST /v1/tasks/result-zip
 X-API-Key: mru_AbCd1234...
 Content-Type: application/json
 
@@ -42,7 +42,7 @@ Content-Type: application/json
    - 须同时满足 `status IN ('completed', 'partial')` 且 `upstream_task_id IS NOT NULL`
    - 若任一 task 不符合 → **`409`**，响应体列出所有不合格 task 的 `task_id`、`status` 及 `reason`。
 5. **流式构建 zip**：维护内存中的 manifest 对象（`included`、`skipped` 列表），对校验通过的 task 逐条执行：
-   a. 请求上游 `GET /tasks/{upstream_task_id}/result`
+   a. 请求上游 `GET /v1/tasks/{upstream_task_id}/result`
    b. 若上游返回 `200`：将响应体作为 zip entry 写入流，同时在 manifest `.included` 中记录 `{"task_id", "entry"}`
    c. 若上游返回非 200 或抛出异常：**跳过此 task**，同时在 manifest `.skipped` 中记录 `{"task_id", "entry", "reason", "detail"}`（`reason: "upstream_error"`，`detail` 为实际 HTTP 状态码或异常信息）
    d. 全部 task 完成后，追加写入 `_manifest.json` 作为 zip 的最后一个 entry（见下方结构），然后关闭 zip 流
@@ -159,14 +159,14 @@ Key-A 创建 task-1。Key-B 提交 `{"task_ids": [task-1.id]}`。
 
 ---
 
-## 2. `POST /tasks/cancel` — 批量取消
+## 2. `POST /v1/tasks/cancel` — 批量取消
 
 取消一组 task 中所有处于 `pending` 状态的 task。
 
 ### 2.1 请求
 
 ```http
-POST /tasks/cancel
+POST /v1/tasks/cancel
 X-API-Key: mru_AbCd1234...
 Content-Type: application/json
 
@@ -235,9 +235,9 @@ Content-Type: application/json
 | `401` | 未提供有效 API Key | `{"detail": "API key required"}` |
 | `422` | `task_ids` 为空或 > 200 | FastAPI 自动校验的 ValidationError |
 
-### 2.4 与 `DELETE /tasks/{id}` 的一致性
+### 2.4 与 `DELETE /v1/tasks/{id}` 的一致性
 
-- 仅取消 `pending` 状态的 task。`processing` 或 `retry_pending` 不可取消——原因与 `DELETE /tasks/{id}` 相同。
+- 仅取消 `pending` 状态的 task。`processing` 或 `retry_pending` 不可取消——原因与 `DELETE /v1/tasks/{id}` 相同。
 - 上游取消请求为 best-effort（上游不可达时吞没异常，不影响本地状态变更）。
 - 取消后释放文件暂存目录、task 状态变为 `cancelled`。
 
@@ -264,7 +264,7 @@ Content-Type: application/json
 
 | 约束 | 说明 |
 |------|------|
-| 端点路径 | `POST /tasks/result-zip` 和 `POST /tasks/cancel` |
+| 端点路径 | `POST /v1/tasks/result-zip` 和 `POST /v1/tasks/cancel` |
 | 认证 | 请求须携带有效 `X-API-Key`；服务端对每个 `task_id` 校验所属权 |
 | 权限隔离 | `result-zip`：任一 `task_id` 不属于当前 Key → 整请求返回 `404`（防所有权探测泄露）。`cancel`：无权限的 task 在 `errors` 中记录 `not_found`，其他 task 照常处理 |
 | 数据模型 | 不引入新的数据库表、列或迁移 |
@@ -276,15 +276,15 @@ Content-Type: application/json
 ```
 # 1. 提交 N 个文件（已有 API）
 for file in files:
-    POST /tasks  (X-Idempotency-Key: batch-xxx-file-N)
+    POST /v1/tasks  (X-Idempotency-Key: batch-xxx-file-N)
     → 获得 task_id，存入本地列表
 
 # 2. 进度追踪（已有 API）
-轮询 GET /tasks/{task_id} 各 task status，前端本地聚合
+轮询 GET /v1/tasks/{task_id} 各 task status，前端本地聚合
 
 # 3. 下载选中结果（新端点）
-POST /tasks/result-zip  {"task_ids": [勾选的已完成 task IDs]}
+POST /v1/tasks/result-zip  {"task_ids": [勾选的已完成 task IDs]}
 
 # 4. 取消剩余 pending 任务（新端点）
-POST /tasks/cancel  {"task_ids": [尚为 pending 的 task IDs]}
+POST /v1/tasks/cancel  {"task_ids": [尚为 pending 的 task IDs]}
 ```

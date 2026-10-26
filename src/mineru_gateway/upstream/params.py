@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from typing import Any
 
@@ -25,6 +26,7 @@ VALID_OCR_MODES = frozenset({"auto", "txt", "ocr"})
 VALID_OUTPUT_FORMATS = frozenset(OutputFormat)
 VALID_RESPONSE_FORMATS = frozenset({"json", "zip"})
 MAX_TASK_FILES = 100
+_PAGE_RANGE_SEGMENT = re.compile(r"(r?[1-9][0-9]*)(?:\s*-\s*(r?[1-9][0-9]*))?")
 
 _BASE_FIELDS = frozenset({"tier", "ocr_mode", "page_range", "output_formats"})
 _SYNC_FIELDS = _BASE_FIELDS | {"response_format", "wait_timeout"}
@@ -62,6 +64,51 @@ def _wait_timeout(value: Any) -> int:
     return timeout
 
 
+def _page_range(value: Any) -> str:
+    raw = str(value).strip()
+    if raw == "all":
+        return raw
+
+    segments: list[tuple[int, int]] = []
+    for part in raw.split(","):
+        match = _PAGE_RANGE_SEGMENT.fullmatch(part.strip())
+        if match is None:
+            raise ValueError("invalid page_range")
+        try:
+            start = _page_endpoint(match[1])
+            end = _page_endpoint(match[2]) if match[2] else start
+        except ValueError:
+            raise ValueError("invalid page_range") from None
+        if (start > 0) == (end > 0) and start > end:
+            raise ValueError("invalid page_range")
+        segments.append((start, end))
+
+    if all(start > 0 and end > 0 for start, end in segments):
+        segments = _merge_page_ranges(segments)
+    return ",".join(_format_page_range(start, end) for start, end in segments)
+
+
+def _page_endpoint(value: str) -> int:
+    return -int(value[1:]) if value.startswith("r") else int(value)
+
+
+def _merge_page_ranges(segments: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(segments):
+        if merged and start <= merged[-1][1] + 1:
+            merged[-1] = (merged[-1][0], max(end, merged[-1][1]))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def _format_page_range(start: int, end: int) -> str:
+    def endpoint(value: int) -> str:
+        return str(value) if value > 0 else f"r{-value}"
+
+    return endpoint(start) if start == end else f"{endpoint(start)}-{endpoint(end)}"
+
+
 def parse_v1_params(
     data: dict[str, Any], *, sync: bool, include_zip: bool = False
 ) -> dict[str, Any]:
@@ -92,7 +139,7 @@ def parse_v1_params(
 
     page_range = data.get("page_range")
     if page_range is not None and str(page_range).strip():
-        params["page_range"] = str(page_range).strip()
+        params["page_range"] = _page_range(page_range)
 
     if sync:
         response_format = data.get("response_format")
@@ -105,10 +152,3 @@ def parse_v1_params(
             params["wait_timeout"] = _wait_timeout(data["wait_timeout"])
 
     return params
-
-
-def v1_files(
-    files: list[tuple[str, tuple[str, bytes, str]]],
-) -> list[tuple[str, tuple[str, bytes, str]]]:
-    """MinerU 4.0 only accepts multipart parts named ``files``."""
-    return [("files", payload) for _field, payload in files]

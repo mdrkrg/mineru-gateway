@@ -38,7 +38,7 @@ interface BodyReader {
 - `reader`：body 读取器，提供四种读取方法，**不在请求层调用**——由调用方或可组合解析器按需调用一次。
 - 同一 `RawResponse` 的 `reader` 方法**应**只调用一次（ky Response body 是 stream，二次读取会抛）。
 
-**为什么不在请求层解析**：`/tasks/{id}/result`、`/tasks/result-zip`、`/file_parse` 返回二进制或透传上游任意响应（`conventions.md` 前提 2）。若请求层硬编码 `.json()`，这些端点不可用。统一返回 `RawResponse` + 可组合解析器，让调用方按端点选择解析方式。
+**为什么不在请求层解析**：`/v1/tasks/{id}/result`、`/v1/tasks/result-zip`、`/v1/file_parse` 返回二进制或透传上游任意响应（`conventions.md` 前提 2）。若请求层硬编码 `.json()`，这些端点不可用。统一返回 `RawResponse` + 可组合解析器，让调用方按端点选择解析方式。
 
 ## 核心请求契约
 
@@ -98,7 +98,7 @@ interface BlobResult {
 断言：
 
 - 调用 `response.reader.blob()`。
-- 成功：`ok({ blob, status: response.status, headers: response.headers })`。**必须**保留 `headers`，因为 `/tasks/result-zip` 与 `/tasks/{id}/result` 的 `Content-Disposition` 携带文件名（`conventions.md` 前提 2）。
+- 成功：`ok({ blob, status: response.status, headers: response.headers })`。**必须**保留 `headers`，因为 `/v1/tasks/result-zip` 与 `/v1/tasks/{id}/result` 的 `Content-Disposition` 携带文件名（`conventions.md` 前提 2）。
 - blob 读取一般不抛；若抛，归为 `UnexpectedError`。
 
 ### ArrayBuffer 解析器
@@ -118,18 +118,18 @@ function passthrough(response: RawResponse): Result<RawResponse, ApiError<never>
 断言：
 
 - 不读 body，直接 `ok(response)`。
-- 用于 `/file_parse` 等透传端点：上游响应 shape 由上游定义，前端不校验、不解析，只把 `RawResponse` 交给调用方按需处理。
+- 用于 `/v1/file_parse` 等透传端点：上游响应 shape 由上游定义，前端不校验、不解析，只把 `RawResponse` 交给调用方按需处理。
 
 ### 解析器组合自由度
 
 调用方可以自由选择解析器，**不**被请求层强制。例如：
 
 - `/auth/jwt/login` → `parseJson` → `validateSuccess(TokenPairSchema)`
-- `/tasks/{id}/result` → `parseBlob`（直接用 blob）
-- `/tasks/result-zip` → `parseBlob`（成功）或 `parseJson` + `validateFailure({409: ...})`（失败时 body 是 JSON）
-- `/file_parse` → `passthrough`（交由调用方决定）
+- `/v1/tasks/{id}/result` → `parseBlob`（直接用 blob）
+- `/v1/tasks/result-zip` → `parseBlob`（成功）或 `parseJson` + `validateFailure({409: ...})`（失败时 body 是 JSON）
+- `/v1/file_parse` → `passthrough`（交由调用方决定）
 
-> `/tasks/result-zip` 的特殊性：成功（200）返回 ZIP（二进制），失败（409）返回 JSON。这要求组合方式支持"错误分支走 JSON 校验、成功分支走 blob"。`validation.md` 的 `validateFailure` 在 `ResultAsync` 的错误分支上工作，与成功分支的 `parseBlob` 互不干扰（见 [`validation.md` 组合契约](./validation.md#组合契约)）。
+> `/v1/tasks/result-zip` 的特殊性：成功（200）返回 ZIP（二进制），失败（409）返回 JSON。这要求组合方式支持"错误分支走 JSON 校验、成功分支走 blob"。`validation.md` 的 `validateFailure` 在 `ResultAsync` 的错误分支上工作，与成功分支的 `parseBlob` 互不干扰（见 [`validation.md` 组合契约](./validation.md#组合契约)）。
 
 ## ky 实例配置契约
 
@@ -192,7 +192,7 @@ hooks: {
 
 - `retry`：建议设为 `0` 或有限值（由实现决定），避免 ky 自身重试与 `afterResponse` retry 语义混淆。本 spec 不强制。
 - `timeout`：不约束具体值，但**必须**可配置（用于上传大文件时长超时）。
-- 上传场景（`POST /tasks`、`POST /file_parse`）：调用方通过 `options.body` 或 ky 的 `FormData` 传 multipart；本 spec 不规定上传构造方式，只要求 `options` 透传给 ky。
+- 上传场景（`POST /v1/tasks`、`POST /v1/file_parse`）：调用方通过 `options.body` 或 ky 的 `FormData` 传 multipart；本 spec 不规定上传构造方式，只要求 `options` 透传给 ky。
 
 ## 不变量清单（可测试断言）
 
@@ -200,8 +200,8 @@ hooks: {
 2. 4xx/5xx 响应（`throwHttpErrors: true` 默认）返回 `err(HttpError<status, data>)`；`data` 为 ky 预解析的 body（JSON 为 parsed 值，空 body 或解析失败为 `undefined`）。
 3. `NetworkError`/`TimeoutError`/`AbortError` → `NetworkError`，`error` 是 `Error` 实例。
 4. `options.signal` aborted → 结果为 `NetworkError`，`error.name === 'AbortError'`。
-5. `RawResponse.headers.get('x-mineru-task-id')` 在 `POST /tasks` 成功响应上返回非 null 字符串。
-6. `RawResponse.headers.get('content-disposition')` 在 `POST /tasks/result-zip` 成功响应上返回含 `filename="results.zip"` 的字符串。
+5. `RawResponse.headers.get('x-mineru-task-id')` 在 `POST /v1/tasks` 成功响应上返回非 null 字符串。
+6. `RawResponse.headers.get('content-disposition')` 在 `POST /v1/tasks/result-zip` 成功响应上返回含 `filename="results.zip"` 的字符串。
 7. ky 实例在创建时可通过 `ky.extend({ hooks: { beforeRequest: [...], afterResponse: [...] } })` 配置 hook；hook 在请求生命周期内由 ky 内部调用（hook 点可达）。
 8. 调用点的 `url` 是相对路径（无协议头），base 由 `prefix` 提供。
 9. `parseBlob` 返回的对象包含 `headers` 字段且其值等于 `RawResponse.headers`。

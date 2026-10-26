@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from mineru_gateway.upstream.params import parse_v1_params, v1_files
+from mineru_gateway.upstream.params import parse_v1_params
 
 
 def test_native_v1_options_are_preserved():
@@ -41,6 +41,29 @@ def test_repeated_and_comma_separated_output_formats_are_combined():
     assert params["output_formats"] == ["markdown", "middle_json", "zip"]
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("3,1-3,2", "1-3"),
+        (" 1 - 3 , r2 - r1 ", "1-3,r2-r1"),
+        ("3-r1", "3-r1"),
+        ("all", "all"),
+    ],
+)
+def test_page_range_uses_native_v1_normalization(value, expected):
+    params = parse_v1_params({"page_range": value}, sync=False)
+    assert params["page_range"] == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["0", "5-3", "r1-r5", "1~5", "all,1", "01", "+1"],
+)
+def test_invalid_page_ranges_are_rejected(value):
+    with pytest.raises(ValueError, match="page_range"):
+        parse_v1_params({"page_range": value}, sync=False)
+
+
 def test_sync_only_options_are_validated():
     params = parse_v1_params(
         {"response_format": "zip", "wait_timeout": "120"}, sync=True
@@ -63,7 +86,7 @@ def test_sync_only_options_are_validated():
         {"start_page_id": "0"},
     ],
 )
-def test_legacy_options_are_rejected(data):
+def test_unsupported_options_are_rejected(data):
     with pytest.raises(ValueError, match="unsupported parse option"):
         parse_v1_params(data, sync=False)
 
@@ -80,8 +103,3 @@ def test_unknown_native_values_are_rejected():
 def test_sync_options_are_rejected_for_async_tasks():
     with pytest.raises(ValueError, match="unsupported parse option"):
         parse_v1_params({"response_format": "zip"}, sync=False)
-
-
-def test_files_are_forwarded_under_the_v1_field_name():
-    files = [("upload", ("a.pdf", b"data", "application/pdf"))]
-    assert v1_files(files) == [("files", ("a.pdf", b"data", "application/pdf"))]

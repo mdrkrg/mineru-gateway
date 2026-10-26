@@ -13,7 +13,7 @@ An API-key gateway in front of **mineru-api / mineru-router**. It keeps the pars
 
 ## Features
 
-- **Transparent proxying** of `POST /file_parse` (sync) and `POST /tasks` (async), including task status, results, cancellation, and `GET /health`.
+- **Transparent proxying** of `POST /v1/file_parse` (sync) and `POST /v1/tasks` (async), including task status, results, cancellation, and `GET /v1/health`.
 - **API-key auth** for parsing endpoints, with an admin token for key management and opt-in anonymous passthrough.
 - **Task history** scoped per key, with list, detail, and result endpoints.
 - **Crash recovery**: interrupted tasks are resubmitted automatically.
@@ -45,7 +45,7 @@ curl -X POST http://localhost:8000/auth/keys \
 Submit an async task with the returned key:
 
 ```bash
-curl -X POST http://localhost:8000/tasks \
+curl -X POST http://localhost:8000/v1/tasks \
   -H "X-API-Key: mru_..." \
   -F "files=@document.pdf" \
   -F "tier=standard"
@@ -74,7 +74,7 @@ All settings use the `GATEWAY_` env prefix. The most important ones:
 |----------|---------|-------------|
 | `GATEWAY_UPSTREAM_URL` | `http://127.0.0.1:8002` | Upstream router/api address (MinerU 4.0, `/v1` API) |
 | `GATEWAY_UPSTREAM_API_KEY` | `""` | Bearer token when the upstream runs with `--api-key` |
-| `GATEWAY_UPSTREAM_TIMEOUT_READ` | `600` | Upstream read timeout for sync parse/result, seconds (`/tasks` uses 30s) |
+| `GATEWAY_UPSTREAM_TIMEOUT_READ` | `600` | Upstream read timeout for sync parse/result, seconds (`/v1/tasks` uses 30s) |
 | `GATEWAY_DATABASE_URL` | `sqlite+aiosqlite:///./gateway.db` | SQLite (default) or PostgreSQL |
 | `GATEWAY_ADMIN_TOKEN` | `change-me` | Token required to manage API keys — **set this** |
 | `GATEWAY_ALLOW_ANONYMOUS` | `false` | Allow keyless passthrough |

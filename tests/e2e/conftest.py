@@ -43,7 +43,7 @@ def _wait_ready(url: str, timeout: float = 15.0) -> None:
     last_err: str | None = None
     while time.monotonic() < deadline:
         try:
-            r = httpx.get(f"{url}/health", timeout=2)
+            r = httpx.get(f"{url}/v1/health", timeout=2)
             if r.status_code < 500:
                 return
             last_err = f"status {r.status_code}"
@@ -228,7 +228,7 @@ def _start_gateway(
         stderr=stderr_pipe,
     )
     try:
-        _wait_ready(f"{gateway_url}/health")
+        _wait_ready(f"{gateway_url}/v1/health")
     except Exception as exc:
         proc.terminate()
         try:

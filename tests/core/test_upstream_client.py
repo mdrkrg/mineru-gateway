@@ -90,7 +90,7 @@ async def test_default_probe_timeout_is_finite():
 
 
 async def test_submit_uses_a_short_read_timeout():
-    """`/tasks` queues and returns 202, so it must not inherit the parse timeout."""
+    """`/v1/tasks` queues and returns 202, so it must not inherit the parse timeout."""
     settings = Settings(
         admin_token="test",
         upstream_url="http://upstream.test",

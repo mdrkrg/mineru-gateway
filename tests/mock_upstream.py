@@ -39,7 +39,7 @@ class MockState:
     status: str = "healthy"
     version: str = "4.0.12"
     features: dict = field(default_factory=default_features)
-    health_raises: bool = False  # simulate upstream /health being unreachable
+    health_raises: bool = False  # simulate upstream /v1/health being unreachable
     submit_status: int = 202  # status code returned by POST /v1/tasks
     submit_malformed: bool = False  # return 202 without a task_id
     submit_raw_body: str | None = None  # return 202 with raw text body (non-JSON)

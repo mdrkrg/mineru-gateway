@@ -95,7 +95,7 @@ export async function setup(): Promise<void> {
     '--port', String(mockPort),
     '--host', '127.0.0.1',
   ], {});
-  await waitReady(`${mockUrl}/health`);
+  await waitReady(`${mockUrl}/v1/health`);
 
   smtpProc = await spawnProc('uv', [
     'run', 'python',
@@ -142,7 +142,7 @@ export async function setup(): Promise<void> {
     GATEWAY_RATE_LIMIT_PER_KEY: '10',
     GATEWAY_MAX_CONCURRENT_TASKS: '0',
   }, { cwd: gatewayTmpDir });
-  await waitReady(`${gatewayUrl}/health`);
+  await waitReady(`${gatewayUrl}/v1/health`);
 
   writeFileSync(URLS_FILE, JSON.stringify({
     mockUrl,

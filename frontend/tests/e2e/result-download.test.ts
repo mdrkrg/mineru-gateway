@@ -8,8 +8,8 @@
  * ("partial") propagate into the task record.
  *
  * Covered:
- *   GET  /tasks/{id}/result  -> 200 for a partially completed task
- *   POST /tasks/result-zip   -> 409 + non_downloadable reason "not_completed"
+ *   GET  /v1/tasks/{id}/result  -> 200 for a partially completed task
+ *   POST /v1/tasks/result-zip   -> 409 + non_downloadable reason "not_completed"
  *                               when a still-active task is mixed in
  *
  * The "missing_upstream_task_id" reason branch cannot be produced through the
@@ -57,7 +57,7 @@ async function waitReady(url: string, timeoutMs = 20_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const resp = await fetch(`${url}/health`);
+      const resp = await fetch(`${url}/v1/health`);
       if (resp.status < 500) return;
     } catch {
       // not ready yet
@@ -159,7 +159,7 @@ async function waitForResult(taskId: string): Promise<void> {
   }, { timeout: 10_000, interval: 200 }).toBe(true);
 }
 
-describe('GET /tasks/{id}/result (background sync)', () => {
+describe('GET /v1/tasks/{id}/result (background sync)', () => {
   it('serves a result once a partial task has synced', async () => {
     await mock.reset();
     await mock.setTaskStatus('running');
@@ -184,7 +184,7 @@ describe('GET /tasks/{id}/result (background sync)', () => {
   });
 });
 
-describe('POST /tasks/result-zip (partial results)', () => {
+describe('POST /v1/tasks/result-zip (partial results)', () => {
   it('rejects a batch containing a still-active task with not_completed', async () => {
     await mock.reset();
     await mock.setTaskStatus('running');

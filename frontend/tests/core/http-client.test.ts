@@ -237,7 +237,7 @@ describe('http-client: parseArrayBuffer', () => {
 describe('http-client: passthrough', () => {
   // Spec: http-client.md "Passthrough parser"
   // - does NOT read body, directly ok(response)
-  // - used for /file_parse etc. where upstream shape is arbitrary
+  // - used for /v1/file_parse etc. where upstream shape is arbitrary
 
   it('returns ok(RawResponse) without reading body', () => {
     const resp = mockRawResponse({ bodyJson: { any: 'thing' } });
@@ -472,7 +472,7 @@ describe('http-client: request() header accessibility', () => {
   // Spec: http-client.md invariant 5 & 6, behavior assertion 9
   // - RawResponse.headers must expose X-MinerU-Task-* and Content-Disposition
 
-  it('exposes X-MinerU-Task-* headers on POST /tasks success (invariant 5)', async () => {
+  it('exposes X-MinerU-Task-* headers on POST /v1/tasks success (invariant 5)', async () => {
     m.mockResolvedValueOnce(
       mockResponse(JSON.stringify({ task_id: 't1' }), {
         status: 202,
@@ -480,24 +480,26 @@ describe('http-client: request() header accessibility', () => {
           'Content-Type': 'application/json',
           'X-MinerU-Task-Id': 't1',
           'X-MinerU-Task-Status': 'pending',
-          'X-MinerU-Task-Status-Url': 'http://gw/tasks/t1',
-          'X-MinerU-Task-Result-Url': 'http://gw/tasks/t1/result',
+          'X-MinerU-Task-Status-Url': 'http://gw/v1/tasks/t1',
+          'X-MinerU-Task-Result-Url': 'http://gw/v1/tasks/t1/result',
         },
       }),
     );
-    const result = await request('tasks', { method: 'POST' });
+    const result = await request('v1/tasks', { method: 'POST' });
     expect(result.isOk()).toBe(true);
     if (result.isOk()) {
       expect(result.value.headers.get('x-mineru-task-id')).toBe('t1');
       expect(result.value.headers.get('x-mineru-task-status')).toBe('pending');
-      expect(result.value.headers.get('x-mineru-task-status-url')).toBe('http://gw/tasks/t1');
+      expect(result.value.headers.get('x-mineru-task-status-url')).toBe(
+        'http://gw/v1/tasks/t1',
+      );
       expect(result.value.headers.get('x-mineru-task-result-url')).toBe(
-        'http://gw/tasks/t1/result',
+        'http://gw/v1/tasks/t1/result',
       );
     }
   });
 
-  it('exposes Content-Disposition on POST /tasks/result-zip success (invariant 6)', async () => {
+  it('exposes Content-Disposition on POST /v1/tasks/result-zip success (invariant 6)', async () => {
     m.mockResolvedValueOnce(
       new Response(new Blob(['zip']), {
         status: 200,
@@ -507,7 +509,7 @@ describe('http-client: request() header accessibility', () => {
         },
       }),
     );
-    const result = await request('tasks/result-zip', { method: 'POST' });
+    const result = await request('v1/tasks/result-zip', { method: 'POST' });
     expect(result.isOk()).toBe(true);
     if (result.isOk()) {
       const cd = result.value.headers.get('content-disposition');
@@ -815,4 +817,3 @@ describe('http-client: registerAuthHooks', () => {
     });
   });
 });
-

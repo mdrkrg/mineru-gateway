@@ -72,8 +72,8 @@ async def test_disabled_user_auth_admin_keys_route_works(no_auth_client, admin_h
 
 
 async def test_disabled_user_auth_health_route_works(no_auth_client):
-    """Section 9.8: USER_AUTH_ENABLED=false -> /health works normally."""
-    resp = await no_auth_client.get("/health")
+    """Section 9.8: USER_AUTH_ENABLED=false -> /v1/health works normally."""
+    resp = await no_auth_client.get("/v1/health")
     assert resp.status_code == 200
 
 
@@ -88,7 +88,7 @@ async def test_disabled_user_auth_business_routes_work(
     raw_key = key_resp.json()["api_key"]
 
     task_resp = await no_auth_client.post(
-        "/tasks", headers={"X-API-Key": raw_key}, files=sample_files
+        "/v1/tasks", headers={"X-API-Key": raw_key}, files=sample_files
     )
     assert task_resp.status_code == 202
 
@@ -154,7 +154,9 @@ async def test_auth_keys_revoke_unchanged(client, admin_headers, sample_files):
     raw_key = created.json()["api_key"]
 
     # Key works before revocation
-    ok = await client.post("/tasks", headers={"X-API-Key": raw_key}, files=sample_files)
+    ok = await client.post(
+        "/v1/tasks", headers={"X-API-Key": raw_key}, files=sample_files
+    )
     assert ok.status_code == 202
 
     # Revoke
@@ -163,7 +165,7 @@ async def test_auth_keys_revoke_unchanged(client, admin_headers, sample_files):
 
     # Key rejected after revocation
     denied = await client.post(
-        "/tasks", headers={"X-API-Key": raw_key}, files=sample_files
+        "/v1/tasks", headers={"X-API-Key": raw_key}, files=sample_files
     )
     assert denied.status_code == 401
 
@@ -209,7 +211,7 @@ async def test_admin_can_revoke_user_created_key(
 
     # Key no longer works
     denied = await client.post(
-        "/tasks", headers={"X-API-Key": raw_key}, files=sample_files
+        "/v1/tasks", headers={"X-API-Key": raw_key}, files=sample_files
     )
     assert denied.status_code == 401
 
@@ -224,7 +226,7 @@ async def test_business_endpoints_work_with_admin_key(
     raw_key = key_resp.json()["api_key"]
 
     resp = await client.post(
-        "/tasks", headers={"X-API-Key": raw_key}, files=sample_files
+        "/v1/tasks", headers={"X-API-Key": raw_key}, files=sample_files
     )
     assert resp.status_code == 202
 
@@ -232,14 +234,14 @@ async def test_business_endpoints_work_with_admin_key(
 async def test_file_parse_endpoint_works_with_admin_key(
     client, admin_headers, sample_files
 ):
-    """Section 9.9 / 4.6: POST /file_parse behavior unchanged."""
+    """Section 9.9 / 4.6: POST /v1/file_parse behavior unchanged."""
     key_resp = await client.post(
         "/auth/keys", json={"label": "parse-key"}, headers=admin_headers
     )
     raw_key = key_resp.json()["api_key"]
 
     resp = await client.post(
-        "/file_parse", headers={"X-API-Key": raw_key}, files=sample_files
+        "/v1/file_parse", headers={"X-API-Key": raw_key}, files=sample_files
     )
     # file_parse is synchronous; status depends on mock upstream
     assert resp.status_code in (200, 202)
@@ -255,14 +257,14 @@ async def test_business_endpoints_work_with_user_key(
     raw_key = key_resp.json()["api_key"]
 
     resp = await client.post(
-        "/tasks", headers={"X-API-Key": raw_key}, files=sample_files
+        "/v1/tasks", headers={"X-API-Key": raw_key}, files=sample_files
     )
     assert resp.status_code == 202
 
 
 async def test_health_route_unchanged(client):
-    """Section 9.9 / 4.6: GET /health behavior unchanged."""
-    resp = await client.get("/health")
+    """Section 9.9 / 4.6: GET /v1/health behavior unchanged."""
+    resp = await client.get("/v1/health")
     assert resp.status_code == 200
 
 

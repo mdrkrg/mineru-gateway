@@ -246,14 +246,14 @@ async def test_revoke_my_key_without_jwt_returns_401(client):
 
 
 async def test_user_created_key_works_for_tasks(client, user_headers, sample_files):
-    """Section 9.6 / 6.2: key created via /me/api-keys works for POST /tasks."""
+    """Section 9.6 / 6.2: key created via /me/api-keys works for POST /v1/tasks."""
     created = await client.post(
         "/me/api-keys", headers=user_headers, json={"label": "task-key"}
     )
     raw_key = created.json()["api_key"]
 
     resp = await client.post(
-        "/tasks", headers={"X-API-Key": raw_key}, files=sample_files
+        "/v1/tasks", headers={"X-API-Key": raw_key}, files=sample_files
     )
     assert resp.status_code == 202
 
