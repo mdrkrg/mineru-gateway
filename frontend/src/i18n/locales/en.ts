@@ -86,43 +86,15 @@ export const en = {
   'status.processing': 'Processing',
   'status.retry_pending': 'Retry Pending',
   'status.completed': 'Completed',
+  'status.partial': 'Partially Completed',
   'status.failed': 'Failed',
   'status.cancelled': 'Cancelled',
 
-  // MinerU backend options (upload page, task list/detail)
-  'mineruBackend.label.pipeline': 'OCR recognition',
-  'mineruBackend.label.vlm-engine': 'Vision model recognition',
-  'mineruBackend.label.hybrid-engine': 'Hybrid recognition',
-
-  // MinerU language options (upload page)
-  'mineruLang.label.ch': 'Chinese',
-  'mineruLang.label.ch_server': 'Chinese (server)',
-  'mineruLang.label.korean': 'Korean',
-  'mineruLang.label.ta': 'Tamil',
-  'mineruLang.label.te': 'Telugu',
-  'mineruLang.label.ka': 'Kannada',
-  'mineruLang.label.th': 'Thai',
-  'mineruLang.label.el': 'Greek',
-  'mineruLang.label.arabic': 'Arabic script',
-  'mineruLang.label.east_slavic': 'East Slavic',
-  'mineruLang.label.cyrillic': 'Cyrillic script',
-  'mineruLang.label.devanagari': 'Devanagari script',
-  'mineruLang.coverage.ch': 'Chinese, English, Japanese, Traditional Chinese, Latin',
-  'mineruLang.coverage.ch_server':
-    'Chinese, English, Japanese, Traditional Chinese, Latin (higher accuracy / more resources)',
-  'mineruLang.coverage.korean': 'Korean, English',
-  'mineruLang.coverage.ta': 'Tamil, English',
-  'mineruLang.coverage.te': 'Telugu, English',
-  'mineruLang.coverage.ka': 'Kannada',
-  'mineruLang.coverage.th': 'Thai, English',
-  'mineruLang.coverage.el': 'Greek, English',
-  'mineruLang.coverage.arabic':
-    'Arabic, Persian, Uyghur, Urdu, Pashto, Kurdish, Sindhi, Balochi, English',
-  'mineruLang.coverage.east_slavic': 'Russian, Belarusian, Ukrainian, English',
-  'mineruLang.coverage.cyrillic':
-    'Russian, Belarusian, Ukrainian, Serbian, Bulgarian, Mongolian, Kazakh, Kyrgyz, Tajik and 30+ other Cyrillic-script languages, English',
-  'mineruLang.coverage.devanagari':
-    'Hindi, Marathi, Nepali, Bihari, Maithili, Sanskrit and 14 other Devanagari-script languages, English',
+  // MinerU 4.0 quality tiers
+  'mineruTier.label.flash': 'Flash',
+  'mineruTier.label.basic': 'Basic',
+  'mineruTier.label.standard': 'Standard',
+  'mineruTier.label.advanced': 'Advanced',
 
   // Upload page
   'upload.fileSection': 'Files',
@@ -132,16 +104,8 @@ export const en = {
   'upload.fileCount': '({{count}} files)',
   'upload.viewDetail': 'View task detail →',
   'upload.optionsSection': 'Parse Options',
-  'upload.backend': 'Backend',
-  'upload.parseMethod': 'Parse Method',
-  'upload.effort': 'Effort',
-  'upload.language': 'Languages (multi-select)',
-  'upload.langTableOption': 'Option',
-  'upload.langTableCoverage': 'Covered Languages',
-  'upload.formula': 'Formula recognition',
-  'upload.table': 'Table recognition',
-  'upload.imageAnalysis': 'Image analysis',
-  'upload.zipDownload': 'Download as Zip',
+  'upload.tier': 'Quality Tier',
+  'upload.ocrMode': 'OCR Mode',
   'upload.submit': 'Submit task ({{count}} files)',
   'upload.sizeSummary': '{{count}} files · {{size}} / limit {{limit}}',
   'upload.submitting': 'Submitting…',
@@ -157,7 +121,7 @@ export const en = {
   'tasks.empty': 'No tasks match the filters.',
   'tasks.thTaskId': 'Task ID',
   'tasks.thStatus': 'Status',
-  'tasks.thBackend': 'Backend',
+  'tasks.thTier': 'Tier',
   'tasks.thFiles': 'Files',
   'tasks.thCreatedAt': 'Created At',
   'tasks.thRetries': 'Retries',
@@ -178,7 +142,7 @@ export const en = {
   // Task detail
   'taskDetail.back': 'Back to tasks',
   'taskDetail.title': 'Task',
-  'taskDetail.backend': 'Backend',
+  'taskDetail.tier': 'Tier',
   'taskDetail.fileCount': 'Files',
   'taskDetail.retries': 'Retries',
   'taskDetail.createdAt': 'Created At',
@@ -191,11 +155,11 @@ export const en = {
   'taskDetail.cancel': 'Cancel Task',
   'taskDetail.download': 'Download Result',
   'taskDetail.confirmCancel': 'Cancel this task?',
-  'taskDetail.partialResultHint': 'The task failed. You can try downloading partial results.',
+  'taskDetail.partialResultHint': 'Some files failed; successfully parsed files are available.',
 
   // Result download page
   'download.description':
-    'All downloadable tasks are listed here (including partial results of failed tasks). Download them one by one, or select several and download them as a ZIP.',
+    'All completed and partially completed tasks are listed here. Download them one by one, or select several and download them as a ZIP.',
   'download.pack': 'Download ZIP ({{count}})',
   'download.empty': 'No tasks with downloadable results yet.',
   'download.thTaskId': 'Task ID',

@@ -72,7 +72,7 @@ tests/e2e/          # e2e tests against running gateway + mock upstream
 | Directory | Purpose |
 |-----------|---------|
 | `functions/` | `auth.ts` (login, refreshToken, logout, register, getCurrentUser), `health.ts` (getHealth), `tasks.ts` (submitTask, parseFile, listTasks, getTaskStats, getTaskDetail, cancelTask, getTaskResult, downloadResultZip, batchCancelTasks) |
-| `schemas/` | `auth.ts`, `health.ts`, `tasks.ts`, `shared.ts` (ErrorDetailSchema), `mineru-options.ts` (MineruBackend/MineruLanguage/MineruEffort/MineruParseMethod enums with arktype schemas, `ParseRequestFields` typed form builder, `createParseFormData()`) |
+| `schemas/` | `auth.ts`, `health.ts`, `tasks.ts`, `shared.ts` (ErrorDetailSchema), `mineru-options.ts` (MinerU 4.0 tier/OCR/output-format schemas, `ParseRequestFields`, `createParseFormData()`) |
 
 ### `stores/` - global state
 
@@ -123,8 +123,8 @@ tests/e2e/          # e2e tests against running gateway + mock upstream
 - **Tests run in node environment** (`vitest.config.ts`), ky is mocked per test file
   via `tests/core/ky-mock.ts`.
 - **Task submission uses `ParseRequestFields`**, not raw `FormData`. Build form data
-  via `createParseFormData(fields)` - `backend`, `lang_list`, `effort`, and
-  `parse_method` are restricted to their MinerU enum values at type level.
+  via `createParseFormData(fields)` - `tier`, `ocr_mode`, and `output_formats`
+  are restricted to their MinerU 4.0 enum values at type level.
 - **TanStack Router routes are file-based.** Add pages under `src/routes/`.
 
 ## Where things live when adding a feature

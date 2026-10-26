@@ -7,7 +7,7 @@ import type { TaskDetail } from '@/api/schemas/tasks';
 import NoActiveKey from '@/components/NoActiveKey';
 import StatusBadge from '@/components/StatusBadge';
 import { t } from '@/i18n';
-import { mineruBackendLabel } from '@/i18n/labels';
+import { taskTierLabel } from '@/i18n/labels';
 import { useApiKey } from '@/stores/api-key-context';
 import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
@@ -203,7 +203,9 @@ function TaskDetailPage() {
                   </div>
 
                   <dl {...stylex.attrs(styles.fields)}>
-                    <Field label={t('taskDetail.backend')}>{mineruBackendLabel(task().backend)}</Field>
+                    <Field label={t('taskDetail.tier')}>
+                      {taskTierLabel(task().tier)}
+                    </Field>
                     <Field label={t('taskDetail.fileCount')}>{task().fileCount}</Field>
                     <Field label={t('taskDetail.retries')}>{task().retryCount}</Field>
                     <Field label={t('taskDetail.createdAt')}>{formatDateTime(task().createdAt)}</Field>
@@ -241,7 +243,7 @@ function TaskDetailPage() {
                   </Show>
                 </div>
 
-                <Show when={task().status === 'failed' && task().hasResult}>
+                <Show when={task().status === 'partial' && task().hasResult}>
                   <p {...stylex.attrs(controls.alert, controls.alertWarning)}>
                     {t('taskDetail.partialResultHint')}
                   </p>

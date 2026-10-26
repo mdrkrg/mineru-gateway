@@ -7,14 +7,11 @@ export const HealthResponseSchema = defineResponseSchema(
     upstream: {
       status: 'string',
       version: 'string | null',
-      protocol_version: 'number | null',
-      max_concurrent_requests: 'number',
-      queued_tasks: 'number',
-      processing_tasks: 'number',
-      completed_tasks: 'number',
-      failed_tasks: 'number',
-      processing_window_size: 'number | null',
-      free_slots: 'number',
+      features: {
+        webhook: 'boolean',
+        output_formats: 'string[]',
+        sources: 'string[]',
+      },
     },
   },
   {} as {
@@ -23,14 +20,11 @@ export const HealthResponseSchema = defineResponseSchema(
     upstream: {
       status: string;
       version: string | null;
-      protocolVersion: number | null;
-      maxConcurrentRequests: number;
-      queuedTasks: number;
-      processingTasks: number;
-      completedTasks: number;
-      failedTasks: number;
-      processingWindowSize: number | null;
-      freeSlots: number;
+      features: {
+        webhook: boolean;
+        outputFormats: string[];
+        sources: string[];
+      };
     };
   },
 );

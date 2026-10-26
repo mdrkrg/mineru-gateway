@@ -44,10 +44,9 @@ describe('GET /health', () => {
     const up = result.value.upstream;
     expect(up.status).toBe('healthy');
     expect(up.version).toBeTruthy();
-    expect(up.freeSlots).toBeGreaterThanOrEqual(0);
-    expect(up.maxConcurrentRequests).toBeGreaterThan(0);
-    expect(typeof up.queuedTasks).toBe('number');
-    expect(typeof up.processingTasks).toBe('number');
+    expect(up.features.webhook).toBe(false);
+    expect(up.features.outputFormats).toContain('markdown');
+    expect(Array.isArray(up.features.sources)).toBe(true);
   });
 
   it('returns degraded 503 when upstream is unhealthy but reachable', async () => {
@@ -83,6 +82,6 @@ describe('GET /health', () => {
     const body = result.error.data;
     expect(body.gateway).toBe('healthy');
     expect(body.status).toBe('degraded');
-    expect(body.upstream.status).toBe('unknown');
+    expect(body.upstream.status).toBe('degraded');
   });
 });

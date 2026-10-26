@@ -1,8 +1,8 @@
 import { type } from 'arktype';
 import { defineResponseSchema, defineRequestSchema } from '@/core/conventions';
-import type { MineruBackend } from '@/api/schemas/mineru-options';
+import type { MineruTier } from '@/api/schemas/mineru-options';
 
-const BACKEND_DEF = "'pipeline' | 'vlm-engine' | 'hybrid-engine' | 'vlm-http-client' | 'hybrid-http-client'" as const;
+const TIER_DEF = "'flash' | 'basic' | 'standard' | 'advanced' | null" as const;
 
 // ===== Task status type =====
 
@@ -11,6 +11,7 @@ export type TaskStatus =
   | 'processing'
   | 'retry_pending'
   | 'completed'
+  | 'partial'
   | 'failed'
   | 'cancelled';
 
@@ -20,7 +21,7 @@ export const TaskSubmitResponseSchema = defineResponseSchema(
   {
     task_id: 'string',
     status: 'string',
-    backend: BACKEND_DEF,
+    tier: TIER_DEF,
     file_names: 'string[]',
     created_at: 'string',
     status_url: 'string',
@@ -33,7 +34,7 @@ export const TaskSubmitResponseSchema = defineResponseSchema(
   {} as {
     taskId: string;
     status: string;
-    backend: MineruBackend;
+    tier: MineruTier | null;
     fileNames: string[];
     createdAt: string;
     statusUrl: string;
@@ -51,7 +52,7 @@ export const TaskListItemSchema = defineResponseSchema(
   {
     task_id: 'string',
     status: 'string',
-    backend: BACKEND_DEF,
+    tier: TIER_DEF,
     file_names: 'string[]',
     created_at: 'string',
     started_at: 'string | null',
@@ -64,7 +65,7 @@ export const TaskListItemSchema = defineResponseSchema(
   {} as {
     taskId: string;
     status: string;
-    backend: MineruBackend;
+    tier: MineruTier | null;
     fileNames: string[];
     createdAt: string;
     startedAt: string | null;
@@ -81,7 +82,7 @@ export const TaskListResponseSchema = defineResponseSchema(
     items: type({
       task_id: 'string',
       status: 'string',
-      backend: BACKEND_DEF,
+      tier: TIER_DEF,
       file_names: 'string[]',
       created_at: 'string',
       started_at: 'string | null',
@@ -99,7 +100,7 @@ export const TaskListResponseSchema = defineResponseSchema(
     items: {
       taskId: string;
       status: string;
-      backend: MineruBackend;
+      tier: MineruTier | null;
       fileNames: string[];
       createdAt: string;
       startedAt: string | null;
@@ -121,7 +122,7 @@ export const TaskDetailSchema = defineResponseSchema(
   {
     task_id: 'string',
     status: 'string',
-    backend: BACKEND_DEF,
+    tier: TIER_DEF,
     file_names: 'string[]',
     file_count: 'number',
     created_at: 'string',
@@ -135,7 +136,7 @@ export const TaskDetailSchema = defineResponseSchema(
   {} as {
     taskId: string;
     status: string;
-    backend: MineruBackend;
+    tier: MineruTier | null;
     fileNames: string[];
     fileCount: number;
     createdAt: string;
@@ -171,6 +172,7 @@ export const TaskStatsResponseSchema = defineResponseSchema(
     processing: 'number',
     retry_pending: 'number',
     completed: 'number',
+    partial: 'number',
     failed: 'number',
     cancelled: 'number',
     today_completed: 'number',
@@ -183,6 +185,7 @@ export const TaskStatsResponseSchema = defineResponseSchema(
     processing: number;
     retryPending: number;
     completed: number;
+    partial: number;
     failed: number;
     cancelled: number;
     todayCompleted: number;

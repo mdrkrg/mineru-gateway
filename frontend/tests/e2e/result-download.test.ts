@@ -5,10 +5,10 @@
  * GATEWAY_ENABLE_BACKGROUND=false, so tasks stay pending and never grow a
  * downloadable result.  These tests start a second, purpose-built gateway
  * whose status-sync loop runs every 0.5s so that mock upstream transitions
- * ("failed") propagate into the task record.
+ * ("partial") propagate into the task record.
  *
  * Covered:
- *   GET  /tasks/{id}/result  -> 200 for a failed task with a (partial) result
+ *   GET  /tasks/{id}/result  -> 200 for a partially completed task
  *   POST /tasks/result-zip   -> 409 + non_downloadable reason "not_completed"
  *                               when a still-active task is mixed in
  *
@@ -160,18 +160,18 @@ async function waitForResult(taskId: string): Promise<void> {
 }
 
 describe('GET /tasks/{id}/result (background sync)', () => {
-  it('serves a partial result once a failed task has synced', async () => {
+  it('serves a result once a partial task has synced', async () => {
     await mock.reset();
     await mock.setTaskStatus('running');
     const taskId = await submit();
 
-    await mock.setTaskStatus('failed');
+    await mock.setTaskStatus('partial');
     await waitForResult(taskId);
 
     const detail = await getTaskDetail(taskId, apiKey);
     expect(detail.isOk()).toBe(true);
     if (!detail.isOk()) return;
-    expect(detail.value.status).toBe('failed');
+    expect(detail.value.status).toBe('partial');
     expect(detail.value.hasResult).toBe(true);
 
     const listed = await listTasks({ apiKey, hasResult: true });
@@ -189,15 +189,15 @@ describe('POST /tasks/result-zip (partial results)', () => {
     await mock.reset();
     await mock.setTaskStatus('running');
 
-    const failedId = await submit();
-    await mock.setTaskStatus('failed');
-    await waitForResult(failedId);
+    const partialId = await submit();
+    await mock.setTaskStatus('partial');
+    await waitForResult(partialId);
 
     // Keep the mock non-terminal so the second task never grows a result.
     await mock.setTaskStatus('running');
     const activeId = await submit();
 
-    const zip = await downloadResultZip([failedId, activeId], apiKey);
+    const zip = await downloadResultZip([partialId, activeId], apiKey);
     expect(zip.isErr()).toBe(true);
     if (!zip.isErr()) return;
     expect(isHttpError(zip.error)).toBe(true);
@@ -210,7 +210,7 @@ describe('POST /tasks/result-zip (partial results)', () => {
     const rejected = data.nonDownloadable.find((i) => i.taskId === activeId);
     expect(rejected).toBeTruthy();
     expect(rejected?.reason).toBe('not_completed');
-    // The failed task itself is downloadable and must not be flagged.
-    expect(data.nonDownloadable.some((i) => i.taskId === failedId)).toBe(false);
+    // The partial task itself is downloadable and must not be flagged.
+    expect(data.nonDownloadable.some((i) => i.taskId === partialId)).toBe(false);
   });
 });

@@ -7,7 +7,7 @@ import NoActiveKey from '@/components/NoActiveKey';
 import Pagination from '@/components/Pagination';
 import StatusBadge from '@/components/StatusBadge';
 import { t } from '@/i18n';
-import { taskStatusLabel, mineruBackendLabel } from '@/i18n/labels';
+import { taskStatusLabel, taskTierLabel } from '@/i18n/labels';
 import { useApiKey } from '@/stores/api-key-context';
 import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
@@ -303,7 +303,7 @@ function TaskListPage() {
                     </th>
                     <th {...stylex.attrs(table.th)}>{t('tasks.thTaskId')}</th>
                     <th {...stylex.attrs(table.th)}>{t('tasks.thStatus')}</th>
-                    <th {...stylex.attrs(table.th)}>{t('tasks.thBackend')}</th>
+                    <th {...stylex.attrs(table.th)}>{t('tasks.thTier')}</th>
                     <th {...stylex.attrs(table.th)}>{t('tasks.thFiles')}</th>
                     <th {...stylex.attrs(table.th)}>{t('tasks.thCreatedAt')}</th>
                     <th {...stylex.attrs(table.th)}>{t('tasks.thRetries')}</th>
@@ -341,7 +341,7 @@ function TaskListPage() {
                           <StatusBadge status={task.status} />
                         </td>
                         <td {...stylex.attrs(table.td, typography.meta)}>
-                          {mineruBackendLabel(task.backend)}
+                          {taskTierLabel(task.tier)}
                         </td>
                         <td
                           {...stylex.attrs(table.truncate, table.truncateNarrow)}

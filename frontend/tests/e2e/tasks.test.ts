@@ -73,7 +73,7 @@ describe('POST /tasks (submit)', () => {
     const body = result.value;
     expect(body.taskId).toBeTruthy();
     expect(body.status).toBe('pending');
-    expect(body.backend).toBeTruthy();
+    expect(body.tier).toBe('standard');
     expect(body.fileNames.length).toBeGreaterThanOrEqual(1);
     expect(body.statusUrl).toContain('/tasks/');
     expect(body.resultUrl).toContain('/result');
@@ -143,9 +143,12 @@ describe('POST /file_parse (sync parse)', () => {
     if (!result.isOk()) return;
 
     // parseFile returns RawResponse; read the body as JSON.
-    const body = await result.value.reader.json();
-    expect(body).toHaveProperty('markdown');
-    expect(body).toHaveProperty('status', 'completed');
+    const body = (await result.value.reader.json()) as {
+      status: string;
+      files: { content: Record<string, unknown> }[];
+    };
+    expect(body.files[0].content).toHaveProperty('markdown');
+    expect(body.status).toBe('completed');
   });
 });
 
@@ -222,7 +225,7 @@ describe('GET /tasks/{id} (detail)', () => {
     expect(result.value.taskId).toBe(taskId);
     expect(result.value.status).toBe('pending');
     expect(result.value.fileCount).toBeGreaterThanOrEqual(1);
-    expect(result.value.backend).toBeTruthy();
+    expect(result.value.tier).toBe('standard');
     expect(result.value.retryCount).toBe(0);
     expect(result.value.hasResult).toBe(false);
   });

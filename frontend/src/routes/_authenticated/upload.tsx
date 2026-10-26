@@ -1,22 +1,18 @@
 import * as stylex from '@stylexjs/stylex';
 import { For, Show, createSignal } from 'solid-js';
 import { Link, createFileRoute } from '@tanstack/solid-router';
-import { FileUp, CircleQuestionMark, X } from 'lucide-solid';
+import { FileUp, X } from 'lucide-solid';
 import { submitTask } from '@/api/functions/tasks';
 import type { TaskSubmitResponse } from '@/api/schemas/tasks';
 import {
-  MINERU_EFFORTS,
-  MINERU_LANGUAGES,
-  MINERU_PARSE_METHODS,
-  MINERU_SERVER_BACKENDS,
-  type ServerOnlyMineruBackend,
-  type MineruEffort,
-  type MineruLanguage,
-  type MineruParseMethod,
+  MINERU_OCR_MODES,
+  MINERU_TIERS,
+  type MineruOcrMode,
+  type MineruTier,
 } from '@/api/schemas/mineru-options';
 import NoActiveKey from '@/components/NoActiveKey';
 import { t } from '@/i18n';
-import { mineruBackendLabel, mineruLanguageCoverage, mineruLanguageLabel } from '@/i18n/labels';
+import { mineruTierLabel } from '@/i18n/labels';
 import { useApiKey } from '@/stores/api-key-context';
 import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
@@ -27,10 +23,9 @@ import { validateUploadSize } from '@/utils/upload';
 import { env } from '@/env';
 import { controls } from '@/styles/controls.stylex';
 import { feedback } from '@/styles/feedback.stylex';
-import { forms } from '@/styles/forms.stylex';
 import { icons } from '@/styles/icons.stylex';
 import { layout } from '@/styles/layout.stylex';
-import { breakpoint, colors, radius, shadow, space } from '@/styles/tokens.stylex';
+import { breakpoint, colors, radius, space } from '@/styles/tokens.stylex';
 import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/upload')({
@@ -94,99 +89,15 @@ const styles = stylex.create({
     display: 'grid',
     gridTemplateColumns: {
       default: 'repeat(1, minmax(0, 1fr))',
-      [breakpoint.sm]: 'repeat(3, minmax(0, 1fr))',
+      [breakpoint.sm]: 'repeat(2, minmax(0, 1fr))',
     },
     gap: space.px16,
-  },
-  languageHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: space.px6,
-    marginBottom: space.px8,
-  },
-  tooltipHost: {
-    position: 'relative',
-    display: 'inline-flex',
-    cursor: 'help',
-  },
-  tooltip: {
-    position: 'absolute',
-    bottom: '100%',
-    left: '50%',
-    translate: '-50% 0',
-    marginBottom: space.px8,
-    zIndex: 10,
-    display: {
-      default: 'none',
-      [stylex.when.ancestor(':hover')]: 'block',
-    },
-  },
-  languageList: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    columnGap: space.px16,
-    rowGap: space.px6,
-  },
-  optionsRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    columnGap: space.px24,
-    rowGap: space.px6,
   },
   submit: {
     alignSelf: 'flex-start',
     paddingInline: space.px24,
   },
-  codeTable: {
-    backgroundColor: colors.gray900,
-    color: colors.white,
-    borderRadius: radius.px8,
-    boxShadow: shadow.lg,
-    padding: space.px12,
-    width: space.px320,
-  },
-  codeTableTh: {
-    textAlign: 'left',
-    paddingInlineEnd: space.px8,
-    paddingBlock: space.px2,
-  },
-  codeTableThLast: {
-    textAlign: 'left',
-    paddingBlock: space.px2,
-  },
-  codeTableTd: {
-    paddingInlineEnd: space.px8,
-    paddingBlock: space.px2,
-    whiteSpace: 'nowrap',
-    verticalAlign: 'top',
-  },
-  codeTableTdLast: {
-    paddingBlock: space.px2,
-  },
 });
-
-function LanguageCodeTable() {
-  return (
-    <div {...stylex.attrs(typography.meta, styles.codeTable)}>
-      <table {...stylex.attrs(layout.fullWidth)}>
-        <thead>
-          <tr {...stylex.attrs(typography.faint)}>
-            <th {...stylex.attrs(styles.codeTableTh)}>{t('upload.langTableOption')}</th>
-            <th {...stylex.attrs(styles.codeTableThLast)}>{t('upload.langTableCoverage')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {MINERU_LANGUAGES.map((lang) => (
-            <tr>
-              <td {...stylex.attrs(styles.codeTableTd)}>{mineruLanguageLabel(lang)}</td>
-              <td {...stylex.attrs(styles.codeTableTdLast)}>{mineruLanguageCoverage(lang)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 function UploadPage() {
   const apiKeyStore = useApiKey();
@@ -194,14 +105,8 @@ function UploadPage() {
 
   const [files, setFiles] = createSignal<File[]>([]);
   const [isDragging, setIsDragging] = createSignal(false);
-  const [backend, setBackend] = createSignal<ServerOnlyMineruBackend>('hybrid-engine');
-  const [langList, setLangList] = createSignal<Set<MineruLanguage>>(new Set(['ch']));
-  const [effort, setEffort] = createSignal<MineruEffort>('medium');
-  const [parseMethod, setParseMethod] = createSignal<MineruParseMethod>('auto');
-  const [formulaEnable, setFormulaEnable] = createSignal(true);
-  const [tableEnable, setTableEnable] = createSignal(true);
-  const [imageAnalysis, setImageAnalysis] = createSignal(false);
-  const [responseZip, setResponseZip] = createSignal(true);
+  const [tier, setTier] = createSignal<MineruTier>('standard');
+  const [ocrMode, setOcrMode] = createSignal<MineruOcrMode>('auto');
 
   const [isSubmitting, setIsSubmitting] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
@@ -267,14 +172,6 @@ function UploadPage() {
     setter(value);
   }
 
-  function toggleLang(lang: MineruLanguage, checked: boolean) {
-    const next = new Set(langList());
-    if (checked) next.add(lang);
-    else next.delete(lang);
-    resetSubmissionKey();
-    setLangList(next);
-  }
-
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
     const key = apiKeyStore.activeKey();
@@ -304,15 +201,9 @@ function UploadPage() {
         idempotencyKey,
         parseFields: {
           files: files(),
-          backend: backend(),
-          langList: [...langList()],
-          effort: effort(),
-          parseMethod: parseMethod(),
-          formulaEnable: formulaEnable(),
-          tableEnable: tableEnable(),
-          imageAnalysis: imageAnalysis(),
-          returnImages: true,
-          responseFormat: responseZip() ? 'zip' : 'json',
+          tier: tier(),
+          ocrMode: ocrMode(),
+          outputFormats: ['markdown', 'zip'],
         },
       });
 
@@ -430,113 +321,30 @@ function UploadPage() {
 
             <div {...stylex.attrs(styles.optionsGrid)}>
               <label {...stylex.attrs(controls.field)}>
-                <span {...stylex.attrs(controls.fieldLabel)}>{t('upload.backend')}</span>
+                <span {...stylex.attrs(controls.fieldLabel)}>{t('upload.tier')}</span>
                 <select
-                  value={backend()}
-                  onChange={(e) =>
-                    updateOption(
-                      setBackend,
-                      e.currentTarget.value as ServerOnlyMineruBackend,
-                    )
-                  }
+                  value={tier()}
+                  onChange={(e) => updateOption(setTier, e.currentTarget.value as MineruTier)}
                   {...stylex.attrs(controls.input)}
                 >
-                  <For each={MINERU_SERVER_BACKENDS}>
-                    {(b) => <option value={b}>{mineruBackendLabel(b)}</option>}
+                  <For each={MINERU_TIERS}>
+                    {(value) => <option value={value}>{mineruTierLabel(value)}</option>}
                   </For>
                 </select>
               </label>
               <label {...stylex.attrs(controls.field)}>
-                <span {...stylex.attrs(controls.fieldLabel)}>{t('upload.parseMethod')}</span>
+                <span {...stylex.attrs(controls.fieldLabel)}>{t('upload.ocrMode')}</span>
                 <select
-                  value={parseMethod()}
+                  value={ocrMode()}
                   onChange={(e) =>
-                    updateOption(
-                      setParseMethod,
-                      e.currentTarget.value as MineruParseMethod,
-                    )
+                    updateOption(setOcrMode, e.currentTarget.value as MineruOcrMode)
                   }
                   {...stylex.attrs(controls.input)}
                 >
-                  <For each={MINERU_PARSE_METHODS}>
-                    {(m) => <option value={m}>{m}</option>}
+                  <For each={MINERU_OCR_MODES}>
+                    {(value) => <option value={value}>{value}</option>}
                   </For>
                 </select>
-              </label>
-              <label {...stylex.attrs(controls.field)}>
-                <span {...stylex.attrs(controls.fieldLabel)}>{t('upload.effort')}</span>
-                <select
-                  value={effort()}
-                  onChange={(e) =>
-                    updateOption(setEffort, e.currentTarget.value as MineruEffort)
-                  }
-                  {...stylex.attrs(controls.input)}
-                >
-                  <For each={MINERU_EFFORTS}>
-                    {(ef) => <option value={ef}>{ef}</option>}
-                  </For>
-                </select>
-              </label>
-            </div>
-
-            <div>
-              <div {...stylex.attrs(controls.fieldLabel, styles.languageHeader)}>
-                {t('upload.language')}
-                <div {...stylex.attrs(styles.tooltipHost, stylex.defaultMarker())}>
-                  <CircleQuestionMark class={stylex.attrs(icons.sm, typography.faint).class} />
-                  <div {...stylex.attrs(styles.tooltip)}>
-                    <LanguageCodeTable />
-                  </div>
-                </div>
-              </div>
-              <div {...stylex.attrs(styles.languageList)}>
-                <For each={MINERU_LANGUAGES}>
-                  {(lang) => (
-                    <label {...stylex.attrs(forms.checkboxLabel)}>
-                      <input
-                        type="checkbox"
-                        checked={langList().has(lang)}
-                        onChange={(e) => toggleLang(lang, e.currentTarget.checked)}
-                      />
-                      {mineruLanguageLabel(lang)}
-                    </label>
-                  )}
-                </For>
-              </div>
-            </div>
-
-            <div {...stylex.attrs(styles.optionsRow)}>
-              <label {...stylex.attrs(forms.checkboxLabel)}>
-                <input
-                  type="checkbox"
-                  checked={formulaEnable()}
-                  onChange={(e) => updateOption(setFormulaEnable, e.currentTarget.checked)}
-                />
-                {t('upload.formula')}
-              </label>
-              <label {...stylex.attrs(forms.checkboxLabel)}>
-                <input
-                  type="checkbox"
-                  checked={tableEnable()}
-                  onChange={(e) => updateOption(setTableEnable, e.currentTarget.checked)}
-                />
-                {t('upload.table')}
-              </label>
-              <label {...stylex.attrs(forms.checkboxLabel)}>
-                <input
-                  type="checkbox"
-                  checked={imageAnalysis()}
-                  onChange={(e) => updateOption(setImageAnalysis, e.currentTarget.checked)}
-                />
-                {t('upload.imageAnalysis')}
-              </label>
-              <label {...stylex.attrs(forms.checkboxLabel)}>
-                <input
-                  type="checkbox"
-                  checked={responseZip()}
-                  onChange={(e) => updateOption(setResponseZip, e.currentTarget.checked)}
-                />
-                {t('upload.zipDownload')}
               </label>
             </div>
           </section>
@@ -544,7 +352,12 @@ function UploadPage() {
           <button
             type="submit"
             disabled={isSubmitting() || files().length === 0}
-            {...stylex.attrs(controls.button, controls.buttonPrimary, controls.buttonLarge, styles.submit)}
+            {...stylex.attrs(
+              controls.button,
+              controls.buttonPrimary,
+              controls.buttonLarge,
+              styles.submit,
+            )}
           >
             {isSubmitting()
               ? t('upload.submitting')

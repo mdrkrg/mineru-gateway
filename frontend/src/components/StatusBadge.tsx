@@ -9,6 +9,7 @@ const STATUS_STYLES: Record<TaskStatus, stylex.StyleXStyles> = {
   processing: badges.blue,
   retry_pending: badges.retryPending,
   completed: badges.green,
+  partial: badges.retryPending,
   failed: badges.failed,
   cancelled: badges.gray,
 };

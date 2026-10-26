@@ -25,6 +25,7 @@ export const TASK_STATUSES: readonly TaskStatus[] = [
   'processing',
   'retry_pending',
   'completed',
+  'partial',
   'failed',
   'cancelled',
 ];

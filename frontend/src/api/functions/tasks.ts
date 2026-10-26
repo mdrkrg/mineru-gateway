@@ -3,7 +3,7 @@ import type { ApiError, HttpError } from '@/core/error-model';
 import { fetchAndValidate, fetchBinaryAndValidate, validateRequest, validateSuccess } from '@/core/validation';
 import { request, parseJson, parseBlob, passthrough } from '@/core/http-client';
 import type { BlobResult, RawResponse } from '@/core/http-client';
-import type { MineruBackend, ParseRequestFields } from '@/api/schemas/mineru-options';
+import type { MineruTier, ParseRequestFields } from '@/api/schemas/mineru-options';
 import { createParseFormData } from '@/api/schemas/mineru-options';
 import { ErrorDetailSchema } from '@/api/schemas/shared';
 import {
@@ -90,7 +90,7 @@ export function parseFile(
 export interface TaskListParams {
   apiKey: string;
   status?: string;
-  backend?: MineruBackend;
+  tier?: MineruTier;
   fileName?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -108,7 +108,7 @@ export function listTasks(
 > {
   const searchParams = new URLSearchParams();
   if (params.status) searchParams.set('status', params.status);
-  if (params.backend) searchParams.set('backend', params.backend);
+  if (params.tier) searchParams.set('tier', params.tier);
   if (params.fileName) searchParams.set('file_name', params.fileName);
   if (params.dateFrom) searchParams.set('date_from', params.dateFrom);
   if (params.dateTo) searchParams.set('date_to', params.dateTo);
