@@ -60,8 +60,9 @@ export const en = {
   'errors.requestFailed': 'Request failed (HTTP {{status}})',
 
   // Client-side upload pre-check (utils/upload.ts)
-  'errors.uploadOversizedFiles': 'These files exceed the {{limit}} per-upload limit: {{names}}',
+  'errors.uploadOversizedFiles': 'These files exceed the {{limit}} per-file limit: {{names}}',
   'errors.uploadOversizedTotal': 'Selected files total {{size}}, over the {{limit}} per-upload limit.',
+  'errors.uploadTooManyFiles': 'Selected {{count}} files; at most {{limit}} files are allowed.',
 
   // Root route (__root.tsx)
   'root.notFound': '404 - Page Not Found',

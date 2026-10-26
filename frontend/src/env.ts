@@ -22,13 +22,18 @@ interface AppEnv {
    * gateway remains the source of truth.
    */
   readonly maxUploadSizeBytes: number;
+  /** MinerU-compatible maximum bytes for each individual file. */
+  readonly maxFileSizeBytes: number;
 }
 
 /** Gateway default for `GATEWAY_MAX_UPLOAD_SIZE` (500 MB). */
 const DEFAULT_MAX_UPLOAD_SIZE_BYTES = 500 * 1024 * 1024;
+/** MinerU 4.0's fixed per-file limit (200 MiB). */
+const DEFAULT_MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024;
 
 function readEnv(): AppEnv {
   const rawMaxUpload = Number(import.meta.env.VITE_MAX_UPLOAD_SIZE);
+  const rawMaxFile = Number(import.meta.env.VITE_MAX_FILE_SIZE);
   return {
     apiPrefix: import.meta.env.VITE_API_PREFIX ?? '',
     dev: import.meta.env.DEV === true,
@@ -37,6 +42,10 @@ function readEnv(): AppEnv {
       Number.isFinite(rawMaxUpload) && rawMaxUpload > 0
         ? rawMaxUpload
         : DEFAULT_MAX_UPLOAD_SIZE_BYTES,
+    maxFileSizeBytes:
+      Number.isFinite(rawMaxFile) && rawMaxFile > 0
+        ? rawMaxFile
+        : DEFAULT_MAX_FILE_SIZE_BYTES,
   };
 }
 

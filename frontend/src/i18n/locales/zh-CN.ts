@@ -63,8 +63,9 @@ export const zhCN: Dict = {
   'errors.requestFailed': '请求失败（HTTP {{status}}）',
 
   // Client-side upload pre-check (utils/upload.ts)
-  'errors.uploadOversizedFiles': '以下文件超过单次上传上限 {{limit}}：{{names}}',
+  'errors.uploadOversizedFiles': '以下文件超过单文件上限 {{limit}}：{{names}}',
   'errors.uploadOversizedTotal': '所选文件共 {{size}}，超过单次上传上限 {{limit}}。',
+  'errors.uploadTooManyFiles': '已选择 {{count}} 个文件，最多允许 {{limit}} 个。',
 
   // Root route (__root.tsx)
   'root.notFound': '404 - 页面不存在',
