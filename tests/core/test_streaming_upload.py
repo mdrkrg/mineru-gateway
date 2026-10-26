@@ -1,7 +1,7 @@
 """Streaming multipart upload tests for POST /v1/tasks.
 
-Spec: streaming-upload.md sec 6 (Test Scenarios).
-Labels T1-T15 map to spec sections S1-S15.
+Spec: streaming-upload.md sec 6 (Test Scenarios). Core tests follow the
+numbered scenarios; additional tests cover metadata and cache-writer edges.
 """
 
 from __future__ import annotations
@@ -381,10 +381,8 @@ async def test_t4_anonymous_submit(tmp_path):
 #
 # The streaming multipart parser must process the body via request.stream()
 # in bounded chunks rather than loading the entire body with request.form().
-# This behavioural test mocks request.form() to raise and verifies the
-# streaming parser never calls it.  The stub delegates to _extract_multipart
-# which calls request.form(), so this test FAILS with the stub and PASSES
-# once the real streaming parser is implemented.
+# This behavioral test mocks request.form() to raise and verifies the
+# streaming parser never calls it.
 # ---------------------------------------------------------------------------
 
 
@@ -460,6 +458,153 @@ async def test_streaming_parser_accumulates_fragmented_headers(tmp_path):
             ("fragmented.pdf", b"fragmented-file-data", "application/pdf"),
         )
     ]
+
+
+async def test_streaming_parser_rejects_oversized_part_header(tmp_path):
+    from fastapi import HTTPException
+
+    from mineru_gateway.proxy.handler import _extract_multipart_streaming
+    from mineru_gateway.tasks.cache import FileCache
+
+    boundary = b"oversized-header"
+    filename = b"a" * (17 * 1024)
+    body = b"".join(
+        [
+            b"--" + boundary + b"\r\n",
+            b'Content-Disposition: form-data; name="files"; filename="',
+            filename,
+            b'"\r\nContent-Type: application/pdf\r\n\r\ndata\r\n',
+            b"--" + boundary + b"--\r\n",
+        ]
+    )
+    cache_base = tmp_path / "oversized-header-cache"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _extract_multipart_streaming(
+            _chunked_request(boundary, [body]),
+            100_000,
+            100_000,
+            FileCache(str(cache_base)),
+        )
+
+    assert exc_info.value.status_code == 413
+    assert _count_cache_dirs(str(cache_base)) == 0
+
+
+async def test_streaming_parser_rejects_too_many_part_headers(tmp_path):
+    from fastapi import HTTPException
+
+    from mineru_gateway.proxy.handler import _extract_multipart_streaming
+    from mineru_gateway.tasks.cache import FileCache
+
+    boundary = b"many-headers"
+    headers = [
+        b'Content-Disposition: form-data; name="files"; filename="file.pdf"\r\n',
+        *(f"X-Metadata-{index}: value\r\n".encode() for index in range(32)),
+    ]
+    body = b"".join(
+        [
+            b"--" + boundary + b"\r\n",
+            *headers,
+            b"\r\ndata\r\n",
+            b"--" + boundary + b"--\r\n",
+        ]
+    )
+    cache_base = tmp_path / "many-headers-cache"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _extract_multipart_streaming(
+            _chunked_request(boundary, [body]),
+            100_000,
+            100_000,
+            FileCache(str(cache_base)),
+        )
+
+    assert exc_info.value.status_code == 413
+    assert _count_cache_dirs(str(cache_base)) == 0
+
+
+async def test_streaming_parser_rejects_oversized_boundary_without_orphan(tmp_path):
+    from fastapi import HTTPException
+
+    from mineru_gateway.proxy.handler import _extract_multipart_streaming
+    from mineru_gateway.tasks.cache import FileCache
+
+    boundary = b"x" * 257
+    cache_base = tmp_path / "oversized-boundary-cache"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _extract_multipart_streaming(
+            _chunked_request(boundary, []),
+            100_000,
+            100_000,
+            FileCache(str(cache_base)),
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Malformed multipart body"
+    assert _count_cache_dirs(str(cache_base)) == 0
+
+
+async def test_streaming_parser_limits_empty_form_parts(tmp_path):
+    from fastapi import HTTPException
+
+    from mineru_gateway.proxy.handler import _extract_multipart_streaming
+    from mineru_gateway.tasks.cache import FileCache
+
+    boundary = b"many-fields"
+    parts = []
+    for index in range(101):
+        parts.extend(
+            [
+                b"--" + boundary + b"\r\n",
+                f'Content-Disposition: form-data; name="field-{index}"\r\n\r\n'.encode(),
+                b"\r\n",
+            ]
+        )
+    parts.append(b"--" + boundary + b"--\r\n")
+    cache_base = tmp_path / "many-fields-cache"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _extract_multipart_streaming(
+            _chunked_request(boundary, [b"".join(parts)]),
+            100_000,
+            100_000,
+            FileCache(str(cache_base)),
+        )
+
+    assert exc_info.value.status_code == 413
+    assert _count_cache_dirs(str(cache_base)) == 0
+
+
+async def test_streaming_parser_rejects_empty_file(tmp_path):
+    from fastapi import HTTPException
+
+    from mineru_gateway.proxy.handler import _extract_multipart_streaming
+    from mineru_gateway.tasks.cache import FileCache
+
+    boundary = b"empty-file"
+    body = b"".join(
+        [
+            b"--" + boundary + b"\r\n",
+            b'Content-Disposition: form-data; name="files"; filename="empty.pdf"\r\n',
+            b"Content-Type: application/pdf\r\n\r\n",
+            b"\r\n--" + boundary + b"--\r\n",
+        ]
+    )
+    cache_base = tmp_path / "empty-file-cache"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _extract_multipart_streaming(
+            _chunked_request(boundary, [body]),
+            100_000,
+            100_000,
+            FileCache(str(cache_base)),
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Empty files are not supported"
+    assert _count_cache_dirs(str(cache_base)) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -725,65 +870,35 @@ async def test_t10_upstream_rejection_cleans_cache(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# T12 -- Idempotency hit does not read request body
+# T12 -- Idempotency hit skips multipart body parsing
 # spec: streaming-upload.md sec 6.4 S12
-#
-# When an existing idempotency key is replayed, the server must return
-# 202 + X-Idempotency-Key-Replayed without reading the multipart body.
-# This test verifies that no file bytes are written to a cache directory
-# for the replay request.
 # ---------------------------------------------------------------------------
 
 
-async def test_t12_idempotent_replay_does_not_read_body(client, api_key):
+async def test_t12_idempotent_replay_skips_body_parsing(client, api_key):
     idem_key = "t12-no-body-key"
     headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
 
-    # First request: normal submission
     resp1 = await client.post("/v1/tasks", headers=headers, files=_example_files())
     assert resp1.status_code == 202
     assert "X-Idempotency-Key-Replayed" not in resp1.headers
 
-    # Count cache directories after first request
     cache_base = client._transport.app.state.settings.file_cache_dir
+    max_size = client._transport.app.state.settings.max_upload_size
     dir_count_after_first = _count_cache_dirs(cache_base)
 
-    # Second request with same key: replay without reading body
-    large_file = [("files", ("huge.bin", b"x" * 50_000, "application/octet-stream"))]
-    resp2 = await client.post("/v1/tasks", headers=headers, files=large_file)
+    oversized = [
+        (
+            "files",
+            ("oversized.bin", b"x" * (max_size + 100), "application/octet-stream"),
+        )
+    ]
+    resp2 = await client.post("/v1/tasks", headers=headers, files=oversized)
     assert resp2.status_code == 202
     assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
-
-    # No new cache directory should be created for the replay
-    dir_count_after_replay = _count_cache_dirs(cache_base)
-    assert dir_count_after_replay == dir_count_after_first, (
-        f"cache dirs changed from {dir_count_after_first} to {dir_count_after_replay}; "
-        f"replay should not create cache"
-    )
-
-
-# ---------------------------------------------------------------------------
-# T13 -- Idempotency hit not rejected by upload size limit
-# spec: streaming-upload.md sec 6.4 S13
-# ---------------------------------------------------------------------------
-
-
-async def test_t13_idempotent_replay_skips_size_check(client, api_key):
-    idem_key = "t13-size-key"
-    headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
-    max_size = client._transport.app.state.settings.max_upload_size
-
-    # First request: normal submission (must fit within the small test limit)
-    resp1 = await client.post("/v1/tasks", headers=headers, files=_example_files())
-    assert resp1.status_code == 202
-
-    # Second request: same key, file exceeds max_upload_size
-    over_limit = b"z" * (max_size + 100)
-    files = [("files", ("oversized.bin", over_limit, "application/octet-stream"))]
-    resp2 = await client.post("/v1/tasks", headers=headers, files=files)
-    assert resp2.status_code == 202, f"expected 202 (replay), got {resp2.status_code}"
-    assert resp2.headers.get("X-Idempotency-Key-Replayed") == "true"
     assert resp1.json()["task_id"] == resp2.json()["task_id"]
+
+    assert _count_cache_dirs(cache_base) == dir_count_after_first
 
 
 # ---------------------------------------------------------------------------
@@ -814,29 +929,6 @@ async def test_t14_restore_streaming_cache(tmp_path):
     assert files[0][1] == ("a.pdf", b"hello", "application/pdf")
     assert files[1][0] == "files"
     assert files[1][1] == ("b.txt", b"world", "text/plain")
-
-
-# ---------------------------------------------------------------------------
-# T15 -- file_parse uses native V1 options through the buffered parser
-# spec: streaming-upload.md sec 6.6 S15
-# ---------------------------------------------------------------------------
-
-
-async def test_t15_file_parse_unchanged(client, api_key):
-    from sqlalchemy import func, select
-
-    resp = await client.post(
-        "/v1/file_parse",
-        headers={"X-API-Key": api_key},
-        files=_example_files(),
-        data={"tier": "basic"},
-    )
-    assert resp.status_code == 200
-    assert resp.json()["files"][0]["content"]["markdown"] == "# parsed"
-
-    async with client._transport.app.state.db.session_factory() as session:
-        count = await session.scalar(select(func.count()).select_from(TaskRecord))
-        assert count == 1
 
 
 # ---------------------------------------------------------------------------

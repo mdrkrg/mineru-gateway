@@ -1,22 +1,22 @@
 # 流式上传 实现规约
 
 > 基于 `specs/mvp-implementation.md`（提交流程、FileCache）、`specs/idempotent-submission.md`（幂等提交行为）。
-> 本规约定义 `POST /v1/tasks` 端点的流式 multipart 上传行为，消除当前实现中大文件提交的内存双缓冲问题。
+> 本规约定义 `POST /v1/tasks` 端点的流式 multipart 上传行为，避免接收大文件时在内存中完整缓冲。
 
 ## 0. 目标与非目标
 
 ### 目标
 
-1. `POST /v1/tasks` 端点在上传阶段（接收客户端 multipart body）的内存占用量与单个文件大小解耦：任意大小的文件均以固定窗口大小的 chunk 为单位流式处理，不会因文件大小增长而线性增长内存。
+1. `POST /v1/tasks` 端点在上传阶段（接收客户端 multipart body）的内存上限由解析 chunk 和 metadata 限额决定，与单个文件大小解耦。
 2. 上传大小检查从「完整读取后判断」改为「文件字节实时累计」：单文件超过 `max_file_size` 或文件总量超过 `max_upload_size` 时，立即中止流并返回 413。
-3. 流式处理与现有幂等提交、限流、全局并发检查的交互行为定义清晰，不引入状态不一致。
-4. FileCache 的磁盘暂存行为与 crash recovery（retry 循环）保持兼容：retry 循环从磁盘恢复文件并重提的路径不受影响。
-5. `POST /v1/file_parse` 端点的 `_extract_multipart` 行为不受影响（继续使用现有的全量缓冲方式）。
+3. 明确流式处理与幂等提交、限流和全局并发检查的执行顺序及清理责任。
+4. FileCache 生成可由 crash recovery（retry 循环）恢复并重提的磁盘缓存。
 
 ### 非目标
 
 - 匿名请求的端到端内存优化：匿名提交（`api_key is None`）从客户端接收 body 时使用流式解析（内存占用同样 bounded），但转发到上游时仍使用全量读取（与当前行为一致）。匿名路径不是大文件流量的主要入口。
 - 上游转发的内存优化：认证提交在流式缓存到磁盘后，使用现有 buffered 方式从磁盘读取并转发到上游。本规约解决的是「网关接收上传」阶段的内存问题；「网关转发」阶段的内存优化留待后续（见 §1 决策理由）。
+- `POST /v1/file_parse` 使用 `request.form()` 全量缓冲，属于独立的同步解析流程。
 - `POST /v1/tasks/result-zip` 和 `GET /v1/tasks/{id}/result` 的流式改造：属 A10 流式下载规约范围。
 - 磁盘配额检查（B2）：属独立特性，不在此规约中定义。
 
@@ -35,11 +35,11 @@
 
 ## 1. 核心行为变更
 
-以下行为变更仅针对 `POST /v1/tasks` 端点的 `handle_task_submission` 中与 multipart 解析相关的部分。幂等检查、限流、全局并发检查、TaskRecord 创建、响应生成等步骤的行为**不变**。
+本节定义 `POST /v1/tasks` 的 multipart 解析；认证、幂等、限流、并发检查和 TaskRecord 创建的执行顺序见 §1.3–1.4。
 
 ### 1.1 函数变更：新增 `_extract_multipart_streaming`
 
-现有的 `_extract_multipart` 函数**保留不变**（继续被 `handle_file_parse` 使用）。`handle_task_submission` 改用新增的流式解析函数：
+`_extract_multipart` 服务于 `handle_file_parse`；`handle_task_submission` 使用新增的流式解析函数：
 
 ```
 _extract_multipart_streaming(request, max_upload_size, max_file_size, cache)
@@ -52,22 +52,25 @@ _extract_multipart_streaming(request, max_upload_size, max_file_size, cache)
 |--------|--------|--------|
 | 解析方式 | `request.form()` 全量加载到内存 | 流式 multipart parser，每次处理一个 chunk |
 | 文件内容存储 | `UploadFile.read()` 为 `bytes` 对象，全部驻留内存 | 以 chunk 为单位写入 FileCache 磁盘目录，不在内存中累积 |
-| 表单字段存储 | 作为 `dict` value 驻留内存 | 同左（form 字段数据量小，不变） |
+| 表单字段存储 | 作为 `dict` value 驻留内存 | 作为 `dict` value 驻留内存 |
 | 大小检查时机 | 每个文件完整读取后检查单文件及累计文件字节 | 每个文件 chunk 到达时检查 `max_file_size` 与累计 `max_upload_size` |
 | 超限后行为 | 已完整读取，抛出 413（body 已全在内存） | 立即停止解析、关闭流、返回 413；未完成的缓存目录被清理 |
 | 返回值 | `(data: dict, files: Files, file_names: list[str], total_bytes: int)` | `(data: dict, cache_dir: str, file_names: list[str], total_bytes: int)` |
 | 返回的 `files` | 文件内容为 `bytes` | 不再返回文件字节列表；文件已在 `cache_dir` 下 |
 
-**不变的部分**：
+**返回值契约**：
 
-- `data` dict 中 form 字段的 key/value 对与变更前完全一致。
-- `file_names` 列表的顺序和内容与变更前完全一致（来自 multipart 各 part 的 `filename` 字段）。
-- `total_bytes` 的最终值（所有文件累计字节）与变更前完全一致。
+- `data` 保存普通 form 字段；可重复的 `output_formats` 按出现顺序累积。
+- `file_names` 按 multipart 文件 part 的出现顺序保存 `filename`。
+- `total_bytes` 为所有文件内容的累计字节数。
 
 > **注意**：`total_bytes` 与 `max_upload_size` 都只统计文件内容，不统计 multipart
 > framing 或普通表单字段。普通字段另设 **1 MiB** 累计上限；每任务另限
-> **100 个文件**。
-- 布尔字段转换（`_coerce`）、`_extract_parse_params` 对 data dict 的处理完全不变——它们只读取 `data`，不依赖 `files`。
+> **100 个文件**。为避免零字节字段和超长 part header 绕过字节限制，解析器
+> 还限制 **100 个普通字段**、每 part **32 个 header**、单 header **16 KiB**，
+> 且 multipart part 总数不超过文件与普通字段上限之和；零字节文件返回 400。
+
+- `parse_v1_params` 从 `data` 构造并验证 MinerU V1 query 参数。
 
 ### 1.2 后续流程适应性变更
 
@@ -81,16 +84,12 @@ _extract_multipart_streaming(request, max_upload_size, max_file_size, cache)
 
 - 文件同样通过流式解析写入临时 `cache_dir`，但转发到上游后该目录被立即清理（`cache.release(cache_dir)`），不创建 TaskRecord，不保留缓存。
 
-### 1.3 不变的行为
+### 1.3 流程约束
 
-以下步骤在流式改造后**完全不变**：
-
-- 步骤 1（认证门控）：`require_api_key` 解析 `X-API-Key`，行为不变。
-- 步骤 2（幂等检查）：在流式解析**之前**执行。命中时返回 202 + 重构响应，跳过所有后续步骤包括 multipart body 读取——**与当前行为完全一致**。
-- 步骤 3（速率限制）：`limiter.acquire` 在幂等检查之后、流式解析之前执行。行为不变。
-- 步骤 6（全局并发检查）：`count_in_flight` 在流式解析之后、上游转发之前执行。行为不变。
-- 步骤 8（TaskRecord 创建）：`task_service.create` 的参数和返回值不变，响应体 JSON 结构和响应头不变。数据库 schema 不变。
-- `handle_file_parse`：完全不变——继续使用现有的 `_extract_multipart`（全量缓冲方式）。
+- 认证、幂等预检查和速率限制在读取 multipart body 前执行。
+- 全局并发检查在解析后、转发上游前执行。
+- `TaskRecord` 创建使用解析出的文件元数据、缓存目录和 V1 参数。
+- `handle_file_parse` 继续使用 `_extract_multipart` 全量缓冲。
 
 ### 1.4 处理步骤概览（变更后）
 
@@ -105,11 +104,11 @@ _extract_multipart_streaming(request, max_upload_size, max_file_size, cache)
      如果 命中:
          从已有记录重构响应（status 始终为 "pending"）
          附加 X-Idempotency-Key-Replayed: true
-         返回 202                           ← 终止，不读取 body（不变）
+         返回 202                           ← 终止，不读取 body
 
 3. 如果 是认证请求:
      按 key 扣减令牌桶
-      如果 无可用令牌 → 返回 429 Retry-After: 60（不变）
+      如果 无可用令牌 → 返回 429 Retry-After: 60
 
 4. 流式解析 multipart body:                          ← 变更
      - 遍历客户端字节流，每个 part 按 chunk 读取
@@ -133,7 +132,7 @@ _extract_multipart_streaming(request, max_upload_size, max_file_size, cache)
       返回上游响应                              ← 终止
 
 6. 统计当前 in-flight 任务数
-   如果 达到全局并发上限 → 返回 503 Retry-After: 10（不变）
+   如果 达到全局并发上限 → 返回 503 Retry-After: 10
 
 7. 从磁盘缓存目录读取文件
    转发 multipart 到上游
@@ -147,7 +146,7 @@ _extract_multipart_streaming(request, max_upload_size, max_file_size, cache)
    如果 唯一约束冲突（并发 idempotency_key）:
        回滚当前事务
        删除磁盘缓存目录
-       重新查询命中记录 → 按步骤 2 的命中逻辑返回 202 + X-Idempotency-Key-Replayed（不变）
+       重新查询命中记录 → 按步骤 2 的命中逻辑返回 202 + X-Idempotency-Key-Replayed
 ```
 
 ## 2. FileCache 契约变更
@@ -174,16 +173,16 @@ create_streaming_cache() → CacheWriter
 
 **调用约束**：任一 `CacheWriter` 实例上，`finish()` 和 `cancel()` 最多调用一次，且二者互斥。调用其中任一个后，该实例不再允许追加写入。
 
-**不变的方法**：
+**兼容接口**：
 
 - `store(data, files) → str` — 将已缓冲文件写入缓存；`/v1/file_parse` 返回 202 时用于把同步上传转为可恢复任务。
-- `restore(cache_dir) → (data, files)` — 完全不变。从磁盘 blobs 读取文件字节到内存，返回 `(data, Files)`。retry 循环依赖此方法。
-- `release(cache_dir)` — 完全不变。删除缓存目录。
-- `exists(cache_dir) → bool` — 完全不变。
+- `restore(cache_dir) → (data, files)` — 从磁盘 blobs 读取文件字节到内存，返回 `(data, Files)`；retry 循环依赖此方法。
+- `release(cache_dir)` — 删除缓存目录。
+- `exists(cache_dir) → bool` — 检查缓存目录是否存在。
 
 ### 2.2 缓存目录布局
 
-不变。流式写入产生的目录结构与变更前一致：
+`CacheWriter` 产生以下目录结构：
 
 ```
 <base_dir>/<uuid>/
@@ -192,7 +191,7 @@ create_streaming_cache() → CacheWriter
     blob-0, blob-1 ... # 原始文件字节
 ```
 
-唯一的差异：`blob-N` 文件在流式写入时以追加方式逐 chunk 增长，而非一次性 `write(content)`。对 `restore()` 而言，读取行为——从 blob 文件开头读到 EOF——完全不变。
+`blob-N` 在流式写入时逐 chunk 追加；`restore()` 从文件开头读取到 EOF。
 
 ### 2.3 缓存目录清理
 
@@ -202,11 +201,11 @@ create_streaming_cache() → CacheWriter
 |------|----------|
 | 上传超限（413） | `CacheWriter.cancel()` — 移除整个目录及其部分写入的 blobs |
 | 上传过程中客户端断开连接 | `CacheWriter.cancel()` — 同上 |
-| 上游拒绝（非 202） | `cache.release(cache_dir)` — 与当前行为一致 |
-| 幂等冲突（`IntegrityError`） | `cache.release(cache_dir)` — 与当前行为一致 |
+| 上游拒绝（非 202） | `cache.release(cache_dir)` |
+| 幂等冲突（`IntegrityError`） | `cache.release(cache_dir)` |
 | 匿名提交完成（转发后） | `cache.release(cache_dir)` — 匿名路径不留缓存 |
-| 任务到达终态（completed/partial/failed/cancelled） | `cache.release(cache_dir)` — 后台状态同步触发，与当前行为一致 |
-| 任务过期清理 | `cache.release(cache_dir)` — 后台清理循环触发，与当前行为一致 |
+| 任务到达终态（completed/partial/failed/cancelled） | 后台状态同步调用 `cache.release(cache_dir)` |
+| 任务过期清理 | 后台清理循环调用 `cache.release(cache_dir)` |
 
 ## 3. 大小检查语义变更
 
@@ -259,15 +258,15 @@ create_streaming_cache() → CacheWriter
 
 ### 5.1 幂等命中时（已有记录）
 
-不受影响——幂等检查发生在流式解析之前。命中时跳过所有后续步骤，不读取 multipart body。详见 §1.4 步骤 2。
+幂等检查发生在流式解析之前。命中时跳过后续步骤，不解析 multipart body。详见 §1.4 步骤 2。
 
 ### 5.2 幂等未命中、但并发冲突时（IntegrityError）
 
-不受影响——唯一约束冲突后的恢复路径调用 `cache.release(cache_dir)` 清理缓存目录，该 API 不受流式改造影响。详见 §1.4 步骤 8。
+唯一约束冲突后的恢复路径调用 `cache.release(cache_dir)` 清理缓存目录。详见 §1.4 步骤 8。
 
 ## 6. 测试场景
 
-以下测试场景覆盖流式上传的全部预期行为。所有测试针对 `POST /v1/tasks` 端点，使用有效的 API Key，并 mock 上游返回 `202`。
+核心自动化测试位于 `tests/core/test_streaming_upload.py`；真实 HTTP 内存检查位于 `tests/perf/stream_memory.py`。除匿名场景外，请求均使用有效 API Key，并 mock 上游返回 `202`。
 
 ### 6.1 基本功能
 
@@ -300,28 +299,26 @@ create_streaming_cache() → CacheWriter
 
 ### 6.2 流式特性
 
-**T5 — 大文件内存占用（上传阶段）**
-提交一个 300 MB 的单文件（或多文件合计 300 MB）。验证：
+**T5 — 流式解析与大文件内存占用**
 
-- 网关进程在**上传阶段（接收 body 并写入磁盘期间）**的内存增量为常数量级（不随文件大小增长）。
-- 返回 `202`，`file_total_bytes` 正确为实际字节数。
+- 核心测试验证 `/v1/tasks` 使用 `request.stream()`，不调用 `request.form()`。
+- 性能脚本通过真实 HTTP 上传大文件并采样 Gateway RSS，验证上传阶段内存增长有界。
 
 **T6 — 超限立即拒绝**
-设置 `max_upload_size=100MB`，提交一个 150 MB 的文件。验证：
+设置 `max_upload_size=100 MiB`，提交一个 150 MiB 的文件。验证：
 
 - 返回 `413 Payload Too Large`。
-- 响应在客户端完成整个上传前返回（可观测为：在客户端仍在发送数据时收到 413 响应）。
 - 无缓存目录残留（文件系统中无对应 cache_dir）。
 - 数据库中无 TaskRecord。
 
 **T7 — 超限恰好等于上限**
-`max_upload_size=100MB`，提交恰好 100MB 的文件。验证：
+`max_upload_size=100 MiB`，提交恰好 100 MiB 的文件。验证：
 
 - 返回 `202`，正常创建任务。
-- `file_total_bytes` = 100MB。
+- `file_total_bytes` = 100 MiB。
 
 **T8 — 多文件超限（累计）**
-`max_upload_size=50MB`，提交 3 个文件各 20MB。前两个文件正常接收，在第三个文件接收过程中总字节超过 50MB。验证：
+`max_upload_size=50 MiB`，提交 3 个文件各 20 MiB。前两个文件正常接收，在第三个文件接收过程中总字节超过 50 MiB。验证：
 
 - 返回 `413`（在第三个文件未完全接收时返回）。
 - 无缓存目录残留。
@@ -334,12 +331,18 @@ create_streaming_cache() → CacheWriter
 boundary。验证被拆分的 header field/value 会累计到 `on_header_end` 后再解析，
 文件名、类型、字段值和内容均保持完整。
 
+**T8d — multipart 元数据限制与空文件**
+分别提交超长 part header、超过 100 个普通字段以及零字节文件。验证前两者
+返回 413，零字节文件按 MinerU 4.0 行为返回 400，且三种情况均无缓存目录或
+TaskRecord 残留。
+
 ### 6.3 错误恢复
 
-**T9 — 客户端中途断开**
-在流式解析过程中模拟客户端断开连接（在 mock 中使 `request.stream()` 抛出异常）。验证：
+**T9 — 解析或缓存结束失败**
+在流式解析或 `CacheWriter.finish()` 过程中注入异常。验证：
 
-- 已写入的部分缓存文件被清理（`CacheWriter.cancel()` 被调用）。
+- 已写入的部分缓存文件被清理。
+- 清理失败不会掩盖原始异常。
 - 不创建 TaskRecord。
 
 **T10 — 上游拒绝**
@@ -357,46 +360,31 @@ mock 上游返回 `400 Bad Request`（非 202）。验证：
 
 ### 6.4 幂等交互
 
-**T12 — 幂等命中时不读取 body**
-使用已在数据库中存在的 `X-Idempotency-Key` 提交一个巨大的 multipart 请求。Mock 验证：
+**T12 — 幂等命中时跳过 body 解析**
+使用已存在的 `X-Idempotency-Key` 提交超过 `max_upload_size` 的 multipart 请求。验证：
 
 - 返回 `202` + `X-Idempotency-Key-Replayed: true`。
-- 响应几乎即时返回（不等待 body 传输完成）。
-- 没有文件被写入缓存目录。
-
-**T13 — 幂等命中时不因大小超限被拒**
-数据库中已有某个 idempotency key 的记录。客户端使用同一 key 提交一个远超 `max_upload_size` 的文件。验证：
-
-- 返回 `202`（幂等命中），不是 `413`。
-- 响应在客户端仍在发送文件 body 时即可返回。
+- 返回 `202`、原任务 ID 和 replay 响应头。
+- 不创建新的缓存目录。
 
 ### 6.5 retry 循环兼容性
 
 **T14 — retry 循环恢复流式缓存的文件**
-通过流式上传创建一个任务，该任务的状态同步失败后进入 `retry_pending`。验证：
+使用 `CacheWriter` 写入多个文件和表单字段后，验证：
 
-- retry 循环调用 `cache.restore(cache_dir)` 成功恢复 `(data, files)`。
+- `cache.restore(cache_dir)` 成功恢复 `(data, files)`。
 - `data` dict 与原始 form 字段一致。
 - `files` 列表中每个文件的 bytes 内容与原始上传一致。
-- 重提至上游成功，任务从 `retry_pending` 回到 `pending`。
 
-### 6.6 handle_file_parse 不变
-
-**T15 — file_parse 行为不变**
-向 `POST /v1/file_parse` 提交文件。验证：
-
-- 行为与变更前完全一致：正常返回上游响应。
-- 认证请求的 TaskRecord 正确创建。
+`/v1/file_parse` 的代理与持久化行为由 `tests/core/test_proxy.py` 覆盖。
 
 ## 7. 影响范围
 
 | 文件 | 变更类型 | 变更说明 |
 |------|----------|----------|
-| `src/mineru_gateway/proxy/handler.py` | 修改 | 新增 `_extract_multipart_streaming` 函数（流式解析）；保留原 `_extract_multipart` 供 `handle_file_parse` 使用；`handle_task_submission` 改用流式解析并适配新返回值（`cache_dir` 替代 `files`）；匿名路径适配 |
+| `src/mineru_gateway/proxy/handler.py` | 修改 | 新增 `_extract_multipart_streaming` 函数（流式解析）；`_extract_multipart` 服务于 `handle_file_parse`；`handle_task_submission` 使用 `cache_dir` 并适配匿名路径 |
 | `src/mineru_gateway/tasks/cache.py` | 修改 | 新增 `create_streaming_cache()` 方法和 `CacheWriter` 类；`store`/`restore`/`release`/`exists` 保留 |
-| `src/mineru_gateway/upstream/client.py` | 不修改 | `submit_task` 签名不变——仍接受 `(data, files)`；`files` 由调用方从 `cache_dir` 读取后构造 |
-| `src/mineru_gateway/models.py` | 不修改 | 无 schema 变更 |
-| `alembic/versions/` | 不修改 | 无迁移 |
-| `tests/core/test_proxy.py` | 修改 | 新增 T1-T15 测试场景；适配 mock 上游使其接受 streaming body |
-| `pyproject.toml` | 修改 | `uv add aiofiles` 引入依赖 |
-| `specs/streaming-upload.md` | 新增 | 本文件 |
+| `src/mineru_gateway/upstream/client.py` | 复用 | `submit_task(params, files)` 继续接收从 `cache_dir` 恢复出的文件 |
+| `tests/core/test_streaming_upload.py` | 新增 | 覆盖流式解析、限额、清理、幂等和缓存恢复 |
+| `tests/perf/stream_memory.py` | 新增 | 通过真实 HTTP 检查大文件上传时的 RSS 增量 |
+| `pyproject.toml` | 修改 | 引入 `aiofiles` 和 `python-multipart` |

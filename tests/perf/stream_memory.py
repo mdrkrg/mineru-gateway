@@ -4,7 +4,7 @@ spec: streaming-upload.md sec 0 Goal 1, sec 6.2 S5
 
 Spawns the gateway and mock upstream as subprocesses, uploads a large
 multipart file over a real HTTP connection, and verifies that the
-gateway process RSS stays bounded (peak increase < 20 MB) regardless
+gateway process RSS stays bounded (peak increase < 20 MiB) regardless
 of uploaded file size.
 
 Usage:
@@ -158,8 +158,8 @@ def main() -> None:
 
         print(f"File size        : {file_size_mb} MB")
         print(f"Upload duration  : {elapsed:.2f}s")
-        print(f"RSS baseline     : {baseline / (1024 * 1024):.1f} MB")
-        print(f"RSS peak         : {peak / (1024 * 1024):.1f} MB")
+        print(f"RSS baseline     : {baseline / (1024 * 1024):.1f} MiB")
+        print(f"RSS peak         : {peak / (1024 * 1024):.1f} MiB")
         print(f"RSS delta        : {delta_mb:.1f} MB")
         print(f"Threshold        : {max_allowed_mb} MB")
         print(f"Samples          : {len(samples)}")
