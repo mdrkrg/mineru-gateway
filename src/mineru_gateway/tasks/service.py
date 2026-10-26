@@ -185,7 +185,7 @@ async def get_non_terminal(session: AsyncSession) -> list[TaskRecord]:
 
 
 async def count_in_flight(session: AsyncSession) -> int:
-    """Count tasks occupying a global concurrency slot (pending + processing)."""
+    """Count tasks occupying a global concurrency slot."""
     total = await session.scalar(
         select(func.count())
         .select_from(TaskRecord)

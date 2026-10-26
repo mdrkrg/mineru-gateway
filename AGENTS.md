@@ -94,11 +94,11 @@ the same internal layout - **routes / service / schemas** is the canonical split
 | `middleware.py` | pure-ASGI `RequestLoggingMiddleware` (one JSON log per request, `x-request-id`) |
 | `logging_config.py` | structured JSON logging setup |
 | `auth/` | API keys (default) + opt-in JWT/OAuth via `fastapi-users` |
-| `proxy/` | transparent passthrough of `/file_parse` and `/tasks`; streaming multipart parser for uploads |
+| `proxy/` | transparent passthrough of `/v1/file_parse` and `/v1/tasks`; streaming multipart parser for uploads |
 | `tasks/` | task CRUD + batch, `FileCache` for staged uploads, `CacheWriter` for streaming writes |
 | `background/` | `status_sync`, `retry`, `cleanup` asyncio loops |
-| `upstream/` | `httpx` wrapper + `/health` aggregation |
-| `health/` | aggregated `/health` endpoint |
+| `upstream/` | `httpx` wrapper + `/v1/health` aggregation |
+| `health/` | aggregated `/v1/health` endpoint |
 | `limiter/` | in-memory per-key token bucket |
 | `utils/` | small helpers (e.g. `uuid.py`) |
 

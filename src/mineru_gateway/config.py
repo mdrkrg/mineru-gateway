@@ -124,7 +124,7 @@ class Settings(BaseSettings):
     allow_anonymous: bool = False
 
     gateway_url: str = "http://127.0.0.1:8000"
-    max_upload_size: int = 524_288_000  # 500MB total per request
+    max_upload_size: int = 524_288_000  # 500 MiB total per request
     # MinerU 4.0 rejects files larger than 200 MiB.
     max_file_size: int = 209_715_200
     rate_limit_per_key: int = 10
@@ -135,7 +135,8 @@ class Settings(BaseSettings):
     create_tables: bool = False
 
     # --- Phase 4: protection ---
-    # Global cap on in-flight (pending + processing) tasks across all keys.
+    # Global cap on active tasks across all keys (pending, processing, and
+    # retry_pending).
     # 0 disables the cap.
     max_concurrent_tasks: int = 0
     log_level: str = "INFO"

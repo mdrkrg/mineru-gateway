@@ -70,7 +70,7 @@
 | `GATEWAY_SMTP_SSL_TLS` | `false` | 否 | 是否使用 SSL/TLS 直连加密连接 |
 | `GATEWAY_SMTP_TIMEOUT` | `10` | 否 | SMTP 连接与发送超时（秒） |
 | `GATEWAY_VERIFY_EMAIL_TOKEN_LIFETIME_SECONDS` | `3600` | 否 | 验证 token 有效期（秒，默认 1 小时） |
-| `GATEWAY_VERIFY_EMAIL_BASE_URL` | `""` | 否 | 验证邮件中链接的基础 URL。未配置时回退为 `GATEWAY_URL` 的值 |
+| `GATEWAY_VERIFY_EMAIL_BASE_URL` | `""` | 否 | 验证邮件中链接的基础 URL。未配置时回退为 `GATEWAY_GATEWAY_URL` 的值 |
 
 **校验规则**（违反则 Gateway 拒绝启动）：
 
@@ -87,7 +87,7 @@
 
 | 现有配置 | 新增含义 |
 |---------|---------|
-| `GATEWAY_URL` | 未配置 `GATEWAY_VERIFY_EMAIL_BASE_URL` 时，以此构造验证链接 |
+| `GATEWAY_GATEWAY_URL` | 未配置 `GATEWAY_VERIFY_EMAIL_BASE_URL` 时，以此构造验证链接 |
 | `GATEWAY_OAUTH_FRONTEND_REDIRECT_URL` | 已配置时，`GET /auth/verify` 验证成功后 302 重定向到该 URL（§4.3） |
 | `GATEWAY_JWT_SECRET` | 验证 token 的签名密钥 |
 

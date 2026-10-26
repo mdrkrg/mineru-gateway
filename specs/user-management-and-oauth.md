@@ -157,7 +157,7 @@ User ──1:N──► ApiKey（通过 owner_id，nullable）
 | `GATEWAY_JWT_REFRESH_LIFETIME_SECONDS` | `604800` | 否 | 刷新令牌生命周期（秒，默认 7 天） |
 | `GATEWAY_OPEN_REGISTRATION` | `false` | 否 | 是否开放 email/password 注册。`false` 时 `POST /auth/register` 返回 403 |
 | `GATEWAY_OIDC_PROVIDERS` | `[]` | 否 | JSON 数组，每个元素描述一个 OIDC 提供商（见下方格式） |
-| `GATEWAY_OAUTH_REDIRECT_BASE_URL` | `GATEWAY_URL` 的值 | 否 | OAuth 回调的基础 URL。用于构造 `{base_url}/auth/oauth/{provider}/callback` |
+| `GATEWAY_OAUTH_REDIRECT_BASE_URL` | `GATEWAY_GATEWAY_URL` 的值 | 否 | OAuth 回调的基础 URL。用于构造 `{base_url}/auth/oauth/{provider}/callback` |
 | `GATEWAY_OAUTH_FRONTEND_REDIRECT_URL` | `""` | 否 | 如果设置，OAuth 回调完成后 302 重定向到此 URL，令牌以 URI fragment 传递；未设置时返回 JSON |
 | `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS` | `false` | 否 | 是否信任未验证邮箱的账户。`false` 时未验证用户（`is_verified=false`，§2.1）调用 `POST /me/api-keys` 返回 403（§4.4）；`true` 时不拦截 |
 
@@ -234,7 +234,7 @@ User ──1:N──► ApiKey（通过 owner_id，nullable）
 
 | 现有配置 | 新增含义 |
 |---------|---------|
-| `GATEWAY_URL` | 如果未设置 `GATEWAY_OAUTH_REDIRECT_BASE_URL`，则以此作为 OAuth 回调基础 URL |
+| `GATEWAY_GATEWAY_URL` | 如果未设置 `GATEWAY_OAUTH_REDIRECT_BASE_URL`，则以此作为 OAuth 回调基础 URL |
 
 ## 4. API 规范
 
@@ -618,19 +618,15 @@ Location: {frontend_redirect_url}#access_token=eyJ...&refresh_token=eyJ...&token
 6. 签发令牌对（access + refresh）。
 7. 返回 JSON 或重定向到前端。
 
-### 4.6 现有端点不变
+### 4.6 既有端点鉴权
 
-以下端点**不受本规约影响**，保持原有行为：
-
-| 端点 | 鉴权 | 变化 |
-|------|------|------|
-| `POST /auth/keys` | `X-Admin-Token` | 不变。`owner_id` 为 `NULL`（管理员创建） |
-| `GET /auth/keys` | `X-Admin-Token` | 不变。列出所有 Key（包括有 owner 的） |
-| `DELETE /auth/keys/{key_id}` | `X-Admin-Token` | 不变。管理员可吊销任何 Key |
-| `POST /v1/tasks` | `X-API-Key` | 不变 |
-| `POST /v1/file_parse` | `X-API-Key` | 不变 |
-| `GET /v1/tasks`, `GET /v1/tasks/{id}`, `DELETE /v1/tasks/{id}`, `GET /v1/tasks/{id}/result` | `X-API-Key` | 不变 |
-| `GET /v1/health` | 无 | 不变 |
+| 端点 | 鉴权与行为 |
+|------|------------|
+| `POST /auth/keys` | `X-Admin-Token`；创建 `owner_id=NULL` 的 Key |
+| `GET /auth/keys` | `X-Admin-Token`；列出全部 Key |
+| `DELETE /auth/keys/{key_id}` | `X-Admin-Token`；可吊销任意 Key |
+| `POST /v1/tasks`、`POST /v1/file_parse`、`GET /v1/tasks/*` | `X-API-Key` |
+| `GET /v1/health` | 无鉴权 |
 
 ## 5. 核心模块设计
 
@@ -719,7 +715,7 @@ src/mineru_gateway/auth/
 
 ### 6.2 与现有任务鉴权的关系
 
-`POST /v1/tasks`、`GET /v1/tasks` 等端点**仍然使用 `X-API-Key` 鉴权**，不受 JWT 影响。用户通过 `/me/api-keys` 创建的 Key 与管理员创建的 Key 在业务层面**无差别**（均为有效的 API Key）。
+`POST /v1/tasks`、`GET /v1/tasks` 等任务端点使用 `X-API-Key` 鉴权。通过 `/me/api-keys` 和管理员端点创建的 Key 均遵循同一任务鉴权契约。
 
 ### 6.3 用户认证总开关
 
@@ -939,8 +935,8 @@ curl -X POST http://localhost:8000/auth/keys \
 - `GATEWAY_USER_AUTH_ENABLED=false` 时，`/auth/keys` 等现有路由正常。
 - `GATEWAY_USER_AUTH_ENABLED=true` 时，所有路由正常。
 
-### 9.9 现有端点回归
+### 9.9 既有端点回归
 
-- `POST /auth/keys`、`GET /auth/keys`、`DELETE /auth/keys/{id}` 行为不变。
-- `POST /v1/tasks`、`POST /v1/file_parse` 等业务端点行为不变。
-- 通过 `/me/api-keys` 创建的 Key 可用于业务端点。
+- 验证 `POST /auth/keys`、`GET /auth/keys`、`DELETE /auth/keys/{id}` 的 Admin Token 契约。
+- 验证 `POST /v1/tasks`、`POST /v1/file_parse` 的 API Key 契约。
+- 验证通过 `/me/api-keys` 创建的 Key 可用于任务端点。

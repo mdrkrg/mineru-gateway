@@ -11,7 +11,8 @@
 
 ## 1. `POST /v1/tasks/result-zip` — 多任务结果 zip 下载
 
-流式返回一个 zip 包，内含所请求的多个 task 的最新结果。
+返回一个 zip 包，内含所请求的多个 task 的最新结果。当前实现用内存中的
+`BytesIO` 构建完整 zip 后返回，不是流式下载。
 
 ### 1.1 请求
 
@@ -41,7 +42,7 @@ Content-Type: application/json
 4. **可下载性校验**：从步骤 3 通过的 task 中全部校验：
    - 须同时满足 `status IN ('completed', 'partial')` 且 `upstream_task_id IS NOT NULL`
    - 若任一 task 不符合 → **`409`**，响应体列出所有不合格 task 的 `task_id`、`status` 及 `reason`。
-5. **流式构建 zip**：维护内存中的 manifest 对象（`included`、`skipped` 列表），对校验通过的 task 逐条执行：
+5. **构建 zip**：维护内存中的 `BytesIO` 与 manifest 对象（`included`、`skipped` 列表），对校验通过的 task 逐条执行：
    a. 请求上游 `GET /v1/tasks/{upstream_task_id}/result`
    b. 若上游返回 `200`：将响应体作为 zip entry 写入流，同时在 manifest `.included` 中记录 `{"task_id", "entry"}`
    c. 若上游返回非 200 或抛出异常：**跳过此 task**，同时在 manifest `.skipped` 中记录 `{"task_id", "entry", "reason", "detail"}`（`reason: "upstream_error"`，`detail` 为实际 HTTP 状态码或异常信息）
@@ -85,7 +86,7 @@ Content-Type: application/json
 
 #### 成功 (`200 OK`)
 
-HTTP body 为流式 zip 流。客户端应将其视为标准 zip 下载。zip 最后一个 entry 为 `_manifest.json`，记录实际包含和跳过的 task 详情。
+HTTP body 为完整 zip。客户端应将其视为标准 zip 下载。zip 最后一个 entry 为 `_manifest.json`，记录实际包含和跳过的 task 详情。
 
 #### 错误
 
@@ -96,9 +97,9 @@ HTTP body 为流式 zip 流。客户端应将其视为标准 zip 下载。zip �
 | `409` | 提交的 tasks 中存在非 completed/partial 或缺少 upstream_task_id 的 task | `{"detail": "One or more tasks are not available for download", "non_downloadable": [{"task_id": "..", "status": "..", "reason": "not_completed"\|"missing_upstream_task_id"}]}` |
 | `422` | `task_ids` 为空数组，或长度 > 200 | FastAPI 自动校验的 ValidationError |
 
-#### 流式传输中的异常
+#### 构建 zip 时的上游异常
 
-若 zip 流构建中途某上游请求失败（超时、连接断开），该 entry 被跳过，zip 流继续。对应的 `task_id`、拟写入的 `entry` 名、`reason` 及 `detail` 记录在 manifest `.skipped` 中，最终写入 `_manifest.json`。不使整响应失败。
+若构建 zip 时某上游请求失败（超时、连接断开），该 entry 被跳过。对应的 `task_id`、拟写入的 `entry` 名、`reason` 及 `detail` 记录在 manifest `.skipped` 中，最终写入 `_manifest.json`。不使整响应失败。
 
 ### 1.4 测试
 
@@ -161,7 +162,7 @@ Key-A 创建 task-1。Key-B 提交 `{"task_ids": [task-1.id]}`。
 
 ## 2. `POST /v1/tasks/cancel` — 批量取消
 
-取消一组 task 中所有处于 `pending` 状态的 task。
+取消一组 task 中所有处于 `pending` 或 `processing` 状态的 task。
 
 ### 2.1 请求
 
@@ -188,8 +189,8 @@ Content-Type: application/json
 3. **逐 task 处理**（各 task 之间独立，一个失败不影响其他）：
    a. 按 `task_id` + `api_key_id` 查询 task（`get_owned`）
    b. 若 task 不存在或不属于当前 Key → 记录错误（`"not_found"`），不创建 `TaskRecord` 操作，继续下一个
-   c. 若 task 存在但 `status != 'pending'` → 记录错误（`"not_cancellable"` + 当前 status），继续下一个
-   d. 若 task 存在且 `status == 'pending'` → 执行现有取消逻辑：
+   c. 若 task 存在但 `status NOT IN ('pending', 'processing')` → 记录错误（`"not_cancellable"` + 当前 status），继续下一个
+   d. 若 task 处于 `pending` 或 `processing` → 执行现有取消逻辑：
       - 若 `upstream_task_id` 非空 → 尝试 `upstream.cancel_task(...)`（best-effort，异常吞没）
       - 调用 `mark_cancelled(session, task)` → 将 task 变为 `cancelled`
       - 释放 `cache_dir`（`cache.release(...)`）
@@ -226,7 +227,7 @@ Content-Type: application/json
 - `cancelled_ids` — 成功取消的 task ID 列表
 - `errors` — 未能取消的 task 及原因：
   - `not_found` — task 不存在或不属于当前 Key
-  - `not_cancellable` — task 状态不是 `pending`（含 `current_status` 字段告知当前状态）
+  - `not_cancellable` — task 状态不是 `pending` / `processing`（含 `current_status` 字段告知当前状态）
 
 #### 错误
 
@@ -237,7 +238,7 @@ Content-Type: application/json
 
 ### 2.4 与 `DELETE /v1/tasks/{id}` 的一致性
 
-- 仅取消 `pending` 状态的 task。`processing` 或 `retry_pending` 不可取消——原因与 `DELETE /v1/tasks/{id}` 相同。
+- 可取消 `pending` / `processing` 状态的 task；`retry_pending` 与终态不可取消，与 `DELETE /v1/tasks/{id}` 一致。
 - 上游取消请求为 best-effort（上游不可达时吞没异常，不影响本地状态变更）。
 - 取消后释放文件暂存目录、task 状态变为 `cancelled`。
 
@@ -247,7 +248,7 @@ Content-Type: application/json
 提交 2 个 task_id，状态均为 `pending`。验证 `cancelled_count = 2`、`errors = []`、2 个 task 的 `status = 'cancelled'`、cache_dir 已释放。
 
 **C2 — 混合状态**
-提交 3 个 task_id：1 个 `pending`、1 个 `processing`、1 个 `completed`。验证 `cancelled_count = 1`（仅 pending 被取消）、`errors` 含 2 条（`not_cancellable` 各附 `current_status`）。
+提交 3 个 task_id：1 个 `pending`、1 个 `processing`、1 个 `completed`。验证 `cancelled_count = 2`，`errors` 仅含 completed 的 `not_cancellable`（附 `current_status`）。
 
 **C3 — 不存在 / 无权限**
 提交 2 个 task_id，其中 1 个不存在、1 个属于另一 Key。验证 `cancelled_count = 0`、`errors` 含 2 条 `not_found`。HTTP 状态码仍为 `200`。
@@ -285,6 +286,6 @@ for file in files:
 # 3. 下载选中结果（新端点）
 POST /v1/tasks/result-zip  {"task_ids": [勾选的已完成 task IDs]}
 
-# 4. 取消剩余 pending 任务（新端点）
-POST /v1/tasks/cancel  {"task_ids": [尚为 pending 的 task IDs]}
+# 4. 取消剩余在制任务（新端点）
+POST /v1/tasks/cancel  {"task_ids": [尚为 pending/processing 的 task IDs]}
 ```
