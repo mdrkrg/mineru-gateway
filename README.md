@@ -4,7 +4,7 @@ An API-key gateway in front of **mineru-api / mineru-router**. It keeps the pars
 
 - Specification: [`specs/mvp-implementation.md`](specs/mvp-implementation.md)
 - Architecture & tradeoffs: [`specs/architecture-design.md`](specs/architecture-design.md)
-- Roadmap: [`plans/future-enhancements.md`](plans/future-enhancements.md)
+- Historical roadmap: [`plans/future-enhancements.md`](plans/future-enhancements.md)
 
 > **API contract**: the gateway targets **MinerU 4.0** and its native `/v1`
 > API.
@@ -77,8 +77,8 @@ All settings use the `GATEWAY_` env prefix. The most important ones:
 | `GATEWAY_UPSTREAM_TIMEOUT_READ` | `600` | Upstream read timeout for sync parse/result, seconds (`/v1/tasks` uses 30s) |
 | `GATEWAY_DATABASE_URL` | `sqlite+aiosqlite:///./gateway.db` | SQLite (default) or PostgreSQL |
 | `GATEWAY_ADMIN_TOKEN` | `change-me` | Token required to manage API keys — **set this** |
-| `GATEWAY_ALLOW_ANONYMOUS` | `false` | Allow keyless passthrough |
-| `GATEWAY_GATEWAY_URL` | `http://127.0.0.1:8000` | Public base URL used in status/result links |
+| `GATEWAY_ALLOW_ANONYMOUS` | `false` | Allow keyless parse and opaque task-ID status/result/cancel passthrough (no history/listing) |
+| `GATEWAY_GATEWAY_URL` | `http://127.0.0.1:8000` | Public API base URL used in generated links |
 | `GATEWAY_MAX_UPLOAD_SIZE` | `524288000` | Max total file bytes per request (500 MiB) |
 | `GATEWAY_MAX_FILE_SIZE` | `209715200` | Max bytes per file (200 MiB, MinerU 4.0's limit) |
 | `GATEWAY_RATE_LIMIT_PER_KEY` | `10` | Requests per key per second |

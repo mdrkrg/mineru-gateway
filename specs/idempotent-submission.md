@@ -28,7 +28,7 @@
 | 命中响应 | 从 `TaskRecord` 字段重构 JSON | 无需缓存原始响应体，字段均已在 DB |
 | 命中 `status` | 始终为 `"pending"` | 与首次提交的响应体一致，不查询上游当前状态 |
 | 匿名请求 | 不参与去重 | 匿名走纯透传路径（不落库），`X-Idempotency-Key` 被忽略；`TaskRecord.api_key_id` 始终 NOT NULL |
-| Payload 一致性 | 不校验 | 简化实现，符合 Stripe 惯例 |
+| Payload 一致性 | 不校验 | 简化实现；调用方必须保证同一 key 代表同一逻辑请求 |
 
 ## 2. 数据模型变更
 
@@ -91,9 +91,9 @@ X-Idempotency-Key-Replayed: true
 |------|------|
 | `require_api_key` | 解析 `X-API-Key` 请求头，返回 `ApiKey` 对象。若未提供 Key 且 `GATEWAY_ALLOW_ANONYMOUS=true`（环境变量，默认 `false`）则返回 `None` |
 | `MemoryTokenBucket` | 进程内按 Key 的令牌桶限流器。默认速率 10 令牌/秒，桶容量 burst=30。通过 `limiter.acquire(key_id)` 消费令牌 |
-| `_extract_multipart` | 全量读取 multipart form 到内存，逐文件校验大小 ≤ `max_upload_size`（默认 500MB）。返回 data dict + files 列表 |
+| `_extract_multipart_streaming` | 通过 `request.stream()` 解析 multipart；文件 chunk 直接写入缓存，校验单文件 `max_file_size`、累计 `max_upload_size`、最多 100 个文件。返回 data dict + cache_dir |
 | `count_in_flight` | 统计 DB 中 `status IN ('pending', 'processing', 'retry_pending')` 的任务数。超出 `max_concurrent_tasks`（默认 0 = 不限）时返回 503 |
-| `cache.store` | 将 multipart 暂存到本地磁盘目录 `file_cache_dir`，返回 `cache_dir` 路径。用于崩溃后重提 |
+| `cache.restore` | 从流式解析产生的 `cache_dir` 恢复文件，用于向上游提交和崩溃后重提 |
 | `task_retention_days` | 配置项（默认 90 天）。后台清理循环按此 TTL 删除过期 `TaskRecord` |
 | `retry_pending` | `TaskRecord` 状态之一。待重提的任务，计入全局并发额度 |
 
@@ -112,7 +112,8 @@ X-Idempotency-Key-Replayed: true
              速率限制 (MemoryTokenBucket)
                     │
                     ▼
-             提取 multipart body (_extract_multipart)
+             流式提取 multipart body 并写入缓存
+             (_extract_multipart_streaming)
                     │
                     ├── 匿名 → 纯透传（上游提交，不记录 DB）
                     │
@@ -122,10 +123,7 @@ X-Idempotency-Key-Replayed: true
                    全局并发检查 (count_in_flight)
                           │
                           ▼
-                   暂存文件到本地磁盘 (cache.store)
-                          │
-                          ▼
-                   转发到上游 (upstream.submit_task)
+                   从缓存恢复并转发上游 (upstream.submit_task)
                           ├── 上游拒绝 → 释放缓存 + 返回上游错误
                           │
                           └── 上游接受 (202)
@@ -166,7 +164,7 @@ X-Idempotency-Key-Replayed: true
 
 ### 4.4 步骤 3-7：现有提交流程（行为不变，仅新增 idempotency_key 传递）
 
-速率限制、multipart 提取、并发检查、文件暂存、上游提交均保持现有行为不变。唯一差异：创建 `TaskRecord` 时写入 `idempotency_key`（见步骤 8）。
+速率限制、multipart 流式提取、并发检查、上游提交均保持现有行为不变。唯一差异：创建 `TaskRecord` 时写入 `idempotency_key`（见步骤 8）。
 
 ### 4.5 步骤 8：创建 TaskRecord（现有行为 + 新增字段 + 新增并发处理）
 
@@ -200,21 +198,17 @@ X-Idempotency-Key-Replayed: true
 
 ### 5.1 迁移要求
 
-在 `alembic/versions/` 中新增迁移文件，`down_revision` 指向当前 HEAD（`e6ce36543398`）。
+本项目在首个生产发布前采用 Day 0 schema：`idempotency_key` 与唯一约束已折叠进初始 migration，不保留单独的历史迁移。
 
-**upgrade 操作**：
+初始 migration 的相关操作：
 
 1. 在 `tasks` 表添加 `idempotency_key` 列（`VARCHAR(255)`, `NULL`）。
 2. 在 `tasks` 表创建唯一约束 `uq_tasks_key_idempotency`，覆盖 `(api_key_id, idempotency_key)`。
 
-**downgrade 操作**：
-
-1. 删除唯一约束 `uq_tasks_key_idempotency`。
-2. 删除 `idempotency_key` 列。
-
 ### 5.2 SQLite 兼容性
 
-SQLite 通过 Alembic 的 `batch_alter_table` 模式支持添加 nullable 列与唯一约束。操作顺序为先加列（现有行自动为 NULL，无需默认值），再加约束，与 ALTER TABLE 语义兼容。
+SQLite 由初始 migration 的 `create_table` 直接创建 nullable 列与唯一约束，无需
+`batch_alter_table`。未来若对已部署数据库修改该约束，再使用 Alembic batch 模式。
 
 ## 6. 测试场景
 
@@ -281,6 +275,6 @@ T1 创建任务后，手动将该任务的 `created_at` 修改为超过 `task_re
 | `src/mineru_gateway/models.py` | 修改 | `TaskRecord` 新增 `idempotency_key` 字段与 `UniqueConstraint` |
 | `src/mineru_gateway/proxy/handler.py` | 修改 | `handle_task_submission` 新增幂等检查逻辑（认证后、限流前）；新增 `IntegrityError` 并发冲突处理；记录孤儿上游任务 id |
 | `src/mineru_gateway/proxy/routes.py` | 修改 | 从请求头提取 `X-Idempotency-Key`，传入 handler |
-| `alembic/versions/` | 新增 | 一个新 migration 文件，添加列与唯一约束 |
+| `alembic/versions/` | 修改 | Day 0 初始 migration 包含列与唯一约束 |
 | `tests/core/test_proxy.py` | 修改 | 新增 T1-T13 测试场景 |
 | `specs/idempotent-submission.md` | 新增 | 本文件 |

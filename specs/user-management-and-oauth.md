@@ -157,7 +157,7 @@ User ──1:N──► ApiKey（通过 owner_id，nullable）
 | `GATEWAY_JWT_REFRESH_LIFETIME_SECONDS` | `604800` | 否 | 刷新令牌生命周期（秒，默认 7 天） |
 | `GATEWAY_OPEN_REGISTRATION` | `false` | 否 | 是否开放 email/password 注册。`false` 时 `POST /auth/register` 返回 403 |
 | `GATEWAY_OIDC_PROVIDERS` | `[]` | 否 | JSON 数组，每个元素描述一个 OIDC 提供商（见下方格式） |
-| `GATEWAY_OAUTH_REDIRECT_BASE_URL` | `GATEWAY_URL` 的值 | 否 | OAuth 回调的基础 URL。用于构造 `{base_url}/auth/oauth/{provider}/callback` |
+| `GATEWAY_OAUTH_REDIRECT_BASE_URL` | `GATEWAY_GATEWAY_URL` 的值 | 否 | OAuth 回调的基础 URL。用于构造 `{base_url}/auth/oauth/{provider}/callback` |
 | `GATEWAY_OAUTH_FRONTEND_REDIRECT_URL` | `""` | 否 | 如果设置，OAuth 回调完成后 302 重定向到此 URL，令牌以 URI fragment 传递；未设置时返回 JSON |
 | `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS` | `false` | 否 | 是否信任未验证邮箱的账户。`false` 时未验证用户（`is_verified=false`，§2.1）调用 `POST /me/api-keys` 返回 403（§4.4）；`true` 时不拦截 |
 
@@ -234,7 +234,7 @@ User ──1:N──► ApiKey（通过 owner_id，nullable）
 
 | 现有配置 | 新增含义 |
 |---------|---------|
-| `GATEWAY_URL` | 如果未设置 `GATEWAY_OAUTH_REDIRECT_BASE_URL`，则以此作为 OAuth 回调基础 URL |
+| `GATEWAY_GATEWAY_URL` | 如果未设置 `GATEWAY_OAUTH_REDIRECT_BASE_URL`，则以此作为 OAuth 回调基础 URL |
 
 ## 4. API 规范
 

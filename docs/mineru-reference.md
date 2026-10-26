@@ -10,7 +10,7 @@
 |------|------|--------|------|
 | `tier` | `str` | 上游默认 `standard` | 解析档位：`flash`（原生文本/预览）、`basic`（ONNX/Torch 小模型）、`standard`（小模型 + VLM）、`advanced`（更高计算量） |
 | `ocr_mode` | `str` | `auto` | `auto` 自动判断、`txt` 原生文本、`ocr` 强制 OCR |
-| `page_range` | `str` | 全部 | 1 起始页码，支持 `1-5,8`、`all`、`r1`（末页）、`r3-r1` |
+| `page_range` | `str` | 全部 | 页码从 1 开始，支持 `1-5,8`、`all`、`r1`（末页）、`r3-r1` |
 | `output_formats` | `str` 列表 | `markdown` | `markdown`、`middle_json`、`structured_content`、`zip`；可重复或逗号分隔 |
 | `response_format` | `json \| zip` | `json` | 仅 `/v1/file_parse`；选择同步响应格式 |
 | `wait_timeout` | `int` | `300` | 仅 `/v1/file_parse`；范围 1–3600 秒 |
@@ -37,8 +37,10 @@
 | `canceled` | `cancelled` |
 
 - `partial` 是**终态**：部分文件成功，结果可下载；`has_result=true`。
-- `partial` / `failed` 的文件级错误从上游 `files[].error.message` 提取到 `error`/`upstream_error`。
-- 取消：`DELETE /v1/tasks/{id}` 与批量取消允许 `pending` 和 `processing`（4.0 支持取消 queued/running）。
+- `partial` / `failed` 的文件级错误从上游 `files[].error.message` 提取到
+  `error` / `upstream_error`。
+- 取消：`DELETE /v1/tasks/{id}` 与批量取消允许 `pending` 和
+  `processing`（对应上游 `queued` / `running`）。
 
 ## 响应
 
@@ -61,7 +63,10 @@
 ```
 
 - `tier` 是 upstream 返回的实际档位；同步历史记录在未显式指定且响应为二进制时可能为 `null`。
-- 匿名透传模式原样返回上游 4.0 响应（`files[]`、`links` 等）。
+- 匿名透传模式原样返回上游 4.0 响应（`files[]`、`links` 等），保留 opaque
+  upstream task ID。客户端可用该 ID 继续调用网关的
+  `GET /v1/tasks/{id}`、`GET /v1/tasks/{id}/result` 和
+  `DELETE /v1/tasks/{id}`，网关会直接透传到上游；列表、统计和批量端点仍需 API Key。
 - `/v1/file_parse` 的等待预算耗尽并返回 202 时，认证请求会转为可查询的
   Gateway 任务：保存 upstream 映射、重写 `task_id`/任务链接并保留上传缓存供
   故障重提。同步返回的 `partial`、`failed`、`canceled` 也按实际终态记入历史。
@@ -69,9 +74,11 @@
 ### 结果
 
 - `GET /v1/tasks/{id}/result`：
+  - 可显式使用 `?response_format=json|zip`；匿名模式直接转发该参数。
   - 提交时的 `output_formats` 包含 `zip` → 携带 `?response_format=zip`，返回 `application/zip`。
   - 否则返回 4.0 的内联 JSON：`files[].content.markdown` / `middle_json` / `structured_content`。
-  - 未完成 → 409；上游失败/取消 → 409。
+  - 认证任务未完成 → 409；匿名模式保留上游响应（未完成时为 202）。
+  - 上游失败或取消 → 409。
 - `POST /v1/tasks/result-zip`：对每个任务按 ZIP 取结果并重新打包，清单写入 `_manifest.json`。
 - JSON 结果使用 `files[].content` 返回所请求的文本格式；图片只在 ZIP 中提供。
 

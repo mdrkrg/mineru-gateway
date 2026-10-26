@@ -8,8 +8,8 @@
 ### 目标
 
 1. `POST /v1/tasks` 端点在上传阶段（接收客户端 multipart body）的内存占用量与单个文件大小解耦：任意大小的文件均以固定窗口大小的 chunk 为单位流式处理，不会因文件大小增长而线性增长内存。
-2. 上传大小检查从「完整读取后判断」改为「累计字节实时判断」：一旦累计接收的字节数超过 `max_upload_size`，立即中止流并返回 413，不再等待客户端完成上传。
-3. 流式处理与现有幂等提交、限流、健康门控、全局并发检查的交互行为定义清晰，不引入状态不一致。
+2. 上传大小检查从「完整读取后判断」改为「文件字节实时累计」：单文件超过 `max_file_size` 或文件总量超过 `max_upload_size` 时，立即中止流并返回 413。
+3. 流式处理与现有幂等提交、限流、全局并发检查的交互行为定义清晰，不引入状态不一致。
 4. FileCache 的磁盘暂存行为与 crash recovery（retry 循环）保持兼容：retry 循环从磁盘恢复文件并重提的路径不受影响。
 5. `POST /v1/file_parse` 端点的 `_extract_multipart` 行为不受影响（继续使用现有的全量缓冲方式）。
 
@@ -35,14 +35,14 @@
 
 ## 1. 核心行为变更
 
-以下行为变更仅针对 `POST /v1/tasks` 端点的 `handle_task_submission` 中与 multipart 解析相关的部分。幂等检查、限流、健康门控、全局并发检查、TaskRecord 创建、响应生成等步骤的行为**不变**。
+以下行为变更仅针对 `POST /v1/tasks` 端点的 `handle_task_submission` 中与 multipart 解析相关的部分。幂等检查、限流、全局并发检查、TaskRecord 创建、响应生成等步骤的行为**不变**。
 
 ### 1.1 函数变更：新增 `_extract_multipart_streaming`
 
 现有的 `_extract_multipart` 函数**保留不变**（继续被 `handle_file_parse` 使用）。`handle_task_submission` 改用新增的流式解析函数：
 
 ```
-_extract_multipart_streaming(request, max_upload_size, cache)
+_extract_multipart_streaming(request, max_upload_size, max_file_size, cache)
     → (data: dict, cache_dir: str, file_names: list[str], total_bytes: int)
 ```
 
@@ -53,7 +53,7 @@ _extract_multipart_streaming(request, max_upload_size, cache)
 | 解析方式 | `request.form()` 全量加载到内存 | 流式 multipart parser，每次处理一个 chunk |
 | 文件内容存储 | `UploadFile.read()` 为 `bytes` 对象，全部驻留内存 | 以 chunk 为单位写入 FileCache 磁盘目录，不在内存中累积 |
 | 表单字段存储 | 作为 `dict` value 驻留内存 | 同左（form 字段数据量小，不变） |
-| `max_upload_size` 检查时机 | 每个文件完整读取后检查 `len(content)` | 每个 chunk 到达时检查累计字节是否超限 |
+| 大小检查时机 | 每个文件完整读取后检查单文件及累计文件字节 | 每个文件 chunk 到达时检查 `max_file_size` 与累计 `max_upload_size` |
 | 超限后行为 | 已完整读取，抛出 413（body 已全在内存） | 立即停止解析、关闭流、返回 413；未完成的缓存目录被清理 |
 | 返回值 | `(data: dict, files: Files, file_names: list[str], total_bytes: int)` | `(data: dict, cache_dir: str, file_names: list[str], total_bytes: int)` |
 | 返回的 `files` | 文件内容为 `bytes` | 不再返回文件字节列表；文件已在 `cache_dir` 下 |
@@ -64,10 +64,9 @@ _extract_multipart_streaming(request, max_upload_size, cache)
 - `file_names` 列表的顺序和内容与变更前完全一致（来自 multipart 各 part 的 `filename` 字段）。
 - `total_bytes` 的最终值（所有文件累计字节）与变更前完全一致。
 
-> **注意**：返回值中的 `total_bytes` 仅计文件字节，与 §3.2 中用于大小检查的
-> “累计接收的字节数”（含表单字段字节 + 文件字节）是**不同的计数器**。
-> 实现中使用两个独立变量：一个用于全量字节检查和 413 判定，另一个用于
-> `total_bytes` 返回值（与 TaskRecord.file_total_bytes 对应）。
+> **注意**：`total_bytes` 与 `max_upload_size` 都只统计文件内容，不统计 multipart
+> framing 或普通表单字段。普通字段另设 **1 MiB** 累计上限；每任务另限
+> **100 个文件**。
 - 布尔字段转换（`_coerce`）、`_extract_parse_params` 对 data dict 的处理完全不变——它们只读取 `data`，不依赖 `files`。
 
 ### 1.2 后续流程适应性变更
@@ -117,7 +116,8 @@ _extract_multipart_streaming(request, max_upload_size, cache)
      - 表单字段 → 累积到 data dict（内存）
      - 文件字段 → 每 chunk 直接写入磁盘缓存目录（不驻留内存）
      - file_names 按出现顺序记录
-     - 每个 chunk 到达时，检查 total_bytes + len(chunk) 是否超过 max_upload_size
+     - 每个文件 chunk 到达时，检查当前文件是否超过 max_file_size、
+       total_bytes + len(chunk) 是否超过 max_upload_size
        如果 超过:
           停止读取流
           删除已写入的缓存目录
@@ -174,12 +174,9 @@ create_streaming_cache() → CacheWriter
 
 **调用约束**：任一 `CacheWriter` 实例上，`finish()` 和 `cancel()` 最多调用一次，且二者互斥。调用其中任一个后，该实例不再允许追加写入。
 
-**移除的方法**：
-
-- `store(data, files)` — 移除。流式解析直接写入 `cache_dir`，无调用方。
-
 **不变的方法**：
 
+- `store(data, files) → str` — 将已缓冲文件写入缓存；`/v1/file_parse` 返回 202 时用于把同步上传转为可恢复任务。
 - `restore(cache_dir) → (data, files)` — 完全不变。从磁盘 blobs 读取文件字节到内存，返回 `(data, Files)`。retry 循环依赖此方法。
 - `release(cache_dir)` — 完全不变。删除缓存目录。
 - `exists(cache_dir) → bool` — 完全不变。
@@ -208,25 +205,26 @@ create_streaming_cache() → CacheWriter
 | 上游拒绝（非 202） | `cache.release(cache_dir)` — 与当前行为一致 |
 | 幂等冲突（`IntegrityError`） | `cache.release(cache_dir)` — 与当前行为一致 |
 | 匿名提交完成（转发后） | `cache.release(cache_dir)` — 匿名路径不留缓存 |
-| 任务到达终态（completed/failed/cancelled） | `cache.release(cache_dir)` — 后台状态同步触发，与当前行为一致 |
+| 任务到达终态（completed/partial/failed/cancelled） | `cache.release(cache_dir)` — 后台状态同步触发，与当前行为一致 |
 | 任务过期清理 | `cache.release(cache_dir)` — 后台清理循环触发，与当前行为一致 |
 
 ## 3. 大小检查语义变更
 
 ### 3.1 变更前
 
-`_extract_multipart` 在完整读取每个 `UploadFile` 后检查 `len(content) > max_upload_size or total_bytes > max_upload_size`。触发时抛出 `HTTPException(413)`。
+`_extract_multipart` 在完整读取每个 `UploadFile` 后检查 `len(content) > max_file_size` 与 `total_bytes > max_upload_size`。触发时抛出 `HTTPException(413)`。
 
 含义：客户端已经完成整个文件上传（所有字节已传输），才被告知拒绝。
 
 ### 3.2 变更后
 
-流式解析过程中，每接收到一个 chunk，计算**累计接收的字节数**（含表单字段字节 + 文件字节）
-与 `max_upload_size` 的比较。若结果超过 `max_upload_size`：
+流式解析过程中，每接收到一个文件 chunk，分别计算**当前文件字节数**与
+**所有文件累计字节数**。若前者超过 `max_file_size` 或后者超过
+`max_upload_size`：
 
 1. 立即停止从 `request.stream()` 读取后续数据。
 2. 调用 `CacheWriter.cancel()` 移除当前缓存目录。
-3. 返回 `413 Payload Too Large`，错误消息中包含 `max_upload_size` 的字节数。
+3. 返回 `413 Payload Too Large`，错误消息中包含对应限制的字节数。
 
 含义：客户端在上传过程中收到 413，无需完成整个上传即可得知被拒绝。
 
@@ -291,7 +289,7 @@ create_streaming_cache() → CacheWriter
 提交包含原生 V1 form 字段（`tier`、`ocr_mode`、`output_formats`）和文件的请求。验证：
 
 - TaskRecord 的 `parse_params` 中正确记录了这些字段。
-- 上游收到的 multipart body 中包含相同的 form 字段值。
+- 上游收到相同语义的 V1 query 参数；上游 multipart body 只包含名为 `files` 的文件 part。
 
 **T4 — 匿名提交（回归）**
 配置 `GATEWAY_ALLOW_ANONYMOUS=true`，不提供 `X-API-Key`。提交一个包含文件的 multipart 请求。验证：
@@ -327,6 +325,14 @@ create_streaming_cache() → CacheWriter
 
 - 返回 `413`（在第三个文件未完全接收时返回）。
 - 无缓存目录残留。
+
+**T8b — 单文件超限**
+设置 `max_file_size` 小于 `max_upload_size`，提交超过单文件限制但未超过总量限制的文件。验证返回 413 且无任务/缓存残留。
+
+**T8c — multipart header 跨 chunk**
+将同一合法 multipart body 按单字节切分，并使用带引号且后接其他参数的
+boundary。验证被拆分的 header field/value 会累计到 `on_header_end` 后再解析，
+文件名、类型、字段值和内容均保持完整。
 
 ### 6.3 错误恢复
 
@@ -387,7 +393,7 @@ mock 上游返回 `400 Bad Request`（非 202）。验证：
 | 文件 | 变更类型 | 变更说明 |
 |------|----------|----------|
 | `src/mineru_gateway/proxy/handler.py` | 修改 | 新增 `_extract_multipart_streaming` 函数（流式解析）；保留原 `_extract_multipart` 供 `handle_file_parse` 使用；`handle_task_submission` 改用流式解析并适配新返回值（`cache_dir` 替代 `files`）；匿名路径适配 |
-| `src/mineru_gateway/v1/tasks/cache.py` | 修改 | 新增 `create_streaming_cache()` 方法和 `CacheWriter` 类；移除 `store()`；`restore`/`release`/`exists` 保留不变 |
+| `src/mineru_gateway/tasks/cache.py` | 修改 | 新增 `create_streaming_cache()` 方法和 `CacheWriter` 类；`store`/`restore`/`release`/`exists` 保留 |
 | `src/mineru_gateway/upstream/client.py` | 不修改 | `submit_task` 签名不变——仍接受 `(data, files)`；`files` 由调用方从 `cache_dir` 读取后构造 |
 | `src/mineru_gateway/models.py` | 不修改 | 无 schema 变更 |
 | `alembic/versions/` | 不修改 | 无迁移 |
