@@ -151,7 +151,12 @@ def create_app(
                 await client.aclose()
             await db.dispose()
 
-    app = FastAPI(title="mineru-gateway", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(
+        title="mineru-gateway",
+        version="0.1.0",
+        root_path=settings.root_path,
+        lifespan=lifespan,
+    )
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(
         CORSMiddleware,

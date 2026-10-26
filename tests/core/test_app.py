@@ -8,8 +8,12 @@ from __future__ import annotations
 import json
 import logging
 
+import httpx
 import pytest
+from asgi_lifespan import LifespanManager
+from pydantic import ValidationError
 
+from mineru_gateway.config import Settings
 from mineru_gateway.main import create_app
 
 
@@ -36,3 +40,55 @@ def test_create_app_rejects_multiple_workers(settings, capsys):
     payload = json.loads(lines[-1])
     assert payload["level"] == "ERROR"
     assert "GATEWAY_WORKERS=2 is not supported" in payload["message"]
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("", ""),
+        ("/", ""),
+        ("/mineru/api", "/mineru/api"),
+        (" /mineru//api/ ", "/mineru/api"),
+    ],
+)
+def test_settings_normalizes_root_path(value, expected):
+    assert Settings(admin_token="test", root_path=value).root_path == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "mineru/api",
+        "https://example.com/mineru/api",
+        "//example.com/mineru/api",
+        "/mineru/../api",
+        "/mineru/api?version=1",
+        "/mineru/api#docs",
+        "/mineru\\api",
+    ],
+)
+def test_settings_rejects_invalid_root_path(value):
+    with pytest.raises(ValidationError):
+        Settings(admin_token="test", root_path=value)
+
+
+async def test_root_path_preserves_routes_and_prefixes_openapi(
+    settings, upstream_client
+):
+    application = create_app(
+        settings=settings.model_copy(update={"root_path": "/mineru/api"}),
+        upstream_client=upstream_client,
+    )
+
+    async with LifespanManager(application):
+        transport = httpx.ASGITransport(app=application)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+        ) as client:
+            health = await client.get("/v1/health")
+            docs = await client.get("/docs")
+
+    assert health.status_code == 200
+    assert docs.status_code == 200
+    assert "'/mineru/api/openapi.json'" in docs.text

@@ -124,6 +124,9 @@ class Settings(BaseSettings):
     allow_anonymous: bool = False
 
     gateway_url: str = "http://127.0.0.1:8000"
+    # Public reverse-proxy prefix for ASGI-generated URLs (for example,
+    # /mineru/api). The proxy may strip this prefix before forwarding.
+    root_path: str = ""
     max_upload_size: int = 524_288_000  # 500 MiB total per request
     # MinerU 4.0 rejects files larger than 200 MiB.
     max_file_size: int = 209_715_200
@@ -184,6 +187,31 @@ class Settings(BaseSettings):
     cors_allow_headers: list[str] = ["*"]
     cors_allow_credentials: bool = False
     cors_max_age: int = 600
+
+    @field_validator("root_path")
+    @classmethod
+    def _normalize_root_path(cls, value: str) -> str:
+        value = value.strip()
+        if not value or value == "/":
+            return ""
+
+        parsed = urlparse(value)
+        if (
+            parsed.scheme
+            or parsed.netloc
+            or parsed.params
+            or parsed.query
+            or parsed.fragment
+            or "\\" in value
+        ):
+            raise ValueError("root_path must be a URL path, not a URL")
+        if not value.startswith("/"):
+            raise ValueError("root_path must start with /")
+
+        segments = [segment for segment in value.split("/") if segment]
+        if any(segment in {".", ".."} for segment in segments):
+            raise ValueError("root_path must not contain dot segments")
+        return f"/{'/'.join(segments)}"
 
     @field_validator(
         "cors_allow_origins",
