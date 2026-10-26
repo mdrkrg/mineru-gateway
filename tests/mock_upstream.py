@@ -31,6 +31,8 @@ from tests.mock_v1_contract import (
     job_payload,
 )
 
+_NO_PAYLOAD_OVERRIDE = object()
+
 
 @dataclass
 class MockState:
@@ -47,6 +49,8 @@ class MockState:
     status_raises: bool = False  # simulate GET /v1/tasks/{id} failure
     task_status: str = "running"  # status reported by GET /v1/tasks/{id}
     task_error: dict | None = None
+    task_status_payload: object = _NO_PAYLOAD_OVERRIDE
+    parse_task_status: str = "completed"
     submitted: list[dict] = field(default_factory=list)
     result_requests: list[dict] = field(default_factory=list)
 
@@ -71,6 +75,8 @@ class MockState:
         self.status_raises = False
         self.task_status = "running"
         self.task_error = None
+        self.task_status_payload = _NO_PAYLOAD_OVERRIDE
+        self.parse_task_status = "completed"
         self.submitted.clear()
         self.result_requests.clear()
         self.result_status_code = 200
@@ -171,19 +177,53 @@ def create_mock_upstream() -> FastAPI:
                 "params": _query_params(request),
             }
         )
-        if state.parse_status != 200:
+        if state.parse_status not in {200, 202, 409}:
             return JSONResponse(
                 status_code=state.parse_status, content={"detail": "upstream error"}
             )
+        task_id = f"up-{uuid.uuid4().hex[:12]}"
+        if (
+            state.parse_status == 200
+            and state.submitted[-1]["params"].get("response_format") == "zip"
+        ):
+            return Response(
+                content=b"PK\x03\x04mock",
+                status_code=200,
+                media_type="application/zip",
+                headers={
+                    "X-MinerU-Task-Id": task_id,
+                    "X-MinerU-Task-Status": state.parse_task_status,
+                },
+            )
+        if state.parse_status == 200 and state.parse_task_status == "completed":
+            return JSONResponse(
+                status_code=200,
+                content=inline_result_payload(
+                    task_id,
+                    file_name=(
+                        state.submitted[-1]["file_names"][0]
+                        if state.submitted[-1]["file_names"]
+                        else "doc.pdf"
+                    ),
+                ),
+            )
+        payload = job_payload(
+            task_id,
+            status=state.parse_task_status,
+            file_names=state.submitted[-1]["file_names"],
+            error=state.task_error,
+        )
         return JSONResponse(
-            status_code=200,
-            content=inline_result_payload(f"up-{uuid.uuid4().hex[:12]}"),
+            status_code=state.parse_status,
+            content=payload,
         )
 
     @app.get("/v1/tasks/{task_id}")
     async def task_status(task_id: str):
         if state.status_raises:
             raise RuntimeError("status query failed")
+        if state.task_status_payload is not _NO_PAYLOAD_OVERRIDE:
+            return JSONResponse(content=state.task_status_payload)
         return job_payload(
             task_id,
             status=state.task_status,

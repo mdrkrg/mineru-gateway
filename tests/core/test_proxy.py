@@ -127,6 +127,26 @@ async def test_submit_upstream_non_json_202_returns_502(client, api_key, sample_
         assert count == 0
 
 
+async def test_submit_malformed_202_returns_502_without_stuck_task(
+    client, api_key, sample_files, app
+):
+    """A JSON 202 without a valid task id must not consume a task slot."""
+    from sqlalchemy import func, select
+
+    from mineru_gateway.models import TaskRecord
+
+    mock_state.submit_malformed = True
+    resp = await client.post(
+        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
+    )
+
+    assert resp.status_code == 502
+    async with app.state.db.session_factory() as session:
+        count = await session.scalar(select(func.count()).select_from(TaskRecord))
+        assert count == 0
+    assert os.listdir(app.state.settings.file_cache_dir) == []
+
+
 async def test_submit_accepted_when_upstream_degraded(client, api_key, sample_files):
     """Async POST /tasks never probes upstream health; 4.0 only reports
     reachability, so a degraded upstream still accepts the submission."""
@@ -144,6 +164,7 @@ async def test_file_parse_authenticated_relays_result(client, api_key, sample_fi
     )
     assert resp.status_code == 200
     assert resp.json()["files"][0]["content"]["markdown"] == "# parsed"
+    assert uuid.UUID(resp.json()["task_id"])
 
 
 async def test_file_parse_authenticated_records_task(
@@ -158,13 +179,125 @@ async def test_file_parse_authenticated_records_task(
         "/file_parse", headers={"X-API-Key": api_key}, files=sample_files
     )
     assert resp.status_code == 200
+    response_task_id = uuid.UUID(resp.json()["task_id"])
 
     async with app.state.db.session_factory() as session:
         count = await session.scalar(select(func.count()).select_from(TaskRecord))
         assert count == 1
         task = (await session.execute(select(TaskRecord))).scalar_one()
+        assert task.id == response_task_id
         assert task.status == "completed"
         assert task.file_names == ["doc.pdf"]
+        assert task.upstream_task_id
+        assert task.completed_at is not None
+
+
+async def test_file_parse_zip_uses_task_headers_for_history(
+    client, api_key, sample_files, app
+):
+    from sqlalchemy import select
+
+    from mineru_gateway.models import TaskRecord
+
+    resp = await client.post(
+        "/file_parse",
+        headers={"X-API-Key": api_key},
+        files=sample_files,
+        data={"response_format": "zip"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/zip")
+    response_task_id = uuid.UUID(resp.headers["X-MinerU-Task-Id"])
+    async with app.state.db.session_factory() as session:
+        task = (await session.execute(select(TaskRecord))).scalar_one()
+        assert task.id == response_task_id
+        assert task.status == "completed"
+        assert task.upstream_task_id.startswith("up-")
+
+
+async def test_file_parse_records_partial_status_and_error(
+    client, api_key, sample_files, app
+):
+    """A V1 partial result is terminal and downloadable, not completed."""
+    from sqlalchemy import select
+
+    from mineru_gateway.models import TaskRecord
+
+    mock_state.parse_task_status = "partial"
+    mock_state.task_error = {
+        "type": "parse_error",
+        "code": "page_failed",
+        "message": "page 2 failed",
+    }
+    resp = await client.post(
+        "/file_parse", headers={"X-API-Key": api_key}, files=sample_files
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "partial"
+    async with app.state.db.session_factory() as session:
+        task = (await session.execute(select(TaskRecord))).scalar_one()
+        assert task.status == "partial"
+        assert task.upstream_task_id
+        assert task.upstream_error == "page 2 failed"
+        assert task.completed_at is not None
+
+
+async def test_file_parse_202_creates_trackable_recoverable_task(
+    client, api_key, sample_files, app
+):
+    """A synchronous wait timeout becomes a gateway-owned async task."""
+    from mineru_gateway.models import TaskRecord
+
+    mock_state.parse_status = 202
+    mock_state.parse_task_status = "running"
+    resp = await client.post(
+        "/file_parse",
+        headers={"X-API-Key": api_key},
+        files=sample_files,
+        data={"wait_timeout": "1"},
+    )
+
+    assert resp.status_code == 202
+    body = resp.json()
+    task_id = uuid.UUID(body["task_id"])
+    assert body["status"] == "processing"
+    assert body["status_url"].endswith(f"/tasks/{task_id}")
+    assert body["result_url"].endswith(f"/tasks/{task_id}/result")
+    assert resp.headers["X-MinerU-Task-Id"] == str(task_id)
+
+    async with app.state.db.session_factory() as session:
+        task = await session.get(TaskRecord, task_id)
+        assert task.status == "processing"
+        assert task.upstream_task_id.startswith("up-")
+        assert task.cache_dir and os.path.isdir(task.cache_dir)
+
+
+async def test_file_parse_409_records_failed_task(client, api_key, sample_files, app):
+    from sqlalchemy import select
+
+    from mineru_gateway.models import TaskRecord
+
+    mock_state.parse_status = 409
+    mock_state.parse_task_status = "failed"
+    mock_state.task_error = {
+        "type": "parse_error",
+        "code": "parse_failed",
+        "message": "document failed",
+    }
+    resp = await client.post(
+        "/file_parse", headers={"X-API-Key": api_key}, files=sample_files
+    )
+
+    assert resp.status_code == 409
+    response_task_id = uuid.UUID(resp.json()["task_id"])
+    async with app.state.db.session_factory() as session:
+        task = (await session.execute(select(TaskRecord))).scalar_one()
+        assert task.id == response_task_id
+        assert task.status == "failed"
+        assert task.upstream_error == "document failed"
+        assert task.completed_at is not None
 
 
 async def test_file_parse_requires_key_when_anonymous_disabled(client, sample_files):
@@ -188,6 +321,26 @@ async def test_file_parse_rejects_when_total_exceeds_max_size(client, api_key):
     files = [("files", ("big.pdf", b"x" * (max_size + 1), "application/pdf"))]
     resp = await client.post("/file_parse", headers={"X-API-Key": api_key}, files=files)
     assert resp.status_code == 413
+
+
+async def test_submit_rejects_more_than_100_files_before_upstream(client, api_key):
+    files = [
+        ("files", (f"{index}.pdf", b"x", "application/pdf")) for index in range(101)
+    ]
+    resp = await client.post("/tasks", headers={"X-API-Key": api_key}, files=files)
+
+    assert resp.status_code == 400
+    assert mock_state.submitted == []
+
+
+async def test_file_parse_rejects_more_than_100_files_before_upstream(client, api_key):
+    files = [
+        ("files", (f"{index}.pdf", b"x", "application/pdf")) for index in range(101)
+    ]
+    resp = await client.post("/file_parse", headers={"X-API-Key": api_key}, files=files)
+
+    assert resp.status_code == 400
+    assert mock_state.submitted == []
 
 
 async def test_file_parse_429_when_rate_limited(client, admin_headers, sample_files):
@@ -276,19 +429,6 @@ async def test_anonymous_file_parse_passthrough_no_record(tmp_path):
         async with app.state.db.session_factory() as session:
             count = await session.scalar(select(func.count()).select_from(TaskRecord))
             assert count == 0
-
-
-async def test_queued_ahead_is_null_for_v1_jobs(client, api_key, sample_files):
-    """MinerU 4.0 no longer reports a queue position; the field stays null."""
-    resp = await client.post(
-        "/tasks", headers={"X-API-Key": api_key}, files=sample_files
-    )
-    assert resp.status_code == 202
-    task_id = resp.json()["task_id"]
-
-    detail = await client.get(f"/tasks/{task_id}", headers={"X-API-Key": api_key})
-    assert detail.status_code == 200
-    assert detail.json()["queued_ahead"] is None
 
 
 # --- Idempotent submission (spec: idempotent-submission.md) ---

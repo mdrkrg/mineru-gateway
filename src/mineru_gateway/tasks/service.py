@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import TaskRecord
 from ..upstream.params import VALID_TIERS
+from ..upstream.schemas import gateway_task_status
 
 
 async def create(session: AsyncSession, **fields: Any) -> TaskRecord:
@@ -150,24 +151,7 @@ def task_has_result(task: TaskRecord) -> bool:
     return task.status in RESULT_STATES and task.upstream_task_id is not None
 
 
-# Upstream statuses mapped onto gateway statuses.
-_UPSTREAM_STATUS_MAP = {
-    "pending": "pending",
-    "queued": "pending",
-    "processing": "processing",
-    "running": "processing",
-    "completed": "completed",
-    "success": "completed",
-    "done": "completed",
-    "partial": "partial",
-    "failed": "failed",
-    "error": "failed",
-    "cancelled": "cancelled",
-    "canceled": "cancelled",
-}
-
-
-def _upstream_error(payload: dict) -> str | None:
+def upstream_error_from_payload(payload: dict) -> str | None:
     """Extract a human-readable error from a V1 job payload."""
     error = payload.get("error")
     if isinstance(error, str) and error:
@@ -238,8 +222,7 @@ async def update_from_upstream(
     task = await session.get(TaskRecord, task_id)
     if task is None:
         return None
-    raw = (upstream_status.get("status") or "").lower()
-    mapped = _UPSTREAM_STATUS_MAP.get(raw, task.status)
+    mapped = gateway_task_status(upstream_status["status"])
 
     now = datetime.now(timezone.utc)
     if mapped == "processing" and task.started_at is None:
@@ -247,7 +230,7 @@ async def update_from_upstream(
     if mapped in TERMINAL_STATES and task.completed_at is None:
         task.completed_at = now
     if mapped in {"failed", "partial"}:
-        error = _upstream_error(upstream_status)
+        error = upstream_error_from_payload(upstream_status)
         if error:
             task.upstream_error = error
     upstream_tier = upstream_status.get("tier")

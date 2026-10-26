@@ -3,13 +3,16 @@
 Authenticated `POST /tasks` stages the original multipart to the file cache
 (for crash recovery, §6.2/§6.4) before forwarding, records the task with its
 cache_dir, and returns the Gateway-flavored response. Anonymous requests are a
-pure passthrough. `POST /file_parse` is synchronous and not cached (no async
-recovery path).
+pure passthrough. `POST /file_parse` normally returns its result directly; if
+MinerU's wait budget expires, the accepted task is persisted and staged for
+the same polling/recovery path as an asynchronous submission.
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
+from typing import Any
 
 from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -24,9 +27,16 @@ from ..tasks import service as task_service
 from ..tasks.cache import FileCache
 from ..upstream.client import UpstreamClient
 from ..upstream.params import (
-    VALID_TIERS,
+    MAX_TASK_FILES,
     parse_v1_params,
     v1_files,
+)
+from ..upstream.schemas import (
+    UpstreamTaskPayload,
+    UpstreamTaskReference,
+    gateway_task_status,
+    task_reference_from_headers,
+    validate_submission_payload,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,7 +72,7 @@ async def _extract_multipart(
     request: Request, max_upload_size: int, max_file_size: int
 ) -> tuple[dict, list[tuple[str, tuple[str, bytes, str]]], list[str], int]:
     """Read the incoming multipart form into (data, files, file_names, total_bytes)."""
-    form = await request.form()
+    form = await request.form(max_files=MAX_TASK_FILES)
     data: dict = {}
     files: list[tuple[str, tuple[str, bytes, str]]] = []
     file_names: list[str] = []
@@ -142,19 +152,22 @@ async def _extract_multipart_streaming(
     current_content_type = "application/octet-stream"
     current_is_file = False
     current_file_part_started = False
+    current_file_part_counted = False
     current_file_bytes = 0
+    file_count = 0
     current_form_buf = bytearray()
     header_field = ""
 
     def on_part_begin() -> None:
         nonlocal current_field, current_filename, current_content_type
         nonlocal current_is_file, current_form_buf, current_file_part_started
-        nonlocal current_file_bytes
+        nonlocal current_file_bytes, current_file_part_counted
         current_field = None
         current_filename = None
         current_content_type = "application/octet-stream"
         current_is_file = False
         current_file_part_started = False
+        current_file_part_counted = False
         current_file_bytes = 0
         current_form_buf = bytearray()
 
@@ -184,9 +197,18 @@ async def _extract_multipart_streaming(
 
     def on_part_data(data: bytes, start: int, end: int) -> None:
         nonlocal total_bytes, form_bytes, current_file_bytes, current_file_part_started
+        nonlocal current_file_part_counted, file_count
         chunk = data[start:end]
         chunk_len = len(chunk)
         if current_is_file:
+            if not current_file_part_counted:
+                file_count += 1
+                current_file_part_counted = True
+                if file_count > MAX_TASK_FILES:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Too many files (maximum {MAX_TASK_FILES})",
+                    )
             current_file_bytes += chunk_len
             if current_file_bytes > max_file_size:
                 raise HTTPException(
@@ -221,11 +243,19 @@ async def _extract_multipart_streaming(
             current_form_buf.extend(chunk)
 
     def on_part_end() -> None:
-        nonlocal current_form_buf
+        nonlocal current_form_buf, current_file_part_counted, file_count
         if not current_is_file and current_field is not None:
             _store_form_field(data, current_field, current_form_buf.decode("utf-8"))
             current_form_buf = bytearray()
         if current_is_file and current_filename:
+            if not current_file_part_counted:
+                file_count += 1
+                current_file_part_counted = True
+                if file_count > MAX_TASK_FILES:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Too many files (maximum {MAX_TASK_FILES})",
+                    )
             file_names.append(current_filename)
 
     callbacks: dict = {  # type: ignore[var-annotated]
@@ -262,8 +292,7 @@ async def _extract_multipart_streaming(
     return data, cache_dir, file_names, total_bytes
 
 
-def _relay_response(resp) -> Response:
-    """Relay an upstream httpx.Response byte-for-byte."""
+def _relay_headers(resp) -> dict[str, str]:
     excluded = {
         "content-length",
         "content-encoding",
@@ -271,11 +300,98 @@ def _relay_response(resp) -> Response:
         "connection",
         "x-request-id",
     }
-    headers = {k: v for k, v in resp.headers.items() if k.lower() not in excluded}
+    return {k: v for k, v in resp.headers.items() if k.lower() not in excluded}
+
+
+def _relay_response(resp) -> Response:
+    """Relay an upstream httpx.Response byte-for-byte."""
     return Response(
         content=resp.content,
         status_code=resp.status_code,
-        headers=headers,
+        headers=_relay_headers(resp),
+        media_type=resp.headers.get("content-type"),
+    )
+
+
+def _file_parse_task_metadata(
+    resp,
+) -> tuple[UpstreamTaskReference, dict[str, Any] | None]:
+    """Validate task identity and status from a V1 file-parse response."""
+    content_type = resp.headers.get("content-type", "").split(";", 1)[0].lower()
+    if content_type == "application/json" or content_type.endswith("+json"):
+        raw_payload = resp.json()
+        payload = UpstreamTaskPayload.model_validate(raw_payload)
+        reference = UpstreamTaskReference(
+            task_id=payload.task_id,
+            status=payload.status,
+            tier=payload.tier,
+        )
+    else:
+        raw_payload = None
+        reference = task_reference_from_headers(resp.headers)
+
+    expected_statuses = {
+        200: {"completed", "partial"},
+        202: {"queued", "running"},
+        409: {"failed", "canceled"},
+    }
+    if reference.status not in expected_statuses[resp.status_code]:
+        raise ValueError(
+            f"status {reference.status!r} is invalid for HTTP {resp.status_code}"
+        )
+    return reference, raw_payload
+
+
+def _tracked_response_headers(resp, task, settings: Settings) -> dict[str, str]:
+    """Relay response headers while replacing upstream task references."""
+    headers = {
+        key: value
+        for key, value in _relay_headers(resp).items()
+        if not key.lower().startswith("x-mineru-task-")
+    }
+    task_url = f"{settings.gateway_url}/tasks/{task.id}"
+    headers.update(
+        {
+            "X-MinerU-Task-Id": str(task.id),
+            "X-MinerU-Task-Status": task.status,
+            "X-MinerU-Task-Status-Url": task_url,
+            "X-MinerU-Task-Result-Url": f"{task_url}/result",
+        }
+    )
+    return headers
+
+
+def _tracked_task_response(
+    resp,
+    payload: dict[str, Any],
+    task,
+    settings: Settings,
+) -> JSONResponse:
+    """Replace an upstream task reference with its gateway-owned identity."""
+    task_url = f"{settings.gateway_url}/tasks/{task.id}"
+    content = dict(payload)
+    content.update(
+        {
+            "task_id": str(task.id),
+            "status": task.status,
+            "status_url": task_url,
+            "result_url": f"{task_url}/result",
+            "links": {"self": task_url, "cancel": task_url},
+        }
+    )
+    return JSONResponse(
+        status_code=resp.status_code,
+        content=content,
+        headers=_tracked_response_headers(resp, task, settings),
+    )
+
+
+def _tracked_binary_response(resp, task, settings: Settings) -> Response:
+    """Relay binary task output while replacing upstream task headers."""
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        headers=_tracked_response_headers(resp, task, settings),
         media_type=resp.headers.get("content-type"),
     )
 
@@ -330,10 +446,6 @@ async def handle_task_submission(
     settings: Settings,
     x_idempotency_key: str | None = None,
 ) -> Response:
-    # Defensive: anonymous only allowed when configured.
-    if api_key is None and not settings.allow_anonymous:
-        raise HTTPException(status_code=401, detail="API key required")
-
     idempotency_key = _normalize_idempotency_key(x_idempotency_key)
     api_key_id = api_key.id if api_key is not None else None
 
@@ -403,29 +515,27 @@ async def handle_task_submission(
         await cache.release(cache_dir)
         return _relay_response(upstream_resp)
     try:
-        payload = upstream_resp.json()
-    except ValueError:
+        raw_payload = upstream_resp.json()
+        payload = validate_submission_payload(raw_payload)
+    except ValueError as exc:
         await cache.release(cache_dir)
-        raise HTTPException(status_code=502, detail="Invalid upstream response")
+        raise HTTPException(
+            status_code=502, detail=f"Invalid upstream task response: {exc}"
+        ) from exc
 
-    qa = payload.get("queued_ahead")
-    queued_ahead: int | None = qa if isinstance(qa, int) else None
-    upstream_tier = payload.get("tier")
-    if isinstance(upstream_tier, str) and upstream_tier in VALID_TIERS:
-        tier = upstream_tier
+    tier = payload.tier
     try:
         task = await task_service.create(
             session,
             api_key_id=api_key_id,
-            status="pending",
+            status=gateway_task_status(payload.status),
             upstream_url=settings.upstream_url,
-            upstream_task_id=payload.get("task_id"),
-            file_names=payload.get("file_names", file_names),
+            upstream_task_id=payload.task_id,
+            file_names=file_names,
             file_count=len(file_names),
             file_total_bytes=total_bytes,
             tier=tier,
             cache_dir=cache_dir,
-            queued_ahead=queued_ahead,
             idempotency_key=idempotency_key,
             parse_params=params,
         )
@@ -434,28 +544,26 @@ async def handle_task_submission(
         await cache.release(cache_dir)
         # The loser may already have submitted to upstream; its task has no
         # record, so surface it instead of leaving it silent.
-        orphan_upstream_task_id = payload.get("task_id")
-        if orphan_upstream_task_id:
-            reason = (
-                "Idempotency conflict"
-                if idempotency_key is not None
-                else "Task record insert conflict"
-            )
-            logger.warning(
-                "%s; orphan upstream task %s",
-                reason,
-                orphan_upstream_task_id,
-                extra={
-                    "orphan_upstream_task_id": str(orphan_upstream_task_id),
-                    "idempotency_key": idempotency_key,
-                    "api_key_id": str(api_key_id) if api_key_id else None,
-                    "upstream_url": settings.upstream_url,
-                    "tier": tier,
-                    "file_names": file_names[:10],
-                    "file_count": len(file_names),
-                },
-            )
-        if api_key_id is None or idempotency_key is None:
+        reason = (
+            "Idempotency conflict"
+            if idempotency_key is not None
+            else "Task record insert conflict"
+        )
+        logger.warning(
+            "%s; orphan upstream task %s",
+            reason,
+            payload.task_id,
+            extra={
+                "orphan_upstream_task_id": str(payload.task_id),
+                "idempotency_key": idempotency_key,
+                "api_key_id": str(api_key_id),
+                "upstream_url": settings.upstream_url,
+                "tier": tier,
+                "file_names": file_names[:10],
+                "file_count": len(file_names),
+            },
+        )
+        if idempotency_key is None:
             raise
         existing = await task_service.get_by_idempotency_key(
             session, api_key_id, idempotency_key
@@ -468,7 +576,7 @@ async def handle_task_submission(
         status_code=202,
         content={
             "task_id": str(task.id),
-            "status": "pending",
+            "status": task.status,
             "tier": task.tier,
             "file_names": task.file_names,
             "created_at": task.created_at.isoformat(),
@@ -481,7 +589,7 @@ async def handle_task_submission(
         },
         headers={
             "X-MinerU-Task-Id": str(task.id),
-            "X-MinerU-Task-Status": "pending",
+            "X-MinerU-Task-Status": task.status,
             "X-MinerU-Task-Status-Url": f"{settings.gateway_url}/tasks/{task.id}",
             "X-MinerU-Task-Result-Url": f"{settings.gateway_url}/tasks/{task.id}/result",
         },
@@ -494,11 +602,9 @@ async def handle_file_parse(
     session: AsyncSession,
     upstream: UpstreamClient,
     limiter: MemoryTokenBucket,
+    cache: FileCache,
     settings: Settings,
 ) -> Response:
-    if api_key is None and not settings.allow_anonymous:
-        raise HTTPException(status_code=401, detail="API key required")
-
     if api_key and not await limiter.acquire(str(api_key.id)):
         raise HTTPException(
             status_code=429,
@@ -513,18 +619,67 @@ async def handle_file_parse(
 
     upstream_resp = await upstream.parse_file(params, v1_files(files))
 
-    # Authenticated: record the (synchronous) task for history/ownership.
-    if api_key is not None and upstream_resp.status_code == 200:
-        await task_service.create(
+    if api_key is None or upstream_resp.status_code not in {200, 202, 409}:
+        return _relay_response(upstream_resp)
+
+    try:
+        reference, raw_payload = _file_parse_task_metadata(upstream_resp)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Invalid upstream task response: {exc}"
+        ) from exc
+
+    status = gateway_task_status(reference.status)
+    cache_dir: str | None = None
+    if upstream_resp.status_code == 202:
+        retry_params = {
+            key: value
+            for key, value in params.items()
+            if key not in {"response_format", "wait_timeout"}
+        }
+        try:
+            cache_dir = await cache.store(retry_params, files)
+        except Exception:
+            # The upstream already accepted this task. Keep it trackable even
+            # if local disaster-recovery staging is unavailable.
+            logger.warning("Failed to cache timed-out file_parse upload", exc_info=True)
+
+    now = datetime.now(timezone.utc)
+    try:
+        task = await task_service.create(
             session,
             api_key_id=api_key.id,
-            status="completed",
+            status=status,
             upstream_url=settings.upstream_url,
+            upstream_task_id=reference.task_id,
             file_names=file_names,
             file_count=len(file_names),
             file_total_bytes=total_bytes,
-            tier=tier,
+            tier=reference.tier or tier,
             parse_params=params,
+            cache_dir=cache_dir,
+            started_at=now if status == "processing" else None,
+            completed_at=now if status in task_service.TERMINAL_STATES else None,
+            upstream_error=(
+                task_service.upstream_error_from_payload(raw_payload)
+                if raw_payload is not None and status in {"partial", "failed"}
+                else None
+            ),
         )
+    except BaseException:
+        await cache.release(cache_dir)
+        raise
 
-    return _relay_response(upstream_resp)
+    if raw_payload is not None:
+        return _tracked_task_response(upstream_resp, raw_payload, task, settings)
+    if upstream_resp.status_code == 202:
+        response_payload = {
+            "task_id": reference.task_id,
+            "status": reference.status,
+            "tier": reference.tier,
+            "output_formats": params["output_formats"],
+            "files": [],
+        }
+        return _tracked_task_response(upstream_resp, response_payload, task, settings)
+
+    return _tracked_binary_response(upstream_resp, task, settings)

@@ -134,6 +134,23 @@ class FileCache:
     def create_streaming_cache(self) -> CacheWriter:
         return CacheWriter(self.base_dir)
 
+    async def store(self, form_fields: dict, files: Files) -> str:
+        """Persist an already-buffered multipart request for later retry."""
+        writer = self.create_streaming_cache()
+        try:
+            for field, (filename, content, content_type) in files:
+                await writer.write_file_chunk(
+                    field,
+                    filename,
+                    content_type,
+                    content,
+                    new_part=True,
+                )
+            return await writer.finish(form_fields)
+        except BaseException:
+            await writer.cancel()
+            raise
+
     async def restore(self, cache_dir: str) -> tuple[dict, Files]:
         # Read the whole directory in one thread hop: aiofiles would submit a
         # separate executor job per blob, which is pure overhead for the

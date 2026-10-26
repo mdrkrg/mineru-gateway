@@ -2,14 +2,29 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any
 
-VALID_TIERS = frozenset({"flash", "basic", "standard", "advanced"})
+
+class MineruTier(StrEnum):
+    FLASH = "flash"
+    BASIC = "basic"
+    STANDARD = "standard"
+    ADVANCED = "advanced"
+
+
+class OutputFormat(StrEnum):
+    MARKDOWN = "markdown"
+    MIDDLE_JSON = "middle_json"
+    STRUCTURED_CONTENT = "structured_content"
+    ZIP = "zip"
+
+
+VALID_TIERS = frozenset(MineruTier)
 VALID_OCR_MODES = frozenset({"auto", "txt", "ocr"})
-VALID_OUTPUT_FORMATS = frozenset(
-    {"markdown", "middle_json", "structured_content", "zip"}
-)
+VALID_OUTPUT_FORMATS = frozenset(OutputFormat)
 VALID_RESPONSE_FORMATS = frozenset({"json", "zip"})
+MAX_TASK_FILES = 100
 
 _BASE_FIELDS = frozenset({"tier", "ocr_mode", "page_range", "output_formats"})
 _SYNC_FIELDS = _BASE_FIELDS | {"response_format", "wait_timeout"}

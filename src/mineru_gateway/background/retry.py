@@ -15,6 +15,7 @@ from ..tasks import service
 from ..tasks.cache import FileCache
 from ..upstream.client import UpstreamClient
 from ..upstream.params import parse_v1_params, v1_files
+from ..upstream.schemas import gateway_task_status, validate_submission_payload
 
 logger = logging.getLogger(__name__)
 
@@ -50,19 +51,7 @@ async def retry_once(
             data, files = await cache.restore(str(task.cache_dir))
             params = parse_v1_params(data, sync=False, include_zip=True)
             resp = await upstream.submit_task(params, v1_files(files))
-            try:
-                payload = resp.json()
-            except ValueError as e:
-                body_text = resp.text[:500]
-                async with db.session_factory() as session:
-                    await service.mark_failed(
-                        session,
-                        task.id,
-                        f"non-JSON upstream response: {e} - {body_text}",
-                    )
-                await cache.release(task.cache_dir)
-                continue
-            if resp.status_code != 202 or "task_id" not in payload:
+            if resp.status_code != 202:
                 # Non-transient: upstream rejected the request. Fail without
                 # consuming a retry.
                 body_text = resp.text[:500]
@@ -75,15 +64,39 @@ async def retry_once(
                     )
                 await cache.release(task.cache_dir)
                 continue
+            try:
+                raw_payload = resp.json()
+            except ValueError as e:
+                body_text = resp.text[:500]
+                async with db.session_factory() as session:
+                    await service.mark_failed(
+                        session,
+                        task.id,
+                        f"non-JSON upstream response: {e} - {body_text}",
+                    )
+                await cache.release(task.cache_dir)
+                continue
+            try:
+                payload = validate_submission_payload(raw_payload)
+            except ValueError as exc:
+                body_text = resp.text[:500]
+                async with db.session_factory() as session:
+                    await service.mark_failed(
+                        session,
+                        task.id,
+                        f"invalid upstream task response: {exc} - {body_text}",
+                    )
+                await cache.release(task.cache_dir)
+                continue
 
             async with db.session_factory() as session:
                 await service.update(
                     session,
                     task.id,
                     {
-                        "upstream_task_id": payload["task_id"],
-                        "status": "pending",
-                        "tier": payload.get("tier") or task.tier,
+                        "upstream_task_id": payload.task_id,
+                        "status": gateway_task_status(payload.status),
+                        "tier": payload.tier,
                         "retry_count": task.retry_count + 1,
                         "consecutive_poll_failures": 0,
                         "started_at": None,
@@ -94,7 +107,7 @@ async def retry_once(
             logger.info(
                 "Retried task %s -> %s (attempt %s)",
                 task.id,
-                payload["task_id"],
+                payload.task_id,
                 task.retry_count + 1,
             )
         except Exception as exc:

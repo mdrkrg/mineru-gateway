@@ -20,7 +20,6 @@ class TaskListItem(BaseModel):
     completed_at: datetime | None = None
     error: str | None = None
     retry_count: int
-    queued_ahead: int | None = None
     has_result: bool = False
 
 
@@ -42,7 +41,6 @@ class TaskDetail(BaseModel):
     completed_at: datetime | None = None
     error: str | None = None
     retry_count: int
-    queued_ahead: int | None = None
     has_result: bool = False
 
 

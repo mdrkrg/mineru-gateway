@@ -59,7 +59,6 @@ export const TaskListItemSchema = defineResponseSchema(
     completed_at: 'string | null',
     error: 'string | null',
     retry_count: 'number',
-    queued_ahead: 'number | null',
     has_result: 'boolean',
   },
   {} as {
@@ -72,7 +71,6 @@ export const TaskListItemSchema = defineResponseSchema(
     completedAt: string | null;
     error: string | null;
     retryCount: number;
-    queuedAhead: number | null;
     hasResult: boolean;
   },
 );
@@ -89,7 +87,6 @@ export const TaskListResponseSchema = defineResponseSchema(
       completed_at: 'string | null',
       error: 'string | null',
       retry_count: 'number',
-      queued_ahead: 'number | null',
       has_result: 'boolean',
     }).array(),
     total: 'number',
@@ -107,7 +104,6 @@ export const TaskListResponseSchema = defineResponseSchema(
       completedAt: string | null;
       error: string | null;
       retryCount: number;
-      queuedAhead: number | null;
       hasResult: boolean;
     }[];
     total: number;
@@ -130,7 +126,6 @@ export const TaskDetailSchema = defineResponseSchema(
     completed_at: 'string | null',
     error: 'string | null',
     retry_count: 'number',
-    queued_ahead: 'number | null',
     has_result: 'boolean',
   },
   {} as {
@@ -144,7 +139,6 @@ export const TaskDetailSchema = defineResponseSchema(
     completedAt: string | null;
     error: string | null;
     retryCount: number;
-    queuedAhead: number | null;
     hasResult: boolean;
   },
 );

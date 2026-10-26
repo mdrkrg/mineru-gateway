@@ -61,6 +61,7 @@ async def parse_file(
     session: AsyncSession = Depends(get_session),
     upstream: UpstreamClient = Depends(_upstream),
     limiter=Depends(_limiter),
+    cache: FileCache = Depends(_cache),
     settings: Settings = Depends(_settings),
 ):
     return await handle_file_parse(
@@ -69,5 +70,6 @@ async def parse_file(
         session=session,
         upstream=upstream,
         limiter=limiter,
+        cache=cache,
         settings=settings,
     )

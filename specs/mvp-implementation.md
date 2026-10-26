@@ -205,7 +205,6 @@ class TaskRecord(Base):
     upstream_url:        str
     upstream_task_id:    str (nullable, index)
     retry_count:         int (default=0)         # 已重提次数（对比固定常量 MAX_RETRIES）
-    queued_ahead:        int (nullable)          # 提交时上游返回的排队前任务数（仅 pending 时有意义）
     consecutive_poll_failures: int (default=0)   # 后台同步连续失败计数
 
     # 文件缓存
@@ -258,7 +257,9 @@ X-MinerU-Task-Status-Url: {gateway_url}/tasks/{id}
 X-MinerU-Task-Result-Url: {gateway_url}/tasks/{id}/result
 ```
 
-> `POST /file_parse` 为同步端点，直接返回上游解析结果（非 202）；异步 `POST /tasks` 返回上述头部。
+> `POST /file_parse` 通常直接返回上游解析结果；MinerU 4.0 的等待预算耗尽时
+> 会返回 202。认证请求在此情况下创建 Gateway 任务、重写任务链接并进入与
+> `POST /tasks` 相同的状态同步及故障重提流程。
 
 ### 5.3 新增端点
 
@@ -321,7 +322,6 @@ GET /tasks:
         completed_at: str | null
         error: str | null
         retry_count: int
-        queued_ahead: int | null    # 提交时上游返回的排队前任务数
     total: int
     page: int
     page_size: int

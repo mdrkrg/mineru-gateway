@@ -73,6 +73,28 @@ async def test_sync_increments_poll_failures_on_error(app, upstream_client):
         assert refreshed.consecutive_poll_failures == 1
 
 
+async def test_sync_treats_malformed_payload_as_per_task_poll_failure(
+    app, upstream_client
+):
+    """One malformed status payload must not abort synchronization of later tasks."""
+    db = app.state.db
+    upstream = UpstreamClient(upstream_client)
+    async with db.session_factory() as session:
+        key_id = await _seed_key(session)
+        first = await _make_task(session, key_id, upstream_task_id="up-first")
+        second = await _make_task(session, key_id, upstream_task_id="up-second")
+        task_ids = [first.id, second.id]
+
+    mock_state.task_status_payload = {"status": "queued"}
+    await status_sync.sync_once(db, upstream, poll_failure_threshold=3)
+
+    async with db.session_factory() as session:
+        for task_id in task_ids:
+            refreshed = await service.get(session, task_id)
+            assert refreshed.consecutive_poll_failures == 1
+            assert refreshed.status == "pending"
+
+
 async def test_sync_marks_retryable_at_threshold(app, upstream_client):
     """§6.3: 连续失败达阈值 → 标记为可重试 (retry_pending)."""
     db = app.state.db

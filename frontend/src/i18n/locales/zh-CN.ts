@@ -152,7 +152,6 @@ export const zhCN: Dict = {
   'taskDetail.startedAt': '开始时间',
   'taskDetail.completedAt': '完成时间',
   'taskDetail.elapsed': '耗时',
-  'taskDetail.queuedAhead': '排队前方任务数',
   'taskDetail.fileList': '文件列表',
   'taskDetail.error': '错误信息',
   'taskDetail.cancel': '取消任务',

@@ -47,7 +47,6 @@ def upgrade() -> None:
     sa.Column('upstream_task_id', sa.String(length=64), nullable=True),
     sa.Column('retry_count', sa.Integer(), nullable=False),
     sa.Column('consecutive_poll_failures', sa.Integer(), nullable=False),
-    sa.Column('queued_ahead', sa.Integer(), nullable=True),
     sa.Column('cache_dir', sa.String(length=500), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('started_at', sa.DateTime(timezone=True), nullable=True),

@@ -96,7 +96,6 @@ async def list_tasks(
             completed_at=t.completed_at,
             error=t.error_message or t.upstream_error,
             retry_count=t.retry_count,
-            queued_ahead=t.queued_ahead,
             has_result=service.task_has_result(t),
         )
         for t in tasks
@@ -135,7 +134,6 @@ async def get_task(
         completed_at=task.completed_at,
         error=task.error_message or task.upstream_error,
         retry_count=task.retry_count,
-        queued_ahead=task.queued_ahead,
         has_result=service.task_has_result(task),
     )
 
