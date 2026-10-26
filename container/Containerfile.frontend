@@ -10,7 +10,14 @@ COPY frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml frontend/package.json 
 RUN pnpm install --frozen-lockfile
 
 COPY frontend/ ./
-RUN pnpm build
+
+# Empty means a root deployment. A non-root image is built for exactly one
+# public mount point, for example FRONTEND_BASE_PATH=/mineru.
+ARG FRONTEND_BASE_PATH=
+RUN frontend_base="${FRONTEND_BASE_PATH%/}"; \
+    VITE_APP_BASE_PATH="${frontend_base:-/}" \
+    VITE_API_PREFIX="${frontend_base}/api" \
+    pnpm build
 
 FROM docker.io/library/caddy:2-alpine
 

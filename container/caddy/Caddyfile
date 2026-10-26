@@ -1,14 +1,27 @@
 :80 {
-  log
+	log
 	encode zstd gzip
 
-	handle_path /api/* {
+	# FRONTEND_BASE_PATH is empty for root deployments or an absolute path such
+	# as /mineru. The API is always published below <base>/api and stripped
+	# before reaching FastAPI.
+	# Canonicalize the mount point so relative browser behavior is stable.
+	@base expression `{http.request.uri.path} == "{$FRONTEND_BASE_PATH:}" && "{$FRONTEND_BASE_PATH:}" != ""`
+	handle @base {
+		redir * {$FRONTEND_BASE_PATH:}/ 308
+	}
+
+	handle_path {$FRONTEND_BASE_PATH:}/api/* {
 		reverse_proxy gateway:8000
 	}
 
-	handle {
+	# Strip the public mount point before resolving files. Unmatched paths are
+	# intentionally not served when the application has a non-root base.
+	handle_path {$FRONTEND_BASE_PATH:}/* {
 		root * /usr/share/caddy
 		try_files {path} /index.html
 		file_server
 	}
+
+	respond 404
 }
