@@ -74,6 +74,10 @@ tests/e2e/          # e2e tests against running gateway + mock upstream
 | `functions/` | `auth.ts` (login, refreshToken, logout, register, getCurrentUser), `health.ts` (getHealth), `tasks.ts` (submitTask, parseFile, listTasks, getTaskStats, getTaskDetail, cancelTask, getTaskResult, downloadResultZip, batchCancelTasks) |
 | `schemas/` | `auth.ts`, `health.ts`, `tasks.ts`, `shared.ts` (ErrorDetailSchema), `mineru-options.ts` (MinerU 4.0 tier/OCR/output-format schemas, `ParseRequestFields`, `createParseFormData()`) |
 
+Build-time deployment paths are configured by `VITE_APP_BASE_PATH` and
+`VITE_API_PREFIX`. `vite.config.ts` normalizes both through
+`config/base-path.ts`; the router consumes Vite's normalized `BASE_URL`.
+
 ### `stores/` - global state
 
 | File | Purpose |
@@ -126,6 +130,8 @@ tests/e2e/          # e2e tests against running gateway + mock upstream
   via `createParseFormData(fields)` - `tier`, `ocr_mode`, and `output_formats`
   are restricted to their MinerU 4.0 enum values at type level.
 - **TanStack Router routes are file-based.** Add pages under `src/routes/`.
+- **Route constants stay application-relative.** Never prepend the deployment
+  path to `ROUTES`, links, or redirects; TanStack Router's `basepath` owns it.
 
 ## Where things live when adding a feature
 

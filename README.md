@@ -66,6 +66,13 @@ podman compose -f container/compose.yaml up --build
 
 The container applies Alembic migrations on start, then runs a single uvicorn worker. Task metadata lives in PostgreSQL; staged uploads (`/cache`) are kept in a named volume.
 
+### Subpath deployment
+
+- The bundled frontend can be mounted below a path such as `https://example.com/mineru`. Set `FRONTEND_BASE_PATH=/mineru` before building.
+- The bundled Caddy serves the SPA at `/mineru/` and forwards `/mineru/api/*` to the Gateway after removing the public API prefix.
+
+See [Subpath deployment](docs/subpath-deployment.md) for the complete setup and verification steps.
+
 ## Configuration
 
 All settings use the `GATEWAY_` env prefix. The most important ones:
@@ -79,6 +86,7 @@ All settings use the `GATEWAY_` env prefix. The most important ones:
 | `GATEWAY_ADMIN_TOKEN` | `change-me` | Token required to manage API keys — **set this** |
 | `GATEWAY_ALLOW_ANONYMOUS` | `false` | Allow keyless parse and opaque task-ID status/result/cancel passthrough (no history/listing) |
 | `GATEWAY_GATEWAY_URL` | `http://127.0.0.1:8000` | Public API base URL used in generated links |
+| `GATEWAY_ROOT_PATH` | `""` | Public API path prefix used for OpenAPI/docs behind a stripping proxy |
 | `GATEWAY_MAX_UPLOAD_SIZE` | `524288000` | Max total file bytes per request (500 MiB) |
 | `GATEWAY_MAX_FILE_SIZE` | `209715200` | Max bytes per file (200 MiB, MinerU 4.0's limit) |
 | `GATEWAY_RATE_LIMIT_PER_KEY` | `10` | Requests per key per second |
