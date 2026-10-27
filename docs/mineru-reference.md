@@ -19,7 +19,8 @@
 
 - 提交：`POST /v1/tasks`（异步）或 `POST /v1/file_parse`（同步）。
 - 文件 part 必须命名为 `files`。
-- 当前异步任务会自动在 `output_formats` 中追加 `zip`，以保证单项和批量下载可用。
+- 异步任务按提交的 `output_formats` 生成结果；需要 ZIP 时显式选择 `zip`。
+- 产物语义：`zip` 内含 `markdown.md`、`middle_json.json`、`structured_content.json`、可选 `model_output.json` 与 `images/`；图片与 `model_output` 随 ZIP 返回。
 - 限制：**200 MiB/文件**、总计 `GATEWAY_MAX_UPLOAD_SIZE`（默认 500 MiB）、100 文件/任务。
 - 认证：网关用 `X-API-Key`；上游若启用 `--api-key`，通过 `GATEWAY_UPSTREAM_API_KEY` 注入 `Authorization: Bearer`。
 
@@ -79,8 +80,8 @@
   - 否则返回 4.0 的内联 JSON：`files[].content.markdown` / `middle_json` / `structured_content`。
   - 认证任务未完成 → 409；匿名模式保留上游响应（未完成时为 202）。
   - 上游失败或取消 → 409。
-- `POST /v1/tasks/result-zip`：对每个任务按 ZIP 取结果并重新打包，清单写入 `_manifest.json`。
-- JSON 结果使用 `files[].content` 返回所请求的文本格式；图片只在 ZIP 中提供。
+- `POST /v1/tasks/result-zip`：逐个任务取结果并重新打包，清单写入 `_manifest.json`。提交时选择了 `zip` 的任务取上游 ZIP，其余任务取内联 JSON 并以 `.json` 条目入包。
+- JSON 结果使用 `files[].content` 返回所请求的文本格式。
 
 ### 健康检查
 
