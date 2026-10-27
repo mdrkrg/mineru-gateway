@@ -1,10 +1,11 @@
 import * as stylex from '@stylexjs/stylex';
-import { For, Show, createSignal, onMount } from 'solid-js';
+import { For, Show, createMemo, createSignal, onMount } from 'solid-js';
 import { Link, createFileRoute } from '@tanstack/solid-router';
 import { listTasks, cancelTask, batchCancelTasks } from '@/api/functions/tasks';
 import type { TaskListItem } from '@/api/schemas/tasks';
 import NoActiveKey from '@/components/NoActiveKey';
 import Pagination from '@/components/Pagination';
+import SelectField from '@/components/SelectField';
 import StatusBadge from '@/components/StatusBadge';
 import { t } from '@/i18n';
 import { taskStatusLabel, taskTierLabel } from '@/i18n/labels';
@@ -59,6 +60,10 @@ function TaskListPage() {
   const [error, setError] = createSignal<string | null>(null);
   const [selected, setSelected] = createSignal<Set<string>>(new Set());
   const [isActing, setIsActing] = createSignal(false);
+
+  const statusOptions = createMemo(() =>
+    TASK_STATUSES.map((status) => ({ value: status, label: taskStatusLabel(status) })),
+  );
 
   async function load(targetPage = page(), opts: { silent?: boolean } = {}) {
     const key = apiKeyStore.activeKey();
@@ -212,19 +217,13 @@ function TaskListPage() {
           onSubmit={applyFilters}
           {...stylex.attrs(controls.card, styles.filterForm)}
         >
-          <label {...stylex.attrs(controls.field)}>
-            <span {...stylex.attrs(controls.fieldLabel)}>{t('tasks.filterStatus')}</span>
-            <select
-              value={statusFilter()}
-              onChange={(e) => setStatusFilter(e.currentTarget.value)}
-              {...stylex.attrs(controls.input)}
-            >
-              <option value="">{t('tasks.filterAll')}</option>
-              <For each={TASK_STATUSES}>
-                {(s) => <option value={s}>{taskStatusLabel(s)}</option>}
-              </For>
-            </select>
-          </label>
+          <SelectField
+            label={t('tasks.filterStatus')}
+            value={statusFilter()}
+            placeholder={t('tasks.filterAll')}
+            options={statusOptions()}
+            onChange={setStatusFilter}
+          />
           <label {...stylex.attrs(controls.field)}>
             <span {...stylex.attrs(controls.fieldLabel)}>{t('tasks.filterFileName')}</span>
             <input
