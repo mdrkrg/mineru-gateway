@@ -1,18 +1,27 @@
 import * as stylex from '@stylexjs/stylex';
-import { For, Show, createSignal } from 'solid-js';
+import { For, Show, createMemo, createSignal } from 'solid-js';
 import { Link, createFileRoute } from '@tanstack/solid-router';
 import { FileUp, X } from 'lucide-solid';
 import { submitTask } from '@/api/functions/tasks';
 import type { TaskSubmitResponse } from '@/api/schemas/tasks';
 import {
+  MINERU_DEFAULT_OUTPUT_FORMATS,
   MINERU_OCR_MODES,
+  MINERU_OUTPUT_FORMATS,
   MINERU_TIERS,
   type MineruOcrMode,
+  type MineruOutputFormat,
   type MineruTier,
 } from '@/api/schemas/mineru-options';
 import NoActiveKey from '@/components/NoActiveKey';
+import CheckboxGroupField from '@/components/CheckboxGroupField';
+import SelectField from '@/components/SelectField';
 import { t } from '@/i18n';
-import { mineruTierLabel } from '@/i18n/labels';
+import {
+  mineruOutputFormatDescription,
+  mineruOutputFormatLabel,
+  mineruTierLabel,
+} from '@/i18n/labels';
 import { useApiKey } from '@/stores/api-key-context';
 import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
@@ -100,6 +109,7 @@ const styles = stylex.create({
 });
 
 const MAX_TASK_FILES = 100;
+const OCR_MODE_OPTIONS = MINERU_OCR_MODES.map((value) => ({ value, label: value }));
 
 function UploadPage() {
   const apiKeyStore = useApiKey();
@@ -109,6 +119,21 @@ function UploadPage() {
   const [isDragging, setIsDragging] = createSignal(false);
   const [tier, setTier] = createSignal<MineruTier>('standard');
   const [ocrMode, setOcrMode] = createSignal<MineruOcrMode>('auto');
+  const [outputFormats, setOutputFormats] = createSignal<MineruOutputFormat[]>([
+    ...MINERU_DEFAULT_OUTPUT_FORMATS,
+  ]);
+
+  // Labels are built in memos so they follow locale changes.
+  const tierOptions = createMemo(() =>
+    MINERU_TIERS.map((value) => ({ value, label: mineruTierLabel(value) })),
+  );
+  const formatOptions = createMemo(() =>
+    MINERU_OUTPUT_FORMATS.map((value) => ({
+      value,
+      label: mineruOutputFormatLabel(value),
+      description: mineruOutputFormatDescription(value),
+    })),
+  );
 
   const [isSubmitting, setIsSubmitting] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
@@ -178,12 +203,27 @@ function UploadPage() {
     setter(value);
   }
 
+  function toggleOutputFormat(format: MineruOutputFormat, checked: boolean) {
+    const next = checked
+      ? [...outputFormats(), format]
+      : outputFormats().filter((value) => value !== format);
+    // Keep the server-side order stable regardless of click order.
+    updateOption(
+      setOutputFormats,
+      MINERU_OUTPUT_FORMATS.filter((value) => next.includes(value)),
+    );
+  }
+
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
     const key = apiKeyStore.activeKey();
     if (!key) return;
     if (files().length === 0) {
       setError(t('upload.errNoFile'));
+      return;
+    }
+    if (outputFormats().length === 0) {
+      setError(t('upload.errNoOutputFormat'));
       return;
     }
 
@@ -204,7 +244,7 @@ function UploadPage() {
           files: files(),
           tier: tier(),
           ocrMode: ocrMode(),
-          outputFormats: ['markdown', 'zip'],
+          outputFormats: outputFormats(),
         },
       });
 
@@ -321,33 +361,27 @@ function UploadPage() {
             </h2>
 
             <div {...stylex.attrs(styles.optionsGrid)}>
-              <label {...stylex.attrs(controls.field)}>
-                <span {...stylex.attrs(controls.fieldLabel)}>{t('upload.tier')}</span>
-                <select
-                  value={tier()}
-                  onChange={(e) => updateOption(setTier, e.currentTarget.value as MineruTier)}
-                  {...stylex.attrs(controls.input)}
-                >
-                  <For each={MINERU_TIERS}>
-                    {(value) => <option value={value}>{mineruTierLabel(value)}</option>}
-                  </For>
-                </select>
-              </label>
-              <label {...stylex.attrs(controls.field)}>
-                <span {...stylex.attrs(controls.fieldLabel)}>{t('upload.ocrMode')}</span>
-                <select
-                  value={ocrMode()}
-                  onChange={(e) =>
-                    updateOption(setOcrMode, e.currentTarget.value as MineruOcrMode)
-                  }
-                  {...stylex.attrs(controls.input)}
-                >
-                  <For each={MINERU_OCR_MODES}>
-                    {(value) => <option value={value}>{value}</option>}
-                  </For>
-                </select>
-              </label>
+              <SelectField
+                label={t('upload.tier')}
+                value={tier()}
+                options={tierOptions()}
+                onChange={(value) => updateOption(setTier, value)}
+              />
+              <SelectField
+                label={t('upload.ocrMode')}
+                value={ocrMode()}
+                options={OCR_MODE_OPTIONS}
+                onChange={(value) => updateOption(setOcrMode, value)}
+              />
             </div>
+
+            <CheckboxGroupField
+              label={t('upload.outputFormats')}
+              options={formatOptions()}
+              selected={outputFormats()}
+              onToggle={toggleOutputFormat}
+              hint={t('upload.outputFormatsHint')}
+            />
           </section>
 
           <button

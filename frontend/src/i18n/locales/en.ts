@@ -97,6 +97,16 @@ export const en = {
   'mineruTier.label.standard': 'Standard',
   'mineruTier.label.advanced': 'Advanced',
 
+  // MinerU 4.0 output artifact formats
+  'mineruOutputFormat.markdown': 'Markdown',
+  'mineruOutputFormat.middle_json': 'Middle JSON',
+  'mineruOutputFormat.structured_content': 'Structured Content',
+  'mineruOutputFormat.zip': 'ZIP archive',
+  'mineruOutputFormat.middle_json.description':
+    "MinerU's intermediate document model: pages, text blocks, layout and image references for downstream processing.",
+  'mineruOutputFormat.structured_content.description':
+    'Consumer-facing pages/blocks of plain text, organized for LLM input.',
+
   // Upload page
   'upload.fileSection': 'Files',
   'upload.filePicker': 'Click to choose files (multi-select)',
@@ -111,6 +121,10 @@ export const en = {
   'upload.sizeSummary': '{{count}} files · {{size}} / limit {{limit}}',
   'upload.submitting': 'Submitting…',
   'upload.errNoFile': 'Choose at least one file to parse',
+  'upload.outputFormats': 'Returned artifacts',
+  'upload.outputFormatsHint':
+    'Choose ZIP to receive images and model_output.json.',
+  'upload.errNoOutputFormat': 'Choose at least one artifact format to return',
 
   // Task list
   'tasks.filterStatus': 'Status',
