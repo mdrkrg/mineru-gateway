@@ -14,6 +14,20 @@ export type MineruOutputFormat = typeof MineruOutputFormatSchema.infer;
 export const MINERU_TIERS: MineruTier[] = ['flash', 'basic', 'standard', 'advanced'];
 export const MINERU_OCR_MODES: MineruOcrMode[] = ['auto', 'txt', 'ocr'];
 
+/**
+ * Every artifact format MinerU 4.0's `/v1` parse surface accepts, in display
+ * order. Images and `model_output.json` are bundled in the ZIP archive.
+ */
+export const MINERU_OUTPUT_FORMATS: MineruOutputFormat[] = [
+  'markdown',
+  'zip',
+  'middle_json',
+  'structured_content',
+];
+
+/** Formats selected by default: readable output + self-contained download. */
+export const MINERU_DEFAULT_OUTPUT_FORMATS: MineruOutputFormat[] = ['markdown', 'zip'];
+
 export interface ParseRequestFields {
   files: File[];
   tier?: MineruTier;

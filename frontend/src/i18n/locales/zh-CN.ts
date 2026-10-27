@@ -100,6 +100,16 @@ export const zhCN: Dict = {
   'mineruTier.label.standard': '标准解析（standard）',
   'mineruTier.label.advanced': '高级解析（advanced）',
 
+  // MinerU 4.0 output artifact formats
+  'mineruOutputFormat.markdown': 'Markdown',
+  'mineruOutputFormat.middle_json': '中间结构',
+  'mineruOutputFormat.structured_content': '结构化内容',
+  'mineruOutputFormat.zip': 'ZIP 压缩包',
+  'mineruOutputFormat.middle_json.description':
+    'MinerU 的中间解析协议：保留页面、文本块、版面与图片引用，适合二次排版或下游处理。',
+  'mineruOutputFormat.structured_content.description':
+    '面向消费端的内容结构：按页/块组织纯文本，省去版面与中间协议细节，适合直接交给 LLM。',
+
   // Upload page
   'upload.fileSection': '文件',
   'upload.filePicker': '点击选择文件，或将文件拖拽到此处（可多选）',
@@ -114,6 +124,9 @@ export const zhCN: Dict = {
   'upload.sizeSummary': '共 {{count}} 个文件 · {{size}} / 上限 {{limit}}',
   'upload.submitting': '提交中…',
   'upload.errNoFile': '请先选择要解析的文件',
+  'upload.outputFormats': '返回内容',
+  'upload.outputFormatsHint': '需要图片与 model_output.json 时请选择 ZIP。',
+  'upload.errNoOutputFormat': '请至少选择一种返回内容',
 
   // Task list
   'tasks.filterStatus': '状态',
