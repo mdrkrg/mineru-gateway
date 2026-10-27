@@ -53,6 +53,8 @@ class MockState:
     parse_task_status: str = "completed"
     submitted: list[dict] = field(default_factory=list)
     result_requests: list[dict] = field(default_factory=list)
+    # Upstream task id -> output_formats recorded at submission.
+    task_output_formats: dict[str, list[str]] = field(default_factory=dict)
 
     # Per-task result overrides for GET /v1/tasks/{id}/result
     # Key: upstream_task_id -> {"status_code": int, "content": bytes, "headers": dict}
@@ -79,6 +81,7 @@ class MockState:
         self.parse_task_status = "completed"
         self.submitted.clear()
         self.result_requests.clear()
+        self.task_output_formats.clear()
         self.result_status_code = 200
         self.result_content_type = None
         self.result_content_disposition = None
@@ -102,6 +105,16 @@ def _query_params(request: Request) -> dict:
         values = request.query_params.getlist(key)
         params[key] = values[0] if len(values) == 1 else values
     return params
+
+
+def _submitted_output_formats(params: dict) -> list[str]:
+    """Normalise the request's output_formats the way upstream does."""
+    raw = params.get("output_formats") or ["markdown"]
+    values = [raw] if isinstance(raw, str) else list(raw)
+    formats = [name.strip() for item in values for name in str(item).split(",")]
+    if params.get("response_format") == "zip" and "zip" not in formats:
+        formats.append("zip")
+    return [name for name in formats if name]
 
 
 def create_mock_upstream() -> FastAPI:
@@ -144,6 +157,7 @@ def create_mock_upstream() -> FastAPI:
                 content={"detail": "upstream error"},
             )
         task_id = f"up-{uuid.uuid4().hex[:12]}"
+        state.task_output_formats[task_id] = _submitted_output_formats(params)
         if state.submit_malformed:
             return JSONResponse(
                 status_code=202,
@@ -182,6 +196,9 @@ def create_mock_upstream() -> FastAPI:
                 status_code=state.parse_status, content={"detail": "upstream error"}
             )
         task_id = f"up-{uuid.uuid4().hex[:12]}"
+        state.task_output_formats[task_id] = _submitted_output_formats(
+            state.submitted[-1]["params"]
+        )
         if (
             state.parse_status == 200
             and state.submitted[-1]["params"].get("response_format") == "zip"
@@ -236,6 +253,15 @@ def create_mock_upstream() -> FastAPI:
         state.result_requests.append(
             {"task_id": task_id, "response_format": response_format}
         )
+        if (
+            response_format == "zip"
+            and task_id in state.task_output_formats
+            and "zip" not in state.task_output_formats[task_id]
+        ):
+            return _error(
+                "Request zip in output_formats when submitting the task",
+                code="unsupported_output_format",
+            )
         override = state.task_result_overrides.get(task_id)
         if override:
             headers = dict(override.get("headers", {}))

@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import select
 
 from tests.mock_upstream import state as mock_state
+from tests.mock_v1_contract import inline_result_payload
 
 from mineru_gateway import models
 from mineru_gateway.models import ApiKey
@@ -273,18 +274,6 @@ async def test_get_result_enforces_ownership(client, admin_headers, api_key):
 
 async def test_get_result_409_when_no_upstream_task_id(client, api_key):
     """§5.1: 任务尚无 upstream_task_id (提交未成功映射) 时无法取结果 → 409."""
-    from sqlalchemy import select
-
-    from mineru_gateway.models import ApiKey
-    from mineru_gateway.tasks import service
-
-    db = client._transport.app.state.db
-    async with db.session_factory() as session:
-        key = (await session.execute(select(ApiKey))).scalars().first()
-    from sqlalchemy import select
-
-    from mineru_gateway.models import ApiKey
-
     db = client._transport.app.state.db
     async with db.session_factory() as session:
         key = (await session.execute(select(ApiKey))).scalars().first()
@@ -443,10 +432,10 @@ async def test_get_result_409_for_cancelled_task(client, api_key):
 
 
 async def _submit_and_set_status(
-    client, api_key, status: str
+    client, api_key, status: str, data=None
 ) -> tuple[str, str | None]:
     """Submit a task and set it to the given status. Returns (task_id, upstream_task_id)."""
-    task_id = await _submit(client, api_key)
+    task_id = await _submit(client, api_key, data)
     db = client._transport.app.state.db
     from mineru_gateway import models
 
@@ -845,40 +834,6 @@ async def test_result_zip_all_upstream_fail(client, api_key):
             assert skipped["reason"] == "upstream_error"
             assert "detail" in skipped
             assert "500" in skipped["detail"]
-
-
-async def test_result_zip_manifest_is_last_entry(client, api_key):
-    """§1.4 Z10: 3 completed tasks all upstream 200 -> _manifest.json is last zip entry."""
-    ids = []
-    for i in range(3):
-        tid, _ = await _submit_and_set_status(client, api_key, "completed")
-        ids.append(tid)
-    db = client._transport.app.state.db
-    from mineru_gateway import models
-
-    for i, tid in enumerate(ids):
-        async with db.session_factory() as session:
-            task = await session.get(models.TaskRecord, uuid.UUID(tid))
-            task.file_names = [f"file_{i}.pdf"]
-            await session.commit()
-
-    resp = await client.post(
-        "/v1/tasks/result-zip",
-        json={"task_ids": ids},
-        headers={"X-API-Key": api_key},
-    )
-    assert resp.status_code == 200
-
-    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
-        names = zf.namelist()
-        assert names[-1] == "_manifest.json"
-        assert "_manifest.json" in names
-        manifest = json.loads(zf.read("_manifest.json"))
-        assert len(manifest["included"]) == 3
-        assert len(manifest["skipped"]) == 0
-        for item in manifest["included"]:
-            assert "entry" in item
-            assert len(item["entry"]) > 0
 
 
 # ===== POST /v1/tasks/cancel (spec: batch-endpoints.md §2) =====
@@ -1357,6 +1312,51 @@ async def test_result_zip_allows_partial_task(client, api_key):
         assert "_manifest.json" in zf.namelist()
         manifest = json.loads(zf.read("_manifest.json"))
         assert len(manifest["included"]) == 1
+
+
+async def test_result_zip_packs_mixed_output_formats(client, api_key):
+    """Choose JSON or ZIP per task and preserve both in the same batch download."""
+    json_tid, json_upstream_id = await _submit_and_set_status(
+        client, api_key, "completed"
+    )
+    inline_result = json.dumps(inline_result_payload(json_upstream_id)).encode()
+    mock_state.task_result_overrides[json_upstream_id] = {
+        "content": inline_result,
+        "headers": {"content-type": "application/json"},
+    }
+    zip_tid, zip_upstream_id = await _submit_and_set_status(
+        client, api_key, "completed", data={"output_formats": "markdown,zip"}
+    )
+    # The gateway repacks the bytes verbatim, so a marker stands in for the ZIP.
+    archive = b"PK\x03\x04mock-zip"
+    mock_state.task_result_overrides[zip_upstream_id] = {
+        "content": archive,
+        "headers": {"content-type": "application/zip"},
+    }
+
+    resp = await client.post(
+        "/v1/tasks/result-zip",
+        json={"task_ids": [json_tid, zip_tid]},
+        headers={"X-API-Key": api_key},
+    )
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/zip"
+    assert mock_state.result_requests == [
+        {"task_id": json_upstream_id, "response_format": "json"},
+        {"task_id": zip_upstream_id, "response_format": "zip"},
+    ]
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        assert zf.namelist() == ["doc/result.json", "doc/result.zip", "_manifest.json"]
+        assert json.loads(zf.read("_manifest.json")) == {
+            "included": [
+                {"task_id": json_tid, "entry": "doc/result.json"},
+                {"task_id": zip_tid, "entry": "doc/result.zip"},
+            ],
+            "skipped": [],
+        }
+        assert zf.read("doc/result.json") == inline_result
+        assert zf.read("doc/result.zip") == archive
 
 
 async def test_cancelled_task_has_no_result(client, api_key):

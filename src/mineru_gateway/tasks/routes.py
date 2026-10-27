@@ -70,6 +70,11 @@ def _local_task_id(task_id: str) -> uuid.UUID:
         raise HTTPException(status_code=404, detail="Task not found") from exc
 
 
+def _requested_output_formats(task: TaskRecord) -> list[str]:
+    """Artifact formats recorded at submission time."""
+    return task.parse_params.get("output_formats", [])
+
+
 async def _cancel_upstream_best_effort(
     upstream: UpstreamClient, task: TaskRecord
 ) -> None:
@@ -200,13 +205,12 @@ async def get_task_result(
             detail=f"Task has no upstream result (status={task.status})",
         )
 
-    parse_params = task.parse_params or {}
-    output_formats = parse_params.get("output_formats") or []
-    if isinstance(output_formats, str):
-        output_formats = output_formats.split(",")
+    # A task submitted with `zip` defaults to the ZIP download; otherwise the
+    # upstream inline JSON result is relayed unchanged.
     effective_response_format = response_format
-    if effective_response_format is None and "zip" in output_formats:
+    if effective_response_format is None and "zip" in _requested_output_formats(task):
         effective_response_format = "zip"
+
     upstream_resp = await upstream.get_task_result(
         task.upstream_task_id,
         response_format=effective_response_format,
@@ -315,9 +319,15 @@ async def result_zip(
             task = tasks_by_id[task_id]
             upstream_task_id: str = task.upstream_task_id  # type: ignore[assignment]
 
+            # MinerU only serves a ZIP result when the task was submitted with
+            # `zip` in `output_formats`. Tasks submitted without it still get
+            # packed here from their inline JSON result.
+            response_format = (
+                "zip" if "zip" in _requested_output_formats(task) else "json"
+            )
             try:
                 upstream_resp = await upstream.get_task_result(
-                    upstream_task_id, response_format="zip"
+                    upstream_task_id, response_format=response_format
                 )
             except Exception as exc:
                 skipped.append(

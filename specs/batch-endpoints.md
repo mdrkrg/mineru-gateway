@@ -44,7 +44,7 @@ Content-Type: application/json
    - 须同时满足 `status IN ('completed', 'partial')` 且 `upstream_task_id IS NOT NULL`
    - 若任一 task 不符合 → **`409`**，响应体列出所有不合格 task 的 `task_id`、`status` 及 `reason`。
 5. **构建 zip**：维护内存中的 `BytesIO` 与 manifest 对象（`included`、`skipped` 列表），对校验通过的 task 逐条执行：
-   a. 请求上游 `GET /v1/tasks/{upstream_task_id}/result`
+   a. 请求上游 `GET /v1/tasks/{upstream_task_id}/result`；`response_format` 由提交记录决定：task 的 `parse_params.output_formats` 含 `zip` 时用 `zip`，其余情况用 `json`
    b. 若上游返回 `200`：将响应体作为 zip entry 写入流，同时在 manifest `.included` 中记录 `{"task_id", "entry"}`
    c. 若上游返回非 200 或抛出异常：**跳过此 task**，同时在 manifest `.skipped` 中记录 `{"task_id", "entry", "reason", "detail"}`（`reason: "upstream_error"`，`detail` 为实际 HTTP 状态码或异常信息）
    d. 全部 task 完成后，追加写入 `_manifest.json` 作为 zip 的最后一个 entry（见下方结构），然后关闭 zip 流
