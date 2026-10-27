@@ -262,7 +262,7 @@ async def test_t3_form_fields_passthrough(client, api_key):
             "tier": "basic",
             "ocr_mode": "auto",
             "page_range": "1-3",
-            "output_formats": ["markdown", "zip"],
+            "output_formats": ["markdown"],
         }
         cache_dir = task.cache_dir
 
@@ -279,8 +279,8 @@ async def test_t3_form_fields_passthrough(client, api_key):
     upstream_params = mock_state.submitted[0]["params"]
     assert upstream_params["tier"] == "basic"
     assert upstream_params["ocr_mode"] == "auto"
-    assert "markdown" in upstream_params["output_formats"]
-    assert "zip" in upstream_params["output_formats"]
+    # Single-valued query params arrive as a string; no ZIP is appended.
+    assert upstream_params["output_formats"] == "markdown"
 
 
 async def test_repeated_output_formats_are_accumulated(client, api_key):
@@ -298,7 +298,6 @@ async def test_repeated_output_formats_are_accumulated(client, api_key):
     assert mock_state.submitted[0]["params"]["output_formats"] == [
         "markdown",
         "middle_json",
-        "zip",
     ]
 
 

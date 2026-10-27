@@ -25,13 +25,17 @@ def test_native_v1_options_are_preserved():
     }
 
 
-def test_v1_defaults_and_forced_async_zip():
+def test_v1_defaults_are_minimal():
     assert parse_v1_params({}, sync=False) == {
         "ocr_mode": "auto",
         "output_formats": ["markdown"],
     }
-    params = parse_v1_params({}, sync=False, include_zip=True)
-    assert params["output_formats"] == ["markdown", "zip"]
+
+
+def test_output_formats_are_never_extended_implicitly():
+    """4.0 only serves a ZIP when it was requested; do not force one."""
+    params = parse_v1_params({"output_formats": "markdown"}, sync=False)
+    assert params["output_formats"] == ["markdown"]
 
 
 def test_repeated_and_comma_separated_output_formats_are_combined():

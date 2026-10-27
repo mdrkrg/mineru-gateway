@@ -78,7 +78,7 @@ async def test_submit_records_parse_parameters(client, api_key, sample_files):
             "tier": "basic",
             "ocr_mode": "ocr",
             "page_range": "3-6",
-            "output_formats": ["middle_json", "zip"],
+            "output_formats": ["middle_json"],
         }
 
 
@@ -215,6 +215,9 @@ async def test_file_parse_zip_uses_task_headers_for_history(
         assert task.id == response_task_id
         assert task.status == "completed"
         assert task.upstream_task_id.startswith("up-")
+        # Upstream appends `zip` for sync ZIP responses; record the effective
+        # set so result downloads and retries ask for the same artifacts.
+        assert task.parse_params["output_formats"] == ["markdown", "zip"]
 
 
 async def test_file_parse_records_partial_status_and_error(

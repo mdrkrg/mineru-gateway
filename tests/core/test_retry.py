@@ -63,6 +63,13 @@ async def test_retry_resubmits_when_upstream_healthy(app, upstream_client, tmp_p
         assert refreshed.retry_count == 1
         assert refreshed.upstream_task_id != "up-old"
         assert refreshed.consecutive_poll_failures == 0
+        # The replayed params replace the request-time snapshot so result
+        # downloads and later retries follow the artifacts that actually exist.
+        assert refreshed.parse_params == {
+            "ocr_mode": "auto",
+            "output_formats": ["markdown"],
+            "tier": "basic",
+        }
 
 
 async def test_retry_skips_when_upstream_unhealthy(app, upstream_client, tmp_path):

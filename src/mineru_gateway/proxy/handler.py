@@ -66,12 +66,10 @@ def _store_form_field(data: dict, name: str, value: str) -> None:
         data[name] = [existing, value]
 
 
-def _parse_options(
-    data: dict, *, sync: bool, include_zip: bool = False
-) -> tuple[dict, str | None]:
+def _parse_options(data: dict, *, sync: bool) -> tuple[dict, str | None]:
     """Validate form fields and build V1 query params for one request."""
     try:
-        params = parse_v1_params(data, sync=sync, include_zip=include_zip)
+        params = parse_v1_params(data, sync=sync)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return params, params.get("tier")
@@ -507,7 +505,7 @@ async def handle_task_submission(
         request, settings.max_upload_size, settings.max_file_size, cache
     )
     try:
-        params, tier = _parse_options(data, sync=False, include_zip=True)
+        params, tier = _parse_options(data, sync=False)
     except BaseException:
         # The streaming parser has already finalized the cache directory. It
         # is not attached to a task yet, so no background cleanup can find it.
@@ -657,6 +655,11 @@ async def handle_file_parse(
         request, settings.max_upload_size, settings.max_file_size
     )
     params, tier = _parse_options(data, sync=True)
+    # Synchronous ZIP requests make upstream append `zip` to `output_formats`.
+    # Record the effective set so downloads and retries request the same
+    # artifacts instead of inferring a markdown-only task.
+    if params.get("response_format") == "zip" and "zip" not in params["output_formats"]:
+        params["output_formats"].append("zip")
 
     upstream_resp = await upstream.parse_file(params, files)
 

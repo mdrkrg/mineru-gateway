@@ -58,7 +58,7 @@ async def retry_once(
 
         try:
             data, files = await cache.restore(str(task.cache_dir))
-            params = parse_v1_params(data, sync=False, include_zip=True)
+            params = parse_v1_params(data, sync=False)
             resp = await upstream.submit_task(params, files)
             if resp.status_code != 202:
                 body_text = resp.text[:500]
@@ -110,6 +110,7 @@ async def retry_once(
                         "upstream_task_id": payload.task_id,
                         "status": gateway_task_status(payload.status),
                         "tier": payload.tier,
+                        "parse_params": params,
                         "retry_count": task.retry_count + 1,
                         "consecutive_poll_failures": 0,
                         "started_at": None,

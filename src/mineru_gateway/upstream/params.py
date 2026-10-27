@@ -1,4 +1,10 @@
-"""Validate gateway parse fields and build MinerU 4.0 V1 query params."""
+"""Validate gateway parse fields and build MinerU 4.0 V1 query params.
+
+`output_formats` is MinerU 4.0's replacement for the 3.x ``return_*``
+switches. The V1 task/parse surface accepts four artifacts
+(``markdown``/``middle_json``/``structured_content``/``zip``); the gateway
+validates those names and forwards the selection as the query parameter.
+"""
 
 from __future__ import annotations
 
@@ -32,7 +38,7 @@ _BASE_FIELDS = frozenset({"tier", "ocr_mode", "page_range", "output_formats"})
 _SYNC_FIELDS = _BASE_FIELDS | {"response_format", "wait_timeout"}
 
 
-def _output_formats(value: Any, *, include_zip: bool) -> list[str]:
+def _output_formats(value: Any) -> list[str]:
     formats: list[str] = []
     if value:
         raw_values = value if isinstance(value, (list, tuple)) else [value]
@@ -47,8 +53,6 @@ def _output_formats(value: Any, *, include_zip: bool) -> list[str]:
     unknown = [name for name in formats if name not in VALID_OUTPUT_FORMATS]
     if unknown:
         raise ValueError("unsupported output_format: " + ", ".join(unknown))
-    if include_zip and "zip" not in formats:
-        formats.append("zip")
     return formats
 
 
@@ -109,9 +113,7 @@ def _format_page_range(start: int, end: int) -> str:
     return endpoint(start) if start == end else f"{endpoint(start)}-{endpoint(end)}"
 
 
-def parse_v1_params(
-    data: dict[str, Any], *, sync: bool, include_zip: bool = False
-) -> dict[str, Any]:
+def parse_v1_params(data: dict[str, Any], *, sync: bool) -> dict[str, Any]:
     """Return validated MinerU 4.0 V1 query parameters."""
     allowed = _SYNC_FIELDS if sync else _BASE_FIELDS
     unknown = sorted(set(data) - allowed)
@@ -130,9 +132,7 @@ def parse_v1_params(
 
     params: dict[str, Any] = {
         "ocr_mode": ocr_mode,
-        "output_formats": _output_formats(
-            data.get("output_formats"), include_zip=include_zip
-        ),
+        "output_formats": _output_formats(data.get("output_formats")),
     }
     if tier is not None:
         params["tier"] = tier

@@ -480,7 +480,7 @@ async def retry_loop(interval: float = 10.0):
         for task in tasks:
             try:
                 form_data, files = await file_cache.restore(task.cache_dir)
-                params = parse_v1_params(form_data, sync=False, include_zip=True)
+                params = parse_v1_params(form_data, sync=False)
                 upstream_resp = await upstream_client.submit_task(params, files)
                 if upstream_resp.status_code != 202:
                     transient = (
@@ -513,6 +513,7 @@ async def retry_loop(interval: float = 10.0):
                     upstream_task_id=payload.task_id,
                     status=gateway_task_status(payload.status),
                     tier=payload.tier,
+                    parse_params=params,
                     retry_count=task.retry_count + 1,
                     consecutive_poll_failures=0,
                     started_at=None, completed_at=None, error_message=None,
