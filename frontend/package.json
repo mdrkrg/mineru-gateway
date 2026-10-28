@@ -11,10 +11,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "TEST_ENV=e2e vitest run",
+    "test:browser": "playwright test",
     "test:all": "TEST_ENV=all vitest run",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.0",
     "@stylexjs/unplugin": "^0.19.1",
     "@types/node": "^26.1.1",
     "@vitest/coverage-v8": "^4.1.10",

@@ -32,3 +32,14 @@ Your app is ready to be deployed!
 ## Deployment
 
 You can deploy the `dist` folder to any static host provider (netlify, surge, now, etc.)
+
+## Browser regression tests
+
+```bash
+pnpm exec playwright install chromium  # first run; add --with-deps on CI
+pnpm test:browser
+```
+
+Playwright builds the SPA, starts Vite preview, and tests it in Chromium. API
+requests are intercepted in the browser; no gateway or MinerU service is required.
+The existing `pnpm test` suite remains node-only, without the StyleX compiler.

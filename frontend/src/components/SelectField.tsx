@@ -27,15 +27,19 @@ export default function SelectField<T extends string>(props: SelectFieldProps<T>
     <label {...stylex.attrs(controls.field)}>
       <span {...stylex.attrs(controls.fieldLabel)}>{props.label}</span>
       <select
-        value={props.value}
         onChange={(e) => props.onChange(e.currentTarget.value as T)}
         {...stylex.attrs(controls.input)}
       >
         <Show when={props.placeholder !== undefined}>
-          <option value="">{props.placeholder}</option>
+          <option value="" selected={props.value === ''}>{props.placeholder}</option>
         </Show>
+        {/* Localized options may be recreated without the value changing. */}
         <For each={props.options}>
-          {(option) => <option value={option.value}>{option.label}</option>}
+          {(option) => (
+            <option value={option.value} selected={props.value === option.value}>
+              {option.label}
+            </option>
+          )}
         </For>
       </select>
     </label>
