@@ -59,17 +59,15 @@ _BASE_FIELDS = frozenset({"tier", "ocr_mode", "page_range", "output_formats"})
 _SYNC_FIELDS = _BASE_FIELDS | {"response_format", "wait_timeout"}
 
 
-def _output_formats(value: Any) -> list[str]:
-    formats: list[str] = []
-    if value:
-        raw_values = value if isinstance(value, (list, tuple)) else [value]
-        for raw in raw_values:
-            for item in str(raw).split(","):
-                name = item.strip()
-                if name and name not in formats:
-                    formats.append(name)
-    else:
-        formats.append("markdown")
+def _output_formats(value: str | list[str] | None) -> list[str]:
+    """Normalize `output_formats` from the two forms the gateway forwards.
+
+    MinerU takes the parameter once (comma-separated) or repeated; blank or
+    missing input means its default (`markdown`).
+    """
+    raw_values = value if isinstance(value, list) else [value or ""]
+    names = [item.strip() for raw in raw_values for item in raw.split(",")]
+    formats = list(dict.fromkeys(name for name in names if name)) or ["markdown"]
 
     unknown = [name for name in formats if name not in VALID_OUTPUT_FORMATS]
     if unknown:

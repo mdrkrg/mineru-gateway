@@ -45,6 +45,13 @@ def test_repeated_and_comma_separated_output_formats_are_combined():
     assert params["output_formats"] == ["markdown", "middle_json", "zip"]
 
 
+@pytest.mark.parametrize("blank", [",", "   ", "", [" "], [","], []])
+def test_blank_output_formats_fall_back_to_the_default(blank):
+    """Separators alone are as empty as omitting the field."""
+    params = parse_v1_params({"output_formats": blank}, sync=False)
+    assert params["output_formats"] == ["markdown"]
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
