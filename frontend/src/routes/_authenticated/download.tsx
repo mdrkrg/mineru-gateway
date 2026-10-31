@@ -1,6 +1,6 @@
 import * as stylex from '@stylexjs/stylex';
 import { For, Show, createSignal, onMount } from 'solid-js';
-import { Link, createFileRoute } from '@tanstack/solid-router';
+import { createFileRoute } from '@tanstack/solid-router';
 import { Download, Package } from 'lucide-solid';
 import {
   downloadResultZip,
@@ -11,13 +11,13 @@ import type { TaskListItem } from '@/api/schemas/tasks';
 import NoActiveKey from '@/components/NoActiveKey';
 import Pagination from '@/components/Pagination';
 import StatusBadge from '@/components/StatusBadge';
+import TaskFileCell from '@/components/TaskFileCell';
 import { t } from '@/i18n';
 import { useApiKey } from '@/stores/api-key-context';
 import { errorMessage } from '@/utils/api-error';
 import { isHttpError } from '@/core/error-model';
-import { ROUTES } from '@/utils/constants';
 import { filenameFromContentDisposition, downloadResultFile, saveBlob } from '@/utils/download';
-import { formatDateTime } from '@/utils/format';
+import { formatDateTime, shortTaskId } from '@/utils/format';
 import { actions } from '@/styles/actions.stylex';
 import { controls } from '@/styles/controls.stylex';
 import { icons } from '@/styles/icons.stylex';
@@ -109,7 +109,7 @@ function ResultDownloadPage() {
           | { detail?: string; nonDownloadable?: { taskId: string; reason: string }[] }
           | undefined;
         const failed = data?.nonDownloadable
-          ?.map((item) => `…${item.taskId.slice(-8)}(${item.reason})`)
+          ?.map((item) => `…${shortTaskId(item.taskId)}(${item.reason})`)
           .join(t('common.listSeparator'));
         setError(
           t('download.notDownloadable', {
@@ -187,9 +187,8 @@ function ResultDownloadPage() {
                         onChange={(e) => toggleSelectAll(e.currentTarget.checked)}
                       />
                     </th>
-                    <th {...stylex.attrs(table.th)}>{t('download.thTaskId')}</th>
-                    <th {...stylex.attrs(table.th)}>{t('download.thStatus')}</th>
                     <th {...stylex.attrs(table.th)}>{t('download.thFiles')}</th>
+                    <th {...stylex.attrs(table.th)}>{t('download.thStatus')}</th>
                     <th {...stylex.attrs(table.th)}>{t('download.thCompletedAt')}</th>
                     <th {...stylex.attrs(table.th)}>{t('download.thActions')}</th>
                   </tr>
@@ -210,24 +209,11 @@ function ResultDownloadPage() {
                             onChange={(e) => toggleSelect(task.taskId, e.currentTarget.checked)}
                           />
                         </td>
-                        <td {...stylex.attrs(table.td)}>
-                          <Link
-                            to={ROUTES.taskDetail(task.taskId)}
-                            class={stylex.attrs(controls.link, typography.body).class}
-                          >
-                            <code {...stylex.attrs(typography.meta)}>
-                              …{task.taskId.slice(-8)}
-                            </code>
-                          </Link>
+                        <td {...stylex.attrs(table.truncate, table.truncateWide)}>
+                          <TaskFileCell taskId={task.taskId} fileNames={task.fileNames} />
                         </td>
                         <td {...stylex.attrs(table.td)}>
                           <StatusBadge status={task.status} />
-                        </td>
-                        <td
-                          {...stylex.attrs(table.truncate, table.truncateWide)}
-                          title={task.fileNames.join(', ')}
-                        >
-                          {task.fileNames.join(', ')}
                         </td>
                         <td {...stylex.attrs(table.nowrap)}>
                           {formatDateTime(task.completedAt)}

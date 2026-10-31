@@ -1,25 +1,21 @@
 import * as stylex from '@stylexjs/stylex';
 import { For, Show, createMemo, createSignal, onMount } from 'solid-js';
-import { Link, createFileRoute } from '@tanstack/solid-router';
+import { createFileRoute } from '@tanstack/solid-router';
 import { listTasks, cancelTask, batchCancelTasks } from '@/api/functions/tasks';
 import type { TaskListItem } from '@/api/schemas/tasks';
 import NoActiveKey from '@/components/NoActiveKey';
 import Pagination from '@/components/Pagination';
 import SelectField from '@/components/SelectField';
 import StatusBadge from '@/components/StatusBadge';
+import TaskFileCell from '@/components/TaskFileCell';
 import { t } from '@/i18n';
 import { taskStatusLabel, taskTierLabel } from '@/i18n/labels';
 import { useApiKey } from '@/stores/api-key-context';
 import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
-import {
-  ROUTES,
-  TASK_POLL_INTERVAL_MS,
-  TASK_STATUSES,
-  isActiveTaskStatus,
-} from '@/utils/constants';
-import { formatDateTime } from '@/utils/format';
+import { TASK_POLL_INTERVAL_MS, TASK_STATUSES, isActiveTaskStatus } from '@/utils/constants';
+import { formatDateTime, shortTaskId } from '@/utils/format';
 import { createPolling } from '@/utils/polling';
 import { actions } from '@/styles/actions.stylex';
 import { controls } from '@/styles/controls.stylex';
@@ -148,7 +144,7 @@ function TaskListPage() {
     if (!key) return;
     const confirmed = await confirm.ask({
       title: t('tasks.confirmCancelTitle'),
-      description: t('tasks.confirmCancel', { shortId: task.taskId.slice(-8) }),
+      description: t('tasks.confirmCancel', { shortId: shortTaskId(task.taskId) }),
       confirmText: t('taskDetail.cancel'),
       variant: 'danger',
     });
@@ -306,10 +302,9 @@ function TaskListPage() {
                         disabled={selectableCount() === 0}
                       />
                     </th>
-                    <th {...stylex.attrs(table.th)}>{t('tasks.thTaskId')}</th>
+                    <th {...stylex.attrs(table.th)}>{t('tasks.thFiles')}</th>
                     <th {...stylex.attrs(table.th)}>{t('tasks.thStatus')}</th>
                     <th {...stylex.attrs(table.th)}>{t('tasks.thTier')}</th>
-                    <th {...stylex.attrs(table.th)}>{t('tasks.thFiles')}</th>
                     <th {...stylex.attrs(table.th)}>{t('tasks.thCreatedAt')}</th>
                     <th {...stylex.attrs(table.th)}>{t('tasks.thRetries')}</th>
                     <th {...stylex.attrs(table.th)}>{t('tasks.thActions')}</th>
@@ -332,27 +327,14 @@ function TaskListPage() {
                             onChange={(e) => toggleSelect(task.taskId, e.currentTarget.checked)}
                           />
                         </td>
-                        <td {...stylex.attrs(table.td)}>
-                          <Link
-                            to={ROUTES.taskDetail(task.taskId)}
-                            class={stylex.attrs(controls.link, typography.body).class}
-                          >
-                            <code {...stylex.attrs(typography.meta)}>
-                              …{task.taskId.slice(-8)}
-                            </code>
-                          </Link>
+                        <td {...stylex.attrs(table.truncate, table.truncateNarrow)}>
+                          <TaskFileCell taskId={task.taskId} fileNames={task.fileNames} />
                         </td>
                         <td {...stylex.attrs(table.td)}>
                           <StatusBadge status={task.status} />
                         </td>
                         <td {...stylex.attrs(table.td, typography.meta)}>
                           {taskTierLabel(task.tier)}
-                        </td>
-                        <td
-                          {...stylex.attrs(table.truncate, table.truncateNarrow)}
-                          title={task.fileNames.join(', ')}
-                        >
-                          {task.fileNames.join(', ')}
                         </td>
                         <td {...stylex.attrs(table.nowrap)}>
                           {formatDateTime(task.createdAt)}

@@ -5,6 +5,7 @@ import {
   formatDuration,
   formatFileSize,
   formatMilliseconds,
+  shortTaskId,
 } from '../../src/utils/format';
 import { setLocale } from '../../src/i18n/locale';
 
@@ -100,5 +101,12 @@ describe('formatMilliseconds', () => {
   it('returns placeholder for negative or non-finite input', () => {
     expect(formatMilliseconds(-1)).toBe(EMPTY_PLACEHOLDER);
     expect(formatMilliseconds(Number.NaN)).toBe(EMPTY_PLACEHOLDER);
+  });
+});
+
+
+describe('shortTaskId', () => {
+  it('keeps the random suffix of a UUIDv7 task id', () => {
+    expect(shortTaskId('01a19193-54a2-712c-9109-886b3fba7bba')).toBe('3fba7bba');
   });
 });

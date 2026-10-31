@@ -27,7 +27,7 @@ import { actions } from '@/styles/actions.stylex';
 import { controls } from '@/styles/controls.stylex';
 import { icons } from '@/styles/icons.stylex';
 import { layout } from '@/styles/layout.stylex';
-import { breakpoint, colors, radius, space } from '@/styles/tokens.stylex';
+import { breakpoint, colors, fontSize, lineHeight, radius, space } from '@/styles/tokens.stylex';
 import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/tasks/$id')({
@@ -63,6 +63,30 @@ const styles = stylex.create({
     borderRadius: radius.px4,
     padding: space.px12,
     whiteSpace: 'pre-wrap',
+  },
+  header: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: space.px12,
+    rowGap: space.px4,
+    marginBottom: space.px16,
+  },
+  taskId: {
+    order: { default: 2, [breakpoint.sm]: 1 },
+    flexBasis: { default: '100%', [breakpoint.sm]: 'auto' },
+    minWidth: 0,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    fontSize: { default: fontSize.px12, [breakpoint.sm]: fontSize.px14 },
+    lineHeight: { default: lineHeight.px16, [breakpoint.sm]: lineHeight.px20 },
+    color: { default: colors.gray500, [breakpoint.sm]: colors.gray800 },
+    overflowWrap: 'anywhere',
+  },
+  status: {
+    order: { default: 1, [breakpoint.sm]: 2 },
+    display: 'flex',
+    flexShrink: 0,
+    marginLeft: 'auto',
   },
   actions: {
     display: 'flex',
@@ -194,12 +218,14 @@ function TaskDetailPage() {
             {(task) => (
               <>
                 <div {...stylex.attrs(controls.card)}>
-                  <div {...stylex.attrs(layout.rowBetween, layout.mb16)}>
-                    <h2 {...stylex.attrs(layout.rowCenter12, typography.sectionHeading)}>
+                  <div {...stylex.attrs(styles.header)}>
+                    <h2 {...stylex.attrs(typography.sectionHeading)}>
                       {t('taskDetail.title')}
-                      <code {...stylex.attrs(typography.body)}>{task().taskId}</code>
                     </h2>
-                    <StatusBadge status={task().status} />
+                    <code {...stylex.attrs(styles.taskId)}>{task().taskId}</code>
+                    <div {...stylex.attrs(styles.status)}>
+                      <StatusBadge status={task().status} />
+                    </div>
                   </div>
 
                   <dl {...stylex.attrs(styles.fields)}>

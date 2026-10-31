@@ -83,3 +83,14 @@ export function formatMilliseconds(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return EMPTY_PLACEHOLDER;
   return composeDuration(Math.floor(ms / 1000));
 }
+
+/**
+ * Last 8 characters of a task UUID, used as a human-readable suffix.
+ *
+ * UUIDv7 starts with a timestamp, so task prefixes cluster together; the
+ * suffix is the random part and is the useful part to show in a list.
+ * The full UUID remains the canonical identifier.
+ */
+export function shortTaskId(taskId: string): string {
+  return taskId.slice(-8);
+}
