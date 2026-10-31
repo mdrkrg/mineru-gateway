@@ -101,11 +101,15 @@ function RegisterPage() {
                   <input
                     type="password"
                     required
+                    minlength={8}
                     autocomplete="new-password"
                     value={password()}
                     onInput={(e) => setPassword(e.currentTarget.value)}
                     {...stylex.attrs(controls.input)}
                   />
+                  <span {...stylex.attrs(typography.metaMuted)}>
+                    {t('auth.passwordHint')}
+                  </span>
                 </label>
 
                 <label {...stylex.attrs(controls.field)}>

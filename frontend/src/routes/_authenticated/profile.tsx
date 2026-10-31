@@ -33,11 +33,20 @@ function ProfilePage() {
   const [error, setError] = createSignal<string | null>(null);
   const [saved, setSaved] = createSignal(false);
 
+  const currentName = () => auth.user()?.displayName ?? '';
+  const nameChanged = () => displayName().trim() !== currentName();
+  const hasChanges = () => nameChanged() || password().length > 0;
+  const canSave = () => hasChanges() && !isSaving();
+
+  function clearFeedback() {
+    setError(null);
+    setSaved(false);
+  }
+
   async function handleSave(e: SubmitEvent) {
     e.preventDefault();
 
-    setError(null);
-    setSaved(false);
+    clearFeedback();
 
     if (password() && password() !== confirm()) {
       setError(t('profile.errPasswordMismatch'));
@@ -45,17 +54,13 @@ function ProfilePage() {
     }
 
     const name = displayName().trim();
-    const currentName = auth.user()?.displayName ?? '';
-    if (!password() && name === currentName) {
-      setError(t('profile.errNoChanges'));
-      return;
-    }
+    if (!password() && name === currentName()) return;
 
     setIsSaving(true);
     const result = await updateCurrentUser(
       {
         password: password() || null,
-        displayName: name !== currentName ? name || null : null,
+        displayName: name !== currentName() ? name || null : null,
       },
     );
     setIsSaving(false);
@@ -121,7 +126,10 @@ function ProfilePage() {
             <input
               type="text"
               value={displayName()}
-              onInput={(e) => setDisplayName(e.currentTarget.value)}
+              onInput={(e) => {
+                clearFeedback();
+                setDisplayName(e.currentTarget.value);
+              }}
               {...stylex.attrs(controls.input)}
             />
           </label>
@@ -129,11 +137,16 @@ function ProfilePage() {
             <span {...stylex.attrs(controls.fieldLabel)}>{t('profile.newPassword')}</span>
             <input
               type="password"
+              minlength={8}
               autocomplete="new-password"
               value={password()}
-              onInput={(e) => setPassword(e.currentTarget.value)}
+              onInput={(e) => {
+                clearFeedback();
+                setPassword(e.currentTarget.value);
+              }}
               {...stylex.attrs(controls.input)}
             />
+            <span {...stylex.attrs(typography.metaMuted)}>{t('auth.passwordHint')}</span>
           </label>
           <Show when={password()}>
             <label {...stylex.attrs(controls.field)}>
@@ -144,14 +157,17 @@ function ProfilePage() {
                 type="password"
                 autocomplete="new-password"
                 value={confirm()}
-                onInput={(e) => setConfirm(e.currentTarget.value)}
+                onInput={(e) => {
+                  clearFeedback();
+                  setConfirm(e.currentTarget.value);
+                }}
                 {...stylex.attrs(controls.input)}
               />
             </label>
           </Show>
           <button
             type="submit"
-            disabled={isSaving()}
+            disabled={!canSave()}
             {...stylex.attrs(
               controls.button,
               controls.buttonPrimary,

@@ -17,6 +17,7 @@ export const en = {
   'common.cancel': 'Cancel',
   'common.confirm': 'Confirm',
   'common.listSeparator': ', ',
+  'auth.passwordHint': 'At least 8 characters. Must not contain your email address.',
 
   // Toast notifications (ToastHost / toast store)
   'toast.dismiss': 'Dismiss notification',
@@ -290,7 +291,6 @@ export const en = {
   'profile.save': 'Save',
   'profile.saved': 'Saved',
   'profile.errPasswordMismatch': 'Passwords do not match',
-  'profile.errNoChanges': 'Nothing to save',
 
   // Login
   'login.title': 'Sign In',

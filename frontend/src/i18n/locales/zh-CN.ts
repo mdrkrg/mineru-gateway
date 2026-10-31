@@ -20,6 +20,7 @@ export const zhCN: Dict = {
   'common.cancel': '取消',
   'common.confirm': '确定',
   'common.listSeparator': '、',
+  'auth.passwordHint': '至少 8 位，不能包含邮箱地址。',
 
   // Toast notifications (ToastHost / toast store)
   'toast.dismiss': '关闭提示',
@@ -286,7 +287,6 @@ export const zhCN: Dict = {
   'profile.save': '保存',
   'profile.saved': '已保存',
   'profile.errPasswordMismatch': '两次输入的密码不一致',
-  'profile.errNoChanges': '没有需要保存的修改',
 
   // Login
   'login.title': '登录',
