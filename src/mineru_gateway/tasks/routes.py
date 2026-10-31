@@ -219,9 +219,13 @@ async def get_task_result(
     )
     headers = relay_headers(upstream_resp)
     # UX: name the download after the user's original file instead of the
-    # upstream task UUID. Only download-like responses are rewritten; JSON
-    # results and tasks without file_names pass through unchanged.
-    disposition = _build_download_disposition(task, upstream_resp.headers)
+    # upstream task UUID. Only successful results are renamed; error bodies
+    # and tasks without file_names keep the upstream headers.
+    disposition = (
+        _build_download_disposition(task, upstream_resp.headers)
+        if upstream_resp.status_code == 200
+        else None
+    )
     if disposition:
         for k in [k for k in headers if k.lower() == "content-disposition"]:
             del headers[k]
@@ -375,8 +379,6 @@ async def result_zip(
     )
 
 
-_DOWNLOAD_MIME_PREFIXES = ("application/zip", "application/octet-stream")
-_PASSTHROUGH_MIME_PREFIXES = ("application/json", "text/")
 _UNSAFE_FILENAME_CHARS = re.compile(r'[\x00-\x1f\x7f"\\/:*?<>|]')
 _STEM_MAX_LENGTH = 100
 
@@ -385,23 +387,14 @@ def _build_download_disposition(task: Any, upstream_headers: Any) -> str | None:
     """Content-Disposition named after the user's original file, or None.
 
     Mirrors the batch-endpoints.md entry naming (file_names[0] first),
-    adapted for a single attachment download. Returns None to keep the
-    upstream header as-is when the response is not a download or the task
-    has no file metadata.
+    adapted for a single attachment download: every successful body is named,
+    JSON and text included. Returns None when the task has no file metadata.
     """
-    content_type = (upstream_headers.get("content-type") or "").lower()
-    disposition = upstream_headers.get("content-disposition") or ""
-    bare_type = content_type.split(";")[0].strip()
-
-    if bare_type.startswith(_PASSTHROUGH_MIME_PREFIXES):
-        return None
-    is_download = bool(disposition) or bare_type.startswith(_DOWNLOAD_MIME_PREFIXES)
-    if not is_download or not task.file_names:
-        return None
-
-    stem = _sanitize_stem(task.file_names[0])
+    stem = _stem_at(task)
     if not stem:
         return None
+    disposition = upstream_headers.get("content-disposition") or ""
+    content_type = upstream_headers.get("content-type") or ""
     filename = f"{stem}{_download_extension(disposition, content_type)}"
 
     try:

@@ -7,6 +7,7 @@ status normalization so those mocks do not drift from one another.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from typing import Any
 
@@ -135,6 +136,13 @@ def inline_result_payload(
         }
     )
     return payload
+
+
+def task_result_body(content_type: str | None, task_id: str) -> bytes:
+    """Result body matching MinerU: inline JSON envelope, markdown otherwise."""
+    if (content_type or "").startswith("application/json"):
+        return json.dumps(inline_result_payload(task_id)).encode()
+    return b"# result content"
 
 
 def canceled_payload(task_id: str) -> dict[str, Any]:

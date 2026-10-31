@@ -39,6 +39,7 @@ from tests.mock_v1_contract import (  # noqa: E402
     health_payload,
     inline_result_payload,
     job_payload,
+    task_result_body,
 )
 
 # ---------------------------------------------------------------------------
@@ -231,9 +232,12 @@ async def task_result(task_id: str, response_format: str = "json"):
         headers["content-type"] = state.result_content_type
     if state.result_content_disposition:
         headers["content-disposition"] = state.result_content_disposition
+
+    body = task_result_body(state.result_content_type, task_id)
+
     if headers:
         return Response(
-            content=b"# result content",
+            content=body,
             status_code=state.result_status_code,
             headers=headers,
             media_type=state.result_content_type,

@@ -543,19 +543,14 @@ async def test_result_download_no_filenames_keeps_upstream_disposition(client, a
     assert resp.headers["content-disposition"] == 'attachment; filename="uuid.zip"'
 
 
-async def test_result_download_json_response_untouched(client, api_key):
-    """JSON output (no zip in recorded formats) gets no Content-Disposition."""
+async def test_result_download_error_body_keeps_upstream_headers(client, api_key):
+    """Non-200 bodies are errors, not downloads: no renaming."""
     tid, _ = await _submit_and_set_status(client, api_key, "completed")
-    db = client._transport.app.state.db
-    async with db.session_factory() as session:
-        task = await session.get(models.TaskRecord, uuid.UUID(tid))
-        task.parse_params = {"output_formats": ["markdown"]}
-        await session.commit()
+    mock_state.result_status_code = 500
     mock_state.result_content_type = "application/json"
-    mock_state.result_content_disposition = None
 
     resp = await client.get(f"/v1/tasks/{tid}/result", headers={"X-API-Key": api_key})
-    assert resp.status_code == 200
+    assert resp.status_code == 500
     assert "content-disposition" not in resp.headers
 
 

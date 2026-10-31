@@ -29,6 +29,7 @@ from tests.mock_v1_contract import (
     health_payload,
     inline_result_payload,
     job_payload,
+    task_result_body,
 )
 
 _NO_PAYLOAD_OVERRIDE = object()
@@ -278,9 +279,12 @@ def create_mock_upstream() -> FastAPI:
         if state.result_content_disposition:
             headers["content-disposition"] = state.result_content_disposition
 
+        # JSON results carry the real inline envelope, not a text body.
+        body = task_result_body(state.result_content_type, task_id)
+
         if headers:
             return Response(
-                content=b"# result content",
+                content=body,
                 status_code=state.result_status_code,
                 headers=headers,
                 media_type=state.result_content_type,
