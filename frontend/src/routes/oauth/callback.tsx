@@ -4,6 +4,7 @@ import { Link, createFileRoute, useNavigate } from '@tanstack/solid-router';
 import { t } from '@/i18n';
 import { useAuth } from '@/stores/auth-context';
 import { ROUTES } from '@/utils/constants';
+import { takeOAuthRedirect } from '@/utils/redirect';
 import { auth as authStyles } from '@/styles/auth.stylex';
 import { controls } from '@/styles/controls.stylex';
 import { layout } from '@/styles/layout.stylex';
@@ -63,7 +64,7 @@ function OAuthCallbackPage() {
 
     await auth.loginWithTokens(accessToken, refreshToken);
     if (auth.isAuthenticated()) {
-      navigate({ to: ROUTES.home });
+      navigate({ href: takeOAuthRedirect() ?? ROUTES.home });
     } else {
       setError(auth.error() ?? t('oauth.errLoginFailed'));
     }

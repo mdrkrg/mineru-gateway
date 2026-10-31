@@ -5,8 +5,8 @@ import type { AuthStore } from '@/stores/auth';
 import { requireAuth } from '@/stores/guard';
 
 export const Route = createFileRoute('/_authenticated')({
-  beforeLoad: ({ context }) => {
-    requireAuth((context as { auth: AuthStore }).auth);
+  beforeLoad: ({ context, location }) => {
+    requireAuth((context as { auth: AuthStore }).auth, location.href);
   },
   component: AuthenticatedLayout,
 });

@@ -17,8 +17,8 @@ import { layout } from '@/styles/layout.stylex';
 import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/admin/users')({
-  beforeLoad: ({ context }) => {
-    requireSuperuser((context as { auth: AuthStore }).auth);
+  beforeLoad: ({ context, location }) => {
+    requireSuperuser((context as { auth: AuthStore }).auth, location.href);
   },
   component: AdminUsersPage,
 });

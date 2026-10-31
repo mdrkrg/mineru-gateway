@@ -5,6 +5,7 @@ import { t } from '@/i18n';
 import { useAuth } from '@/stores/auth-context';
 import { getOAuthProviders } from '@/api/functions/auth';
 import { ROUTES } from '@/utils/constants';
+import { clearOAuthRedirect, rememberOAuthRedirect, safeRedirectPath } from '@/utils/redirect';
 import { env } from '@/env';
 import { auth as authStyles } from '@/styles/auth.stylex';
 import { controls } from '@/styles/controls.stylex';
@@ -12,6 +13,9 @@ import { layout } from '@/styles/layout.stylex';
 import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/login')({
+  validateSearch: (search: Record<string, unknown>) => ({
+    redirect: safeRedirectPath(search.redirect) ?? undefined,
+  }),
   component: LoginPage,
 });
 
@@ -24,13 +28,17 @@ function buildOAuthRedirectUrl(provider: string): string {
 function LoginPage() {
   const auth = useAuth();
   const navigate = useNavigate();
+  const search = Route.useSearch();
+  const destination = () => search().redirect ?? ROUTES.home;
   const [email, setEmail] = createSignal('');
   const [password, setPassword] = createSignal('');
   const [providers, setProviders] = createSignal<{ name: string }[]>([]);
 
   onMount(async () => {
     if (auth.isAuthenticated()) {
-      navigate({ to: ROUTES.home });
+      clearOAuthRedirect();
+      navigate({ href: destination() });
+      return;
     }
     const result = await getOAuthProviders();
     if (result.isOk()) {
@@ -39,6 +47,7 @@ function LoginPage() {
   });
 
   function handleOAuthLogin(provider: string) {
+    rememberOAuthRedirect(destination());
     window.location.assign(buildOAuthRedirectUrl(provider));
   }
 
@@ -46,7 +55,8 @@ function LoginPage() {
     e.preventDefault();
     await auth.login(email(), password());
     if (auth.isAuthenticated()) {
-      navigate({ to: ROUTES.home });
+      clearOAuthRedirect();
+      navigate({ href: destination() });
     }
   }
 
