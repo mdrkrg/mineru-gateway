@@ -64,6 +64,7 @@ export const controls = stylex.create({
     outlineColor: colors.blue500,
     outlineOffset: 0,
     textDecorationLine: 'none',
+    whiteSpace: 'nowrap',
     transitionProperty: motion.colors,
     transitionTimingFunction: motion.easing,
     transitionDuration: motion.duration,

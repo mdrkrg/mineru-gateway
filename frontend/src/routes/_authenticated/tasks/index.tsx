@@ -43,6 +43,12 @@ const styles = stylex.create({
     gap: space.px12,
     padding: space.px16,
   },
+  actionRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: space.px12,
+  },
 });
 
 function TaskListPage() {
@@ -247,7 +253,7 @@ function TaskListPage() {
         </Show>
 
         {/* Batch actions */}
-        <div {...stylex.attrs(layout.rowCenter12)}>
+        <div {...stylex.attrs(styles.actionRow)}>
           <button
             type="button"
             disabled={selected().size === 0 || isActing()}
