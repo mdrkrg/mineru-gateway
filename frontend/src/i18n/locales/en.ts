@@ -168,6 +168,8 @@ export const en = {
   'taskDetail.error': 'Error',
   'taskDetail.cancel': 'Cancel Task',
   'taskDetail.download': 'Download Result',
+  'taskDetail.downloadRaw': 'Raw response (JSON)',
+  'taskDetail.downloadRawHint': 'Metadata and inline text',
   'taskDetail.confirmCancel': 'Cancel this task?',
   'taskDetail.partialResultHint': 'Some files failed; successfully parsed files are available.',
 

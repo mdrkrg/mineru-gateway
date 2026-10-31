@@ -27,7 +27,8 @@ export {
   getTaskStats,
   getTaskDetail,
   cancelTask,
-  getTaskResult,
+  downloadTaskResult,
+  getRawTaskResult,
   downloadResultZip,
   batchCancelTasks,
 } from '@/api/functions/tasks';

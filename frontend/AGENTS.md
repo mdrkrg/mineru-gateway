@@ -71,7 +71,7 @@ tests/e2e/          # e2e tests against running gateway + mock upstream
 
 | Directory | Purpose |
 |-----------|---------|
-| `functions/` | `auth.ts` (login, refreshToken, logout, register, getCurrentUser), `health.ts` (getHealth), `tasks.ts` (submitTask, parseFile, listTasks, getTaskStats, getTaskDetail, cancelTask, getTaskResult, downloadResultZip, batchCancelTasks) |
+| `functions/` | `auth.ts` (login, refreshToken, logout, register, getCurrentUser), `health.ts` (getHealth), `tasks.ts` (submitTask, parseFile, listTasks, getTaskStats, getTaskDetail, cancelTask, downloadTaskResult, getRawTaskResult, downloadResultZip, batchCancelTasks) |
 | `schemas/` | `auth.ts`, `health.ts`, `tasks.ts`, `shared.ts` (ErrorDetailSchema), `mineru-options.ts` (MinerU 4.0 tier/OCR/output-format schemas, `ParseRequestFields`, `createParseFormData()`) |
 
 Build-time deployment paths are configured by `VITE_APP_BASE_PATH` and

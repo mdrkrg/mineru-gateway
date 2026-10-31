@@ -23,7 +23,6 @@ import {
   fontSize,
   lineHeight,
   radius,
-  shadow,
   space,
 } from '@/styles/tokens.stylex';
 import { typography } from '@/styles/typography.stylex';
@@ -82,13 +81,6 @@ const styles = stylex.create({
     zIndex: 10,
     width: space.px224,
     padding: space.px16,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: colors.gray200,
-    borderRadius: radius.px8,
-    boxShadow: shadow.lg,
-    outlineStyle: 'none',
   },
   statusList: {
     display: 'flex',
@@ -251,7 +243,9 @@ function DashboardPage() {
                     </Show>
                   </Popover.Trigger>
                   <Popover.Portal>
-                    <Popover.Content class={stylex.attrs(styles.statusPopover).class}>
+                    <Popover.Content
+                      class={stylex.attrs(controls.popover, styles.statusPopover).class}
+                    >
                       <Popover.Title
                         class={stylex.attrs(
                           typography.body,

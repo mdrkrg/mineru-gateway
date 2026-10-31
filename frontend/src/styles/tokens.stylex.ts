@@ -3,6 +3,7 @@ import * as stylex from '@stylexjs/stylex';
 export const colors = stylex.defineConsts({
   white: '#fff',
   overlay: 'rgb(0 0 0 / 40%)',
+  whiteAlpha30: 'rgb(255 255 255 / 30%)',
 
   gray50: 'oklch(98.5% 0.002 247.839)',
   gray100: 'oklch(96.7% 0.003 264.542)',

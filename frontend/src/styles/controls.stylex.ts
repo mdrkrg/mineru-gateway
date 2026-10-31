@@ -145,4 +145,13 @@ export const controls = stylex.create({
     backgroundColor: colors.amber50,
     borderColor: colors.amber200,
   },
+  popover: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: colors.gray200,
+    borderRadius: radius.px8,
+    boxShadow: shadow.lg,
+    outlineStyle: 'none',
+  },
 });

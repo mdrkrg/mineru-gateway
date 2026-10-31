@@ -2,7 +2,11 @@ import * as stylex from '@stylexjs/stylex';
 import { For, Show, createSignal, onMount } from 'solid-js';
 import { Link, createFileRoute } from '@tanstack/solid-router';
 import { Download, Package } from 'lucide-solid';
-import { downloadResultZip, getTaskResult, listTasks } from '@/api/functions/tasks';
+import {
+  downloadResultZip,
+  downloadTaskResult,
+  listTasks,
+} from '@/api/functions/tasks';
 import type { TaskListItem } from '@/api/schemas/tasks';
 import NoActiveKey from '@/components/NoActiveKey';
 import Pagination from '@/components/Pagination';
@@ -12,7 +16,7 @@ import { useApiKey } from '@/stores/api-key-context';
 import { errorMessage } from '@/utils/api-error';
 import { isHttpError } from '@/core/error-model';
 import { ROUTES } from '@/utils/constants';
-import { filenameFromContentDisposition, saveBlob, extensionFromContentType } from '@/utils/download';
+import { filenameFromContentDisposition, downloadResultFile, saveBlob } from '@/utils/download';
 import { formatDateTime } from '@/utils/format';
 import { actions } from '@/styles/actions.stylex';
 import { controls } from '@/styles/controls.stylex';
@@ -83,16 +87,9 @@ function ResultDownloadPage() {
 
     setIsActing(true);
     setError(null);
-    const result = await getTaskResult(task.taskId, key);
-    if (result.isErr()) {
-      setError(errorMessage(result.error));
-    } else {
-      const contentType = result.value.headers.get('Content-Type');
-      const filename =
-        filenameFromContentDisposition(result.value.headers.get('Content-Disposition')) ??
-        `${task.taskId}${extensionFromContentType(contentType)}`;
-      saveBlob(result.value.blob, filename);
-    }
+    setError(
+      await downloadResultFile(downloadTaskResult, task.taskId, key, task.fileNames),
+    );
     setIsActing(false);
   }
 

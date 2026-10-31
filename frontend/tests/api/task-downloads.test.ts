@@ -28,7 +28,8 @@ vi.mock('@/core/validation', () => ({
 
 import {
   downloadResultZip,
-  getTaskResult,
+  downloadTaskResult,
+  getRawTaskResult,
   TASK_RESULT_TIMEOUT_MS,
 } from '@/api/functions/tasks';
 
@@ -47,11 +48,17 @@ describe('task result downloads', () => {
     expect(TASK_RESULT_TIMEOUT_MS).toBeGreaterThan(10_000);
   });
 
-  it('gives single-result downloads more than the ky default', async () => {
-    await getTaskResult('task-1', 'key');
+  it('targets the artifact endpoint and the raw JSON result', async () => {
+    await downloadTaskResult('task-1', 'key');
+    await getRawTaskResult('task-1', 'key');
 
+    expect(mocks.request).toHaveBeenCalledWith('v1/tasks/task-1/download', {
+      headers: { 'X-API-Key': 'key' },
+      timeout: TASK_RESULT_TIMEOUT_MS,
+    });
     expect(mocks.request).toHaveBeenCalledWith('v1/tasks/task-1/result', {
       headers: { 'X-API-Key': 'key' },
+      searchParams: { response_format: 'json' },
       timeout: TASK_RESULT_TIMEOUT_MS,
     });
   });

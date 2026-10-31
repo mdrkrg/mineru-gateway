@@ -170,6 +170,8 @@ export const zhCN: Dict = {
   'taskDetail.error': '错误信息',
   'taskDetail.cancel': '取消任务',
   'taskDetail.download': '下载结果',
+  'taskDetail.downloadRaw': '原始响应（JSON）',
+  'taskDetail.downloadRawHint': '含元数据与内联文本',
   'taskDetail.confirmCancel': '确定取消该任务吗？',
   'taskDetail.partialResultHint': '部分文件解析失败，可下载已成功解析的文件。',
 

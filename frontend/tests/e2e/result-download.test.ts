@@ -8,7 +8,7 @@
  * ("partial") propagate into the task record.
  *
  * Covered:
- *   GET  /v1/tasks/{id}/result  -> 200 for a partially completed task
+ *   GET  /v1/tasks/{id}/download -> 200 for a partially completed task
  *   POST /v1/tasks/result-zip   -> 409 + non_downloadable reason "not_completed"
  *                               when a still-active task is mixed in
  *
@@ -27,7 +27,7 @@ import {
   submitTask,
   getTaskDetail,
   listTasks,
-  getTaskResult,
+  downloadTaskResult,
   downloadResultZip,
 } from '../../src/api';
 import { MockControl } from './mock-control';
@@ -159,7 +159,7 @@ async function waitForResult(taskId: string): Promise<void> {
   }, { timeout: 10_000, interval: 200 }).toBe(true);
 }
 
-describe('GET /v1/tasks/{id}/result (background sync)', () => {
+describe('GET /v1/tasks/{id}/download (background sync)', () => {
   it('serves a result once a partial task has synced', async () => {
     await mock.reset();
     await mock.setTaskStatus('running');
@@ -179,7 +179,7 @@ describe('GET /v1/tasks/{id}/result (background sync)', () => {
     if (!listed.isOk()) return;
     expect(listed.value.items.some((i) => i.taskId === taskId)).toBe(true);
 
-    const result = await getTaskResult(taskId, apiKey);
+    const result = await downloadTaskResult(taskId, apiKey);
     expect(result.isOk()).toBe(true);
   });
 });

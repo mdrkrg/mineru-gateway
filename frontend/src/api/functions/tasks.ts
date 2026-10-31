@@ -193,12 +193,25 @@ export function cancelTask(
 
 // ===== Task Result Download =====
 
-export function getTaskResult(
+/** Download the artifacts requested at submission (single file or ZIP). */
+export function downloadTaskResult(
+  taskId: string,
+  apiKey: string,
+): ResultAsync<BlobResult, ApiError<HttpError<number, unknown>>> {
+  return request(`v1/tasks/${taskId}/download`, {
+    headers: { 'X-API-Key': apiKey },
+    timeout: TASK_RESULT_TIMEOUT_MS,
+  }).andThen(parseBlob);
+}
+
+/** Download MinerU's raw JSON result, independent of the artifact selection. */
+export function getRawTaskResult(
   taskId: string,
   apiKey: string,
 ): ResultAsync<BlobResult, ApiError<HttpError<number, unknown>>> {
   return request(`v1/tasks/${taskId}/result`, {
     headers: { 'X-API-Key': apiKey },
+    searchParams: { response_format: 'json' },
     timeout: TASK_RESULT_TIMEOUT_MS,
   }).andThen(parseBlob);
 }

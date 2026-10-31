@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { filenameFromContentDisposition, extensionFromContentType } from '@/utils/download';
+import {
+  extensionFromContentType,
+  fallbackFilename,
+  filenameFromContentDisposition,
+  resultFilename,
+} from '@/utils/download';
 
 describe('filenameFromContentDisposition', () => {
   it('returns null for null/empty header', () => {
@@ -51,13 +56,51 @@ describe('extensionFromContentType', () => {
     expect(extensionFromContentType('application/zip')).toBe('.zip');
   });
 
-  it('returns .zip for null/undefined content type', () => {
-    expect(extensionFromContentType(null)).toBe('.zip');
+  it('returns .bin for null/undefined content type', () => {
+    expect(extensionFromContentType(null)).toBe('.bin');
+  });
+
+  it('returns the text-family extensions', () => {
+    expect(extensionFromContentType('text/plain')).toBe('.txt');
+    expect(extensionFromContentType('text/markdown; charset=utf-8')).toBe('.md');
   });
 
   it('returns .bin for unknown content types', () => {
-    expect(extensionFromContentType('text/plain')).toBe('.bin');
     expect(extensionFromContentType('image/png')).toBe('.bin');
     expect(extensionFromContentType('application/pdf')).toBe('.bin');
+  });
+});
+
+describe('fallbackFilename', () => {
+  it('reuses the original file name instead of the task id', () => {
+    expect(fallbackFilename(['paper.pdf'], 'text/markdown')).toBe('paper.md');
+    expect(fallbackFilename(['论文.pdf'], 'application/json')).toBe('论文.json');
+  });
+
+  it('strips directories and the last extension', () => {
+    expect(fallbackFilename(['../inbox/draft.v2.pdf'], 'application/zip')).toBe(
+      'draft.v2.zip',
+    );
+  });
+
+  it('falls back to result.<ext> without file names', () => {
+    expect(fallbackFilename([], 'application/json')).toBe('result.json');
+  });
+});
+
+describe('resultFilename', () => {
+  it('prefers the Content-Disposition filename', () => {
+    const headers = new Headers({
+      'Content-Disposition': 'attachment; filename="server.zip"',
+      'Content-Type': 'application/zip',
+    });
+
+    expect(resultFilename(headers, ['paper.pdf'])).toBe('server.zip');
+  });
+
+  it('falls back to the original file name', () => {
+    const headers = new Headers({ 'Content-Type': 'text/markdown' });
+
+    expect(resultFilename(headers, ['paper.pdf'])).toBe('paper.md');
   });
 });

@@ -1,9 +1,15 @@
 import * as stylex from '@stylexjs/stylex';
 import { For, Show, createSignal, onMount } from 'solid-js';
 import { Link, createFileRoute } from '@tanstack/solid-router';
-import { ArrowLeft, Download } from 'lucide-solid';
-import { cancelTask, getTaskDetail, getTaskResult } from '@/api/functions/tasks';
+import { ArrowLeft } from 'lucide-solid';
+import {
+  cancelTask,
+  downloadTaskResult,
+  getRawTaskResult,
+  getTaskDetail,
+} from '@/api/functions/tasks';
 import type { TaskDetail } from '@/api/schemas/tasks';
+import DownloadSplitButton from '@/components/DownloadSplitButton';
 import NoActiveKey from '@/components/NoActiveKey';
 import StatusBadge from '@/components/StatusBadge';
 import { t } from '@/i18n';
@@ -13,7 +19,8 @@ import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
 import { ROUTES, TASK_POLL_INTERVAL_MS, isActiveTaskStatus } from '@/utils/constants';
-import { filenameFromContentDisposition, saveBlob, extensionFromContentType } from '@/utils/download';
+import { downloadResultFile } from '@/utils/download';
+import type { ResultFetcher } from '@/utils/download';
 import { formatDateTime, formatDuration } from '@/utils/format';
 import { createPolling } from '@/utils/polling';
 import { actions } from '@/styles/actions.stylex';
@@ -146,26 +153,19 @@ function TaskDetailPage() {
     setIsActing(false);
   }
 
-  async function handleDownload() {
+  async function runDownload(fetchResult: ResultFetcher) {
     const key = apiKeyStore.activeKey();
     const cur = task();
     if (!key || !cur) return;
 
     setIsActing(true);
     setError(null);
-    const result = await getTaskResult(cur.taskId, key);
-    if (result.isErr()) {
-      setError(errorMessage(result.error));
-    } else {
-      const contentType = result.value.headers.get('Content-Type');
-      const filename =
-        filenameFromContentDisposition(
-          result.value.headers.get('Content-Disposition'),
-        ) ?? `${cur.taskId}${extensionFromContentType(contentType)}`;
-      saveBlob(result.value.blob, filename);
-    }
+    setError(await downloadResultFile(fetchResult, cur.taskId, key, cur.fileNames));
     setIsActing(false);
   }
+
+  const handleDownload = () => runDownload(downloadTaskResult);
+  const handleDownloadRaw = () => runDownload(getRawTaskResult);
 
   return (
     <div {...stylex.attrs(layout.stack16, layout.pageWidth768)}>
@@ -262,19 +262,14 @@ function TaskDetailPage() {
                     </button>
                   </Show>
                   <Show when={task().hasResult}>
-                    <button
-                      type="button"
+                    <DownloadSplitButton
+                      label={t('taskDetail.download')}
+                      rawLabel={t('taskDetail.downloadRaw')}
+                      rawHint={t('taskDetail.downloadRawHint')}
                       disabled={isActing()}
-                      onClick={handleDownload}
-                      {...stylex.attrs(
-                        controls.button,
-                        controls.buttonPrimary,
-                        actions.disabled40,
-                      )}
-                    >
-                      <Download class={stylex.attrs(icons.sm).class} />
-                      {t('taskDetail.download')}
-                    </button>
+                      onDownload={handleDownload}
+                      onDownloadRaw={handleDownloadRaw}
+                    />
                   </Show>
                 </div>
               </>
