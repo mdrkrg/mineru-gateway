@@ -75,12 +75,11 @@
 ### 结果
 
 - `GET /v1/tasks/{id}/result`：
-  - 可显式使用 `?response_format=json|zip`；匿名模式直接转发该参数。
-  - 提交时的 `output_formats` 包含 `zip` → 携带 `?response_format=zip`，返回 `application/zip`。
-  - 否则返回 4.0 的内联 JSON：`files[].content.markdown` / `middle_json` / `structured_content`。
+  - MinerU 原生语义：`?response_format=json|zip` 原样转发；未指定时，提交时选了 `zip` 的任务取 ZIP，其余返回内联 JSON。
   - 认证任务未完成 → 409；匿名模式保留上游响应（未完成时为 202）。
   - 上游失败或取消 → 409。
-- `POST /v1/tasks/result-zip`：逐个任务取结果并重新打包，清单写入 `_manifest.json`。提交时选择了 `zip` 的任务取上游 ZIP，其余任务取内联 JSON 并以 `.json` 条目入包。
+- `GET /v1/tasks/{id}/download`（认证专用）：按提交时的 `output_formats` 返回真实文件；单个产物直接返回，多个打包为 ZIP，文件名取原始上传文件。提交时选了 `zip` 的任务直接转发上游 ZIP。
+- `POST /v1/tasks/result-zip`：多任务逐个取结果并重新打包，`files[].content` 中的内联产物展开为 `<文件名>/<format>.<ext>` 条目，清单写入 `_manifest.json`。
 - JSON 结果使用 `files[].content` 返回所请求的文本格式。
 
 ### 健康检查

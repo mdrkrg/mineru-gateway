@@ -262,6 +262,123 @@ async def test_get_result_honors_native_zip_output(client, api_key):
     assert mock_state.result_requests[-1]["response_format"] == "zip"
 
 
+async def test_download_serves_inline_markdown_as_a_file(client, api_key):
+    """Markdown-only tasks have no ZIP artifact; serve the inline markdown."""
+    task_id, upstream_id = await _submit_and_set_status(client, api_key, "completed")
+    _set_json_result(upstream_id)
+
+    resp = await client.get(
+        f"/v1/tasks/{task_id}/download", headers={"X-API-Key": api_key}
+    )
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/markdown")
+    assert resp.headers["content-disposition"] == 'attachment; filename="doc.md"'
+    assert resp.text == "# parsed"
+
+
+async def test_download_packs_multiple_inline_artifacts_as_zip(client, api_key):
+    """Several inline artifacts are bundled so one download still works."""
+    task_id, upstream_id = await _submit_and_set_status(
+        client, api_key, "completed", data={"output_formats": "markdown,middle_json"}
+    )
+    payload = inline_result_payload(upstream_id)
+    payload["files"][0]["content"] = {
+        "markdown": "# parsed",
+        "middle_json": {"pages": [1]},
+    }
+    _set_json_result(upstream_id, payload)
+
+    resp = await client.get(
+        f"/v1/tasks/{task_id}/download", headers={"X-API-Key": api_key}
+    )
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/zip"
+    assert resp.headers["content-disposition"] == 'attachment; filename="doc.zip"'
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        assert zf.namelist() == ["doc/markdown.md", "doc/middle_json.json"]
+        assert zf.read("doc/markdown.md") == b"# parsed"
+        assert json.loads(zf.read("doc/middle_json.json")) == {"pages": [1]}
+
+
+async def test_download_falls_back_to_the_json_envelope(client, api_key, caplog):
+    """A JSON result without the requested artifacts still downloads, as JSON."""
+    task_id, upstream_id = await _submit_and_set_status(client, api_key, "completed")
+    payload = inline_result_payload(upstream_id)
+    payload["files"][0]["content"] = {}
+    _set_json_result(upstream_id, payload)
+
+    with caplog.at_level(logging.WARNING):
+        resp = await client.get(
+            f"/v1/tasks/{task_id}/download", headers={"X-API-Key": api_key}
+        )
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/json"
+    assert resp.headers["content-disposition"] == 'attachment; filename="doc.json"'
+    assert "No inline artifacts" in caplog.text
+
+
+async def test_get_result_explicit_json_overrides_the_zip_default(client, api_key):
+    """`?response_format=json` wins over the recorded `zip` preference."""
+    task_id, upstream_id = await _submit_and_set_status(
+        client, api_key, "completed", data={"output_formats": "markdown,zip"}
+    )
+    mock_state.result_content_type = "application/json"
+    mock_state.result_content_disposition = None
+
+    resp = await client.get(
+        f"/v1/tasks/{task_id}/result",
+        params={"response_format": "json"},
+        headers={"X-API-Key": api_key},
+    )
+
+    assert mock_state.result_requests[-1]["response_format"] == "json"
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/json"
+    assert resp.headers["content-disposition"] == 'attachment; filename="doc.json"'
+    assert json.loads(resp.text)["task_id"] == upstream_id
+
+
+async def test_get_result_default_relays_the_inline_json(client, api_key):
+    """`/result` stays MinerU-native: no `zip` means the JSON envelope."""
+    task_id, upstream_id = await _submit_and_set_status(client, api_key, "completed")
+    _set_json_result(upstream_id)
+
+    resp = await client.get(
+        f"/v1/tasks/{task_id}/result", headers={"X-API-Key": api_key}
+    )
+
+    assert mock_state.result_requests[-1]["response_format"] == "json"
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/json"
+    assert json.loads(resp.text)["task_id"] == upstream_id
+
+
+async def test_download_honors_native_zip_output(client, api_key):
+    """ZIP submissions relay the upstream archive, renamed after the file."""
+    task_id, _ = await _submit_and_set_status(
+        client, api_key, "completed", data={"output_formats": "markdown,zip"}
+    )
+    mock_state.result_content_type = "application/zip"
+    mock_state.result_content_disposition = 'attachment; filename="uuid.zip"'
+
+    resp = await client.get(
+        f"/v1/tasks/{task_id}/download", headers={"X-API-Key": api_key}
+    )
+
+    assert mock_state.result_requests[-1]["response_format"] == "zip"
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/zip"
+    assert resp.headers["content-disposition"] == 'attachment; filename="doc.zip"'
+
+
+async def test_download_requires_auth(client):
+    resp = await client.get(f"/v1/tasks/{uuid.uuid4()}/download")
+    assert resp.status_code == 401
+
+
 async def test_get_result_enforces_ownership(client, admin_headers, api_key):
     """§3.3: 非拥有者不得获取结果 (404)."""
     task_id = await _submit(client, api_key)
@@ -431,6 +548,16 @@ async def test_get_result_409_for_cancelled_task(client, api_key):
     assert resp.json()["detail"] == "Task has no upstream result (status=cancelled)"
 
 
+def _set_json_result(upstream_id: str, payload: dict | None = None) -> None:
+    """Make the mock upstream return a MinerU inline JSON result."""
+    if payload is None:
+        payload = inline_result_payload(upstream_id)
+    mock_state.task_result_overrides[upstream_id] = {
+        "content": json.dumps(payload).encode(),
+        "headers": {"content-type": "application/json"},
+    }
+
+
 async def _submit_and_set_status(
     client, api_key, status: str, data=None
 ) -> tuple[str, str | None]:
@@ -452,9 +579,8 @@ async def _submit_and_set_status(
 
 # ===== GET /v1/tasks/{id}/result - friendly download filename =====
 #
-# Download-like responses (attachment / zip / octet-stream) should get a
-# Content-Disposition named after file_names[0].
-# JSON/text results and tasks without file_names pass through unchanged.
+# Successful result bodies (zip / JSON / text) get a Content-Disposition named
+# after file_names[0]; tasks without file_names keep the upstream headers.
 
 
 async def test_result_download_filename_from_original_file(client, api_key):
@@ -1314,11 +1440,7 @@ async def test_result_zip_packs_mixed_output_formats(client, api_key):
     json_tid, json_upstream_id = await _submit_and_set_status(
         client, api_key, "completed"
     )
-    inline_result = json.dumps(inline_result_payload(json_upstream_id)).encode()
-    mock_state.task_result_overrides[json_upstream_id] = {
-        "content": inline_result,
-        "headers": {"content-type": "application/json"},
-    }
+    _set_json_result(json_upstream_id)
     zip_tid, zip_upstream_id = await _submit_and_set_status(
         client, api_key, "completed", data={"output_formats": "markdown,zip"}
     )

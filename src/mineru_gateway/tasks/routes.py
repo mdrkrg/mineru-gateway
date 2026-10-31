@@ -23,6 +23,7 @@ from urllib.parse import quote, unquote
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.datastructures import MutableHeaders
 
 from ..auth.dependencies import get_session, require_api_key
 from ..models import ApiKey, TaskRecord
@@ -75,6 +76,34 @@ def _local_task_id(task_id: str) -> uuid.UUID:
 def _requested_output_formats(task: TaskRecord) -> list[str]:
     """Artifact formats recorded at submission time."""
     return task.parse_params.get("output_formats", [])
+
+
+def _result_format_for(task: TaskRecord) -> Literal["zip", "json"]:
+    """Response format matching the artifacts recorded at submission."""
+    return "zip" if "zip" in _requested_output_formats(task) else "json"
+
+
+async def _require_downloadable_task(
+    session: AsyncSession, api_key: ApiKey | None, task_id: str
+) -> TaskRecord:
+    """Ownership plus terminal-state guards shared by result downloads."""
+    key = _require_key(api_key)
+    task = await service.get_owned(session, _local_task_id(task_id), key.id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.status not in service.TERMINAL_STATES:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Task result not yet available (status={task.status})",
+        )
+    # Cancelled tasks, and terminal tasks without an upstream id,
+    # are not downloadable.
+    if not service.task_has_result(task):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Task has no upstream result (status={task.status})",
+        )
+    return task
 
 
 async def _cancel_upstream_best_effort(
@@ -190,45 +219,64 @@ async def get_task_result(
         return relay_response(
             await upstream.get_task_result(task_id, response_format=response_format)
         )
-    key = _require_key(api_key)
-    task = await service.get_owned(session, _local_task_id(task_id), key.id)
-    if task is None:
-        raise HTTPException(status_code=404, detail="Task not found")
-    if task.status not in service.TERMINAL_STATES:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Task result not yet available (status={task.status})",
-        )
-    # Cancelled tasks, and terminal tasks without an upstream id,
-    # are not downloadable.
-    if not service.task_has_result(task):
-        raise HTTPException(
-            status_code=409,
-            detail=f"Task has no upstream result (status={task.status})",
-        )
+    task = await _require_downloadable_task(session, api_key, task_id)
 
-    # A task submitted with `zip` defaults to the ZIP download; otherwise the
-    # upstream inline JSON result is relayed unchanged.
-    effective_response_format = response_format
-    if effective_response_format is None and "zip" in _requested_output_formats(task):
-        effective_response_format = "zip"
+    # A task submitted with `zip` defaults to the ZIP result; otherwise the
+    # native JSON result is relayed, with `response_format` as the escape hatch.
+    effective_response_format = response_format or _result_format_for(task)
 
     upstream_resp = await upstream.get_task_result(
         task.upstream_task_id,
         response_format=effective_response_format,
     )
-    headers = relay_headers(upstream_resp)
-    # UX: name the download after the user's original file instead of the
-    # upstream task UUID. Only successful results are renamed; error bodies
-    # and tasks without file_names keep the upstream headers.
+    return _relayed_result(task, upstream_resp)
+
+
+@router.get("/{task_id}/download")
+async def download_task_result(
+    task_id: str,
+    api_key: ApiKey | None = Depends(require_api_key),
+    session: AsyncSession = Depends(get_session),
+    upstream: UpstreamClient = Depends(_upstream),
+) -> Response:
+    """Download the artifacts requested at submission, as files.
+
+    ZIP submissions relay the upstream archive. Plain-format submissions only
+    carry their artifacts inline in the JSON result, so the gateway rebuilds
+    them: a single artifact is returned directly, several are packed into a
+    ZIP. Errors and unknown payloads fall back to the relayed response.
+    """
+    task = await _require_downloadable_task(session, api_key, task_id)
+    response_format = _result_format_for(task)
+    upstream_resp = await upstream.get_task_result(
+        task.upstream_task_id, response_format=response_format
+    )
+    if upstream_resp.status_code == 200 and response_format == "json":
+        artifacts = _inline_artifacts(task, upstream_resp)
+        if artifacts:
+            return _artifact_response(task, artifacts)
+        # Silent fallbacks would hand back the task envelope this endpoint
+        # exists to replace, so leave a trace for upstream contract drift.
+        logger.warning(
+            "No inline artifacts for task %s; relaying the upstream result",
+            task.id,
+            extra={
+                "task_id": str(task.id),
+                "content_type": upstream_resp.headers.get("content-type"),
+            },
+        )
+    return _relayed_result(task, upstream_resp)
+
+
+def _relayed_result(task: TaskRecord, upstream_resp: Any) -> Response:
+    """Relay an upstream result, naming successful downloads after the file."""
+    headers = MutableHeaders(headers=relay_headers(upstream_resp))
     disposition = (
         _build_download_disposition(task, upstream_resp.headers)
         if upstream_resp.status_code == 200
         else None
     )
     if disposition:
-        for k in [k for k in headers if k.lower() == "content-disposition"]:
-            del headers[k]
         headers["Content-Disposition"] = disposition
     return Response(
         content=upstream_resp.content,
@@ -326,9 +374,7 @@ async def result_zip(
             upstream_task_id: str = task.upstream_task_id  # type: ignore[assignment]
 
             # Native ZIP when requested, otherwise the inline JSON result.
-            response_format = (
-                "zip" if "zip" in _requested_output_formats(task) else "json"
-            )
+            response_format = _result_format_for(task)
             try:
                 upstream_resp = await upstream.get_task_result(
                     upstream_task_id, response_format=response_format
@@ -395,16 +441,21 @@ def _build_download_disposition(task: Any, upstream_headers: Any) -> str | None:
         return None
     disposition = upstream_headers.get("content-disposition") or ""
     content_type = upstream_headers.get("content-type") or ""
-    filename = f"{stem}{_download_extension(disposition, content_type)}"
+    return _content_disposition(
+        f"{stem}{_download_extension(disposition, content_type)}"
+    )
 
-    try:
-        filename.encode("ascii")
+
+def _content_disposition(filename: str) -> str:
+    """Attachment header for a synthesized download.
+
+    Non-ASCII names use RFC 6266/5987: percent-encoded ASCII fallback plus the
+    UTF-8 form (the frontend prefers `filename*` when present).
+    """
+    if filename.isascii():
         return f'attachment; filename="{filename}"'
-    except UnicodeEncodeError:
-        # RFC 6266/5987: percent-encoded ASCII fallback + UTF-8 form for
-        # non-ASCII names (frontend prefers filename* when present).
-        encoded = quote(filename, safe="")
-        return f"attachment; filename=\"{encoded}\"; filename*=UTF-8''{encoded}"
+    encoded = quote(filename, safe="")
+    return f"attachment; filename=\"{encoded}\"; filename*=UTF-8''{encoded}"
 
 
 def _sanitize_stem(name: str) -> str:
@@ -597,6 +648,30 @@ def _write_artifacts(
         zf.writestr(entry, data)
         entries.append(entry)
     return entries
+
+
+def _artifact_response(
+    task: TaskRecord, artifacts: list[tuple[str, OutputFormat, bytes]]
+) -> Response:
+    """Serve one artifact directly, or several as a ZIP."""
+    if len(artifacts) == 1:
+        stem, fmt, data = artifacts[0]
+        return Response(
+            content=data,
+            media_type=fmt.media_type,
+            headers={
+                "Content-Disposition": _content_disposition(f"{stem}{fmt.extension}")
+            },
+        )
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        _write_artifacts(zf, artifacts, set(), task.id)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": _content_disposition(f"{artifacts[0][0]}.zip")},
+    )
 
 
 @router.post(

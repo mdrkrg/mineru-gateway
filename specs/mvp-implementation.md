@@ -105,6 +105,7 @@
 | 异步提交 | `POST /v1/tasks` | 必需¹ | 返回 Gateway 的 task_id |
 | 任务状态 | `GET /v1/tasks/{task_id}` | 必需¹ | 认证时校验所有权；匿名时透传 opaque upstream ID |
 | 任务结果 | `GET /v1/tasks/{task_id}/result` | 必需¹ | 认证时校验所有权；匿名时透传 opaque upstream ID |
+| 任务产物下载 | `GET /v1/tasks/{task_id}/download` | 必需 | 认证专用扩展：返回提交时选择的产物（单个直接返回，多个打包 ZIP） |
 | 取消任务 | `DELETE /v1/tasks/{task_id}` | 必需¹ | 认证时校验所有权；匿名时透传 opaque upstream ID |
 | 健康检查 | `GET /v1/health` | 无 | 聚合上游健康 + Gateway 自身状态 |
 
@@ -146,6 +147,7 @@ Gateway 定位为认证/持久化/容灾层，以下行为与真实 router 不�
 | `DELETE /v1/tasks/{id}` | 支持取消 `queued` / `running` | 认证任务映射为 `pending` / `processing` 后转发；匿名 opaque ID 直接透传 | ✓ 已对齐 |
 | 任务状态流转 | `queued` / `running` / `completed` / `partial` / `failed` / `canceled` | 映射为 `pending` / `processing` / `completed` / `partial` / `failed` / `cancelled`，另有恢复态 `retry_pending` | Gateway 映射/扩展 |
 | `GET /v1/tasks/{id}/result` 非终态 | 返回 `202` + 状态体 | 返回 `409` | MVP 简化（从 DB 镜像判断，不额外查询上游） |
+| `GET /v1/tasks/{id}/download` | 无对应端点 | 返回提交时选择的产物，按原始文件命名 | Gateway 扩展 |
 | `POST /v1/tasks` 响应体 | 含 `started_at` / `completed_at` / `error`（null 时仍出现） | 已补齐 `started_at` / `completed_at` / `error`（均 null） | ✓ 已对齐 |
 | `POST /v1/tasks` 提交前上游健康检查 | 不做 | 不做；依赖按 Key 限流 + 全局并发上限提供背压 | ✓ 已对齐 |
 
@@ -234,6 +236,7 @@ class TaskRecord(Base):
 | `POST` | `/v1/tasks` | 同上，认证时返回 Gateway 的 task_id |
 | `GET` | `/v1/tasks/{task_id}` | 认证：校验所有权并返回 DB 镜像；匿名：opaque upstream ID 直接透传 |
 | `GET` | `/v1/tasks/{task_id}/result` | 认证：校验所有权后转发上游结果；匿名：opaque upstream ID 直接透传 |
+| `GET` | `/v1/tasks/{task_id}/download` | 认证专用：返回提交时选择的产物（单个直接返回，多个打包 ZIP；按原始文件命名） |
 | `GET` | `/v1/health` | 聚合 Gateway 自身 + 上游状态 |
 
 ### 5.2 任务响应头
