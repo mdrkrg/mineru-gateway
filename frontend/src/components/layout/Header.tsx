@@ -7,8 +7,7 @@ import type { DictKey, Locale } from '@/i18n';
 import { useAuth } from '@/stores/auth-context';
 import { ROUTES } from '@/utils/constants';
 import { icons } from '@/styles/icons.stylex';
-import { layout } from '@/styles/layout.stylex';
-import { colors, radius, space } from '@/styles/tokens.stylex';
+import { breakpoint, colors, radius, space } from '@/styles/tokens.stylex';
 import { typography } from '@/styles/typography.stylex';
 
 /** Switcher entries use native names — each locale shows its own name. */
@@ -50,10 +49,37 @@ const styles = stylex.create({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingInline: space.px24,
+    gap: space.px12,
+    paddingInline: {
+      default: space.px12,
+      [breakpoint.sm]: space.px24,
+    },
+  },
+  left: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: space.px12,
+    flex: 1,
+    minWidth: 0,
   },
   title: {
     color: colors.gray800,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  actions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: {
+      default: space.px8,
+      [breakpoint.sm]: space.px16,
+    },
+    flexShrink: 0,
+  },
+  displayName: {
+    display: { default: 'none', [breakpoint.sm]: 'inline' },
   },
   locale: {
     borderWidth: 1,
@@ -64,6 +90,7 @@ const styles = stylex.create({
     paddingBlock: space.px4,
     backgroundColor: colors.white,
     color: colors.gray700,
+    flexShrink: 0,
   },
   logout: {
     display: 'flex',
@@ -80,6 +107,9 @@ const styles = stylex.create({
     opacity: {
       ':disabled': 0.5,
     },
+  },
+  logoutLabel: {
+    display: { default: 'none', [breakpoint.sm]: 'inline' },
   },
 });
 
@@ -98,11 +128,15 @@ export default function Header() {
 
   return (
     <header {...stylex.attrs(styles.header)}>
-      <h1 {...stylex.attrs(typography.sectionHeading, styles.title)}>{title()}</h1>
+      <div {...stylex.attrs(styles.left)}>
+        <h1 {...stylex.attrs(typography.sectionHeading, styles.title)}>{title()}</h1>
+      </div>
 
-      <div {...stylex.attrs(layout.rowCenter16)}>
+      <div {...stylex.attrs(styles.actions)}>
         <Show when={auth.user()}>
-          <span {...stylex.attrs(typography.bodySecondary)}>{displayName()}</span>
+          <span {...stylex.attrs(typography.bodySecondary, styles.displayName)}>
+            {displayName()}
+          </span>
         </Show>
         <select
           value={locale()}
@@ -118,10 +152,11 @@ export default function Header() {
           type="button"
           onClick={handleLogout}
           disabled={auth.isLoading()}
+          aria-label={t('nav.logout')}
           {...stylex.attrs(typography.body, styles.logout)}
         >
           <LogOut class={stylex.attrs(icons.sm).class} />
-          {t('nav.logout')}
+          <span {...stylex.attrs(styles.logoutLabel)}>{t('nav.logout')}</span>
         </button>
       </div>
     </header>

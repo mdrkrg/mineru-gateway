@@ -48,11 +48,16 @@ const styles = stylex.create({
     flexDirection: 'column',
   },
   brand: {
+    display: 'flex',
+    alignItems: 'center',
     paddingInline: space.px16,
     paddingBlock: space.px16,
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: colors.gray700,
+  },
+  brandLink: {
+    textDecorationLine: 'none',
   },
   brandText: {
     color: colors.white,
@@ -120,26 +125,36 @@ function NavLink(props: { item: NavItem }) {
   );
 }
 
-export default function Sidebar() {
+export function SidebarNav(props: { onNavigate?: () => void; fill?: boolean }) {
   const auth = useAuth();
   const isAdmin = () => auth.user()?.isSuperuser === true;
 
   return (
-    <aside {...stylex.attrs(styles.sidebar)}>
+    <nav
+      onClick={() => props.onNavigate?.()}
+      {...stylex.attrs(styles.nav, props.fill && layout.flex1)}
+    >
+      <For each={NAV_ITEMS}>{(item) => <NavLink item={item} />}</For>
+
+      <Show when={isAdmin()}>
+        <div {...stylex.attrs(typography.metaFaint, styles.adminLabel)}>
+          {t('nav.admin')}
+        </div>
+        <For each={ADMIN_ITEMS}>{(item) => <NavLink item={item} />}</For>
+      </Show>
+    </nav>
+  );
+}
+
+export default function Sidebar() {
+  return (
+    <aside id="app-sidebar" {...stylex.attrs(styles.sidebar)}>
       <div {...stylex.attrs(styles.brand)}>
-        <span {...stylex.attrs(styles.brandText)}>MinerU Gateway</span>
+        <Link to={ROUTES.home} class={stylex.attrs(styles.brandLink).class}>
+          <span {...stylex.attrs(styles.brandText)}>MinerU Gateway</span>
+        </Link>
       </div>
-
-      <nav {...stylex.attrs(layout.flex1, styles.nav)}>
-        <For each={NAV_ITEMS}>{(item) => <NavLink item={item} />}</For>
-
-        <Show when={isAdmin()}>
-          <div {...stylex.attrs(typography.metaFaint, styles.adminLabel)}>
-            {t('nav.admin')}
-          </div>
-          <For each={ADMIN_ITEMS}>{(item) => <NavLink item={item} />}</For>
-        </Show>
-      </nav>
+      <SidebarNav fill />
     </aside>
   );
 }

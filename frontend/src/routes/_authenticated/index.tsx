@@ -38,6 +38,17 @@ interface StatCard {
 }
 
 const styles = stylex.create({
+  titleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: space.px12,
+  },
+  welcome: {
+    minWidth: 0,
+    flex: 1,
+  },
   statusGrid: {
     display: 'grid',
     gridTemplateColumns: {
@@ -190,8 +201,8 @@ function DashboardPage() {
 
   return (
     <div {...stylex.attrs(layout.stack24, layout.pageWidth1024)}>
-      <div {...stylex.attrs(layout.rowBetween)}>
-        <h2 {...stylex.attrs(typography.pageTitle)}>
+      <div {...stylex.attrs(styles.titleRow)}>
+        <h2 {...stylex.attrs(typography.pageTitle, styles.welcome)}>
           {t('dashboard.welcome', {
             name: auth.user()?.displayName || auth.user()?.email || '',
           })}
