@@ -33,7 +33,10 @@ import {
  */
 const TASK_SUBMIT_TIMEOUT_MS = 10 * 60_000;
 
-/** API keys are optional for the web UI; the JWT is injected by http-client. */
+/**
+ * API keys are optional for the web UI; the JWT is injected by http-client.
+ * The option stays for external API-key clients (exercised by the e2e suite).
+ */
 function taskAuthHeaders(apiKey?: string): Record<string, string> {
   return apiKey ? { 'X-API-Key': apiKey } : {};
 }
