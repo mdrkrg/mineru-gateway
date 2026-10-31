@@ -21,16 +21,37 @@ class MineruTier(StrEnum):
 
 
 class OutputFormat(StrEnum):
-    MARKDOWN = "markdown"
-    MIDDLE_JSON = "middle_json"
-    STRUCTURED_CONTENT = "structured_content"
-    ZIP = "zip"
+    """MinerU 4.0 artifact formats.
+
+    Each member declares its wire value, media type, and download extension
+    together, so the declaration is the only source of truth: a member without
+    metadata fails while the class is defined, and there is no table to drift.
+    """
+
+    def __new__(cls, value: str, media_type: str, extension: str) -> OutputFormat:
+        member = str.__new__(cls, value)
+        member._value_ = value
+        member.media_type = media_type
+        member.extension = extension
+        return member
+
+    MARKDOWN = "markdown", "text/markdown", ".md"
+    MIDDLE_JSON = "middle_json", "application/json", ".json"
+    STRUCTURED_CONTENT = "structured_content", "application/json", ".json"
+    ZIP = "zip", "application/zip", ".zip"
+
+    media_type: str
+    extension: str
 
 
 VALID_TIERS = frozenset(MineruTier)
 VALID_OCR_MODES = frozenset({"auto", "txt", "ocr"})
 VALID_OUTPUT_FORMATS = frozenset(OutputFormat)
 VALID_RESPONSE_FORMATS = frozenset({"json", "zip"})
+
+# Everything except the archive is inlined in the JSON task result; the archive
+# is relayed as-is when `zip` was requested at submission.
+INLINE_OUTPUT_FORMATS = frozenset(VALID_OUTPUT_FORMATS - {OutputFormat.ZIP})
 MAX_TASK_FILES = 100
 _PAGE_RANGE_SEGMENT = re.compile(r"(r?[1-9][0-9]*)(?:\s*-\s*(r?[1-9][0-9]*))?")
 

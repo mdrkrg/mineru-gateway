@@ -11,6 +11,7 @@ import io
 import json
 import logging
 import mimetypes
+import posixpath
 import re
 import uuid
 import zipfile
@@ -26,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth.dependencies import get_session, require_api_key
 from ..models import ApiKey, TaskRecord
 from ..upstream.client import UpstreamClient
+from ..upstream.params import INLINE_OUTPUT_FORMATS, OutputFormat
 from ..upstream.response import relay_headers, relay_response
 from . import service
 from .cache import FileCache
@@ -319,9 +321,7 @@ async def result_zip(
             task = tasks_by_id[task_id]
             upstream_task_id: str = task.upstream_task_id  # type: ignore[assignment]
 
-            # MinerU only serves a ZIP result when the task was submitted with
-            # `zip` in `output_formats`. Tasks submitted without it still get
-            # packed here from their inline JSON result.
+            # Native ZIP when requested, otherwise the inline JSON result.
             response_format = (
                 "zip" if "zip" in _requested_output_formats(task) else "json"
             )
@@ -351,12 +351,17 @@ async def result_zip(
                 )
                 continue
 
-            entry = _build_result_entry_name(task, upstream_resp)
-            if entry in used_names:
-                suffix = str(task_id).split("-")[-1][:8]
-                base, dot_ext = _split_ext(entry)
-                entry = f"{base}-{suffix}{dot_ext}"
-            used_names.add(entry)
+            artifacts = _inline_artifacts(task, upstream_resp)
+            if artifacts:
+                entries = _write_artifacts(zf, artifacts, used_names, task_id)
+                included.extend(
+                    {"task_id": str(task_id), "entry": entry} for entry in entries
+                )
+                continue
+
+            entry = _unique_entry(
+                _build_result_entry_name(task, upstream_resp), used_names, task_id
+            )
             zf.writestr(entry, upstream_resp.content)
             included.append({"task_id": str(task_id), "entry": entry})
 
@@ -409,15 +414,9 @@ def _build_download_disposition(task: Any, upstream_headers: Any) -> str | None:
         return f"attachment; filename=\"{encoded}\"; filename*=UTF-8''{encoded}"
 
 
-def _strip_extension(name: str) -> str:
-    """Drop the extension ('doc.pdf' -> 'doc'); dotfiles ('.pdf') keep their name."""
-    dot = name.rfind(".")
-    return name[:dot] if dot > 0 else name
-
-
 def _sanitize_stem(name: str) -> str:
     """basename -> extensionless stem, safe for headers and local filesystems."""
-    base = _strip_extension(name.replace("\\", "/").split("/")[-1])
+    base = posixpath.splitext(name.replace("\\", "/").split("/")[-1])[0]
     stem = _UNSAFE_FILENAME_CHARS.sub("_", base).strip().strip(".")
     return stem[:_STEM_MAX_LENGTH]
 
@@ -437,7 +436,7 @@ def _download_extension(disposition: str, content_type: str) -> str:
     """Extension from the upstream filename when present, else Content-Type."""
     upstream_name = _extract_cd_filename(disposition)
     if upstream_name:
-        _, ext = _split_ext(upstream_name)
+        _, ext = posixpath.splitext(upstream_name)
         if 0 < len(ext) <= 8:
             return ext
     return _guess_extension(content_type)
@@ -481,13 +480,18 @@ def _guess_extension(content_type: str | None) -> str:
     return ext
 
 
+def _stem_at(task: Any, index: int = 0) -> str | None:
+    """Sanitized stem of the index-th submitted file, or None."""
+    names = task.file_names or []
+    if index >= len(names):
+        return None
+    return _sanitize_stem(names[index]) or None
+
+
 def _fallback_entry_name(task: Any) -> str:
     """Build entry name for skipped tasks (rules 6b/6c/6d with .bin fallback)."""
-    if task.file_names and len(task.file_names) > 0:
-        base = _sanitize_stem(task.file_names[0])
-        if base:
-            return f"{base}/result.bin"
-    return f"{task.id}/result.bin"
+    base = _stem_at(task)
+    return f"{base}/result.bin" if base else f"{task.id}/result.bin"
 
 
 def _build_result_entry_name(task: Any, upstream_resp: Any) -> str:
@@ -509,20 +513,97 @@ def _build_result_entry_name(task: Any, upstream_resp: Any) -> str:
 
     ext = _guess_extension(upstream_resp.headers.get("content-type"))
 
-    if task.file_names and len(task.file_names) > 0:
-        base = _sanitize_stem(task.file_names[0])
-        if base:
-            return f"{base}/result{ext}"
-
-    return f"{task.id}/result{ext}"
+    base = _stem_at(task)
+    return f"{base}/result{ext}" if base else f"{task.id}/result{ext}"
 
 
-def _split_ext(name: str) -> tuple[str, str]:
-    """Split a filename into (base, extension)."""
-    dot = name.rfind(".")
-    if dot < 0:
-        return name, ""
-    return name[:dot], name[dot:]
+def _unique_entry(entry: str, used: set[str], task_id: Any) -> str:
+    """Disambiguate a zip entry name so writes never overwrite silently."""
+    if entry not in used:
+        used.add(entry)
+        return entry
+    base, ext = posixpath.splitext(entry)
+    suffix = str(task_id).split("-")[-1][:8]
+    candidate = f"{base}-{suffix}{ext}"
+    counter = 2
+    while candidate in used:
+        candidate = f"{base}-{suffix}-{counter}{ext}"
+        counter += 1
+    used.add(candidate)
+    return candidate
+
+
+def _inline_artifacts(
+    task: TaskRecord, upstream_resp: Any
+) -> list[tuple[str, OutputFormat, bytes]]:
+    """Artifacts inlined in a MinerU JSON result, as (stem, format, bytes).
+
+    MinerU only builds a ZIP when `zip` was requested at submission, so other
+    tasks carry the requested formats under `files[].content`. Downloads
+    rebuild them as files instead of returning the task envelope.
+    """
+    content_type = (upstream_resp.headers.get("content-type") or "").lower()
+    if not content_type.startswith("application/json"):
+        return []
+    try:
+        payload = upstream_resp.json()
+    except ValueError:
+        return []
+    if not isinstance(payload, dict):
+        return []
+
+    formats = [
+        OutputFormat(name)
+        for name in _requested_output_formats(task)
+        if name in INLINE_OUTPUT_FORMATS
+    ]
+    files = payload.get("files")
+    if not formats or not isinstance(files, list):
+        return []
+
+    artifacts: list[tuple[str, OutputFormat, bytes]] = []
+    for index, entry in enumerate(files):
+        if not isinstance(entry, dict):
+            continue
+        content = entry.get("content")
+        if not isinstance(content, dict):
+            continue
+        stem = _artifact_stem(task, entry, index)
+        for fmt in formats:
+            value = content.get(fmt)
+            if value is None:
+                continue
+            artifacts.append((stem, fmt, _artifact_bytes(value)))
+    return artifacts
+
+
+def _artifact_stem(task: TaskRecord, entry: dict[str, Any], index: int) -> str:
+    """Per-file stem: upstream file name first, then the submitted name."""
+    name = entry.get("name")
+    stem = _sanitize_stem(name) if isinstance(name, str) and name else ""
+    return stem or _stem_at(task, index) or f"{task.id}-{index + 1}"
+
+
+def _artifact_bytes(value: Any) -> bytes:
+    """Artifact payload as bytes; JSON formats may arrive as objects."""
+    if isinstance(value, str):
+        return value.encode()
+    return json.dumps(value, ensure_ascii=False, indent=2).encode()
+
+
+def _write_artifacts(
+    zf: zipfile.ZipFile,
+    artifacts: list[tuple[str, OutputFormat, bytes]],
+    used: set[str],
+    task_id: Any,
+) -> list[str]:
+    """Write artifacts as `<stem>/<format><ext>` entries; return their names."""
+    entries: list[str] = []
+    for stem, fmt, data in artifacts:
+        entry = _unique_entry(f"{stem}/{fmt}{fmt.extension}", used, task_id)
+        zf.writestr(entry, data)
+        entries.append(entry)
+    return entries
 
 
 @router.post(

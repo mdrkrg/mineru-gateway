@@ -1347,15 +1347,19 @@ async def test_result_zip_packs_mixed_output_formats(client, api_key):
         {"task_id": zip_upstream_id, "response_format": "zip"},
     ]
     with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
-        assert zf.namelist() == ["doc/result.json", "doc/result.zip", "_manifest.json"]
+        assert zf.namelist() == [
+            "doc/markdown.md",
+            "doc/result.zip",
+            "_manifest.json",
+        ]
         assert json.loads(zf.read("_manifest.json")) == {
             "included": [
-                {"task_id": json_tid, "entry": "doc/result.json"},
+                {"task_id": json_tid, "entry": "doc/markdown.md"},
                 {"task_id": zip_tid, "entry": "doc/result.zip"},
             ],
             "skipped": [],
         }
-        assert zf.read("doc/result.json") == inline_result
+        assert zf.read("doc/markdown.md") == b"# parsed"
         assert zf.read("doc/result.zip") == archive
 
 

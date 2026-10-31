@@ -16,6 +16,7 @@ An API-key gateway in front of **mineru-api / mineru-router**. It keeps the pars
 - **Transparent proxying** of `POST /v1/file_parse` (sync) and `POST /v1/tasks` (async), including task status, results, cancellation, and `GET /v1/health`.
 - **API-key auth** for parsing endpoints, with an admin token for key management and opt-in anonymous passthrough.
 - **Task history** scoped per key, with list, detail, and result endpoints.
+- **Batch downloads**: `POST /v1/tasks/result-zip` packs many tasks into one archive, with a `_manifest.json` listing what was included or skipped.
 - **Crash recovery**: interrupted tasks are resubmitted automatically.
 - **Protection**: per-key rate limiting, an optional global concurrency cap, and per-file/total upload limits.
 - **Optional user accounts**: JWT/OAuth login and email verification (`GATEWAY_USER_AUTH_ENABLED`).

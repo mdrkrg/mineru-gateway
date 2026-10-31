@@ -45,7 +45,7 @@ Content-Type: application/json
    - 若任一 task 不符合 → **`409`**，响应体列出所有不合格 task 的 `task_id`、`status` 及 `reason`。
 5. **构建 zip**：维护内存中的 `BytesIO` 与 manifest 对象（`included`、`skipped` 列表），对校验通过的 task 逐条执行：
    a. 请求上游 `GET /v1/tasks/{upstream_task_id}/result`；`response_format` 由提交记录决定：task 的 `parse_params.output_formats` 含 `zip` 时用 `zip`，其余情况用 `json`
-   b. 若上游返回 `200`：将响应体作为 zip entry 写入流，同时在 manifest `.included` 中记录 `{"task_id", "entry"}`
+   b. 若上游返回 `200`：写入 zip entry 并在 manifest `.included` 中记录 `{"task_id", "entry"}`。ZIP 结果按响应体整体写入；JSON 结果把 `files[].content` 中请求的产物逐个写成 `<文件名（去扩展名）>/<format>.<ext>`（如 `paper/markdown.md`、`paper/middle_json.json`），因此同一 task 可产生多条 `included`
    c. 若上游返回非 200 或抛出异常：**跳过此 task**，同时在 manifest `.skipped` 中记录 `{"task_id", "entry", "reason", "detail"}`（`reason: "upstream_error"`，`detail` 为实际 HTTP 状态码或异常信息）
    d. 全部 task 完成后，追加写入 `_manifest.json` 作为 zip 的最后一个 entry（见下方结构），然后关闭 zip 流
 6. **zip entry 命名**（按优先级回退）：
@@ -53,7 +53,7 @@ Content-Type: application/json
     b. 若无，且 `task.file_names` 非空：用 `task.file_names[0]`（如 `paper-001.pdf`）构建目录名，`<文件名（去扩展名）>/result.<上游 Content-Type 扩展名>`（先取 basename 并清洗不安全字符，与单任务下载命名一致；清洗后为空则回退到规则 c）
     c. 若无 `Content-Disposition` 且 `file_names` 为空：回退为 `<task_id>/result.<上游 Content-Type 扩展名>`
     d. 若无法确定扩展名：使用 `result.bin`
-    e. 若按上述规则产生的 entry 名与已写入 zip 的 entry 重名，追加 `-<task_id 后8位>` 以去重，避免 zip 内数据被静默覆盖
+    e. 若按上述规则产生的 entry 名与已写入 zip 的 entry 重名，追加 `-<task_id 后8位>` 以去重，避免 zip 内数据被静默覆盖；若仍重名，继续追加 `-2`、`-3`…
 7. **响应**：
    - `Content-Type: application/zip`
    - `Content-Disposition: attachment; filename="results.zip"`
