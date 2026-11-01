@@ -155,9 +155,9 @@ const ResultZipRequestSchema = defineRequestSchema(
 
 | Header | 用途 | 出现位置 |
 |--------|------|----------|
-| `X-API-Key` | 调用 `/v1/tasks`、`/v1/file_parse`、任务 CRUD；`allow_anonymous=true` 时可缺省 | `X_API_KEY` 常量 + `require_api_key` 依赖；`proxy/routes.py` 的 `submit_task` / `parse_file` 路由；`tasks/routes.py` 各路由 |
+| `X-API-Key` | 外部客户端调用 `/v1/tasks`、`/v1/file_parse`、任务 CRUD；`allow_anonymous=true` 时可缺省 | `X_API_KEY` 常量 + `require_task_principal` 依赖；`proxy/routes.py` 的 `submit_task` / `parse_file` 路由；`tasks/routes.py` 各路由 |
 | `X-Admin-Token` | 调用 `/auth/keys` 全量管理、`/auth/users` 管理员建用户 | `X_ADMIN_TOKEN` 常量 + `require_admin_token` 依赖 |
-| `Authorization: Bearer <jwt>` | 调用 `/users/me`、`/me/api-keys`；仅 `user_auth_enabled=true` 时存在 | `current_active_user` 依赖 |
+| `Authorization: Bearer <jwt>` | 调用 `/users/me`、`/me/api-keys`，以及任务端点；仅 `user_auth_enabled=true` 时存在。任务归属见 `specs/task-ownership.md` | `current_active_user` / `require_task_principal` 依赖 |
 
 **写入 spec 的约束**：HTTP 客户端层**必须**允许在请求时注入上述任一 header，但**不**在本 spec 定义注入策略（由后续 auth-flow spec 定义）。本 spec 只声明"该注入点存在"。
 

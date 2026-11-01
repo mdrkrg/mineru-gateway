@@ -10,11 +10,9 @@ import {
 } from '@/api/functions/tasks';
 import type { TaskDetail } from '@/api/schemas/tasks';
 import DownloadSplitButton from '@/components/DownloadSplitButton';
-import NoActiveKey from '@/components/NoActiveKey';
 import StatusBadge from '@/components/StatusBadge';
 import { t } from '@/i18n';
 import { taskTierLabel } from '@/i18n/labels';
-import { useApiKey } from '@/stores/api-key-context';
 import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
@@ -107,7 +105,6 @@ function Field(props: { label: string; children: import('solid-js').JSX.Element 
 
 function TaskDetailPage() {
   const params = Route.useParams();
-  const apiKeyStore = useApiKey();
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -117,17 +114,11 @@ function TaskDetailPage() {
   const [isActing, setIsActing] = createSignal(false);
 
   async function load(opts: { silent?: boolean } = {}) {
-    const key = apiKeyStore.activeKey();
-    if (!key) {
-      setIsLoading(false);
-      polling.stop();
-      return;
-    }
     if (!opts.silent) {
       setIsLoading(true);
       setError(null);
     }
-    const result = await getTaskDetail(params().id, key);
+    const result = await getTaskDetail(params().id);
     if (result.isErr()) {
       setError(errorMessage(result.error));
     } else {
@@ -153,9 +144,8 @@ function TaskDetailPage() {
   onMount(() => load());
 
   async function handleCancel() {
-    const key = apiKeyStore.activeKey();
     const cur = task();
-    if (!key || !cur) return;
+    if (!cur) return;
     const confirmed = await confirm.ask({
       title: t('tasks.confirmCancelTitle'),
       description: t('taskDetail.confirmCancel'),
@@ -166,7 +156,7 @@ function TaskDetailPage() {
 
     setIsActing(true);
     setError(null);
-    const result = await cancelTask(cur.taskId, key);
+    const result = await cancelTask(cur.taskId);
     if (result.isErr()) {
       setError(errorMessage(result.error));
     } else {
@@ -178,13 +168,12 @@ function TaskDetailPage() {
   }
 
   async function runDownload(fetchResult: ResultFetcher) {
-    const key = apiKeyStore.activeKey();
     const cur = task();
-    if (!key || !cur) return;
+    if (!cur) return;
 
     setIsActing(true);
     setError(null);
-    setError(await downloadResultFile(fetchResult, cur.taskId, key, cur.fileNames));
+    setError(await downloadResultFile(fetchResult, cur.taskId, cur.fileNames));
     setIsActing(false);
   }
 
@@ -201,106 +190,100 @@ function TaskDetailPage() {
         {t('taskDetail.back')}
       </Link>
 
-      <Show when={!apiKeyStore.activeKey()}>
-        <NoActiveKey />
-      </Show>
+      <Show
+        when={!isLoading()}
+        fallback={<p {...stylex.attrs(typography.muted)}>{t('common.loading')}</p>}
+      >
+        <Show when={error()}>
+          <p {...stylex.attrs(controls.alert, controls.alertError)}>{error()}</p>
+        </Show>
 
-      <Show when={apiKeyStore.activeKey()}>
-        <Show
-          when={!isLoading()}
-          fallback={<p {...stylex.attrs(typography.muted)}>{t('common.loading')}</p>}
-        >
-          <Show when={error()}>
-            <p {...stylex.attrs(controls.alert, controls.alertError)}>{error()}</p>
-          </Show>
-
-          <Show when={task()}>
-            {(task) => (
-              <>
-                <div {...stylex.attrs(controls.card)}>
-                  <div {...stylex.attrs(styles.header)}>
-                    <h2 {...stylex.attrs(typography.sectionHeading)}>
-                      {t('taskDetail.title')}
-                    </h2>
-                    <code {...stylex.attrs(styles.taskId)}>{task().taskId}</code>
-                    <div {...stylex.attrs(styles.status)}>
-                      <StatusBadge status={task().status} />
-                    </div>
+        <Show when={task()}>
+          {(task) => (
+            <>
+              <div {...stylex.attrs(controls.card)}>
+                <div {...stylex.attrs(styles.header)}>
+                  <h2 {...stylex.attrs(typography.sectionHeading)}>
+                    {t('taskDetail.title')}
+                  </h2>
+                  <code {...stylex.attrs(styles.taskId)}>{task().taskId}</code>
+                  <div {...stylex.attrs(styles.status)}>
+                    <StatusBadge status={task().status} />
                   </div>
+                </div>
 
-                  <dl {...stylex.attrs(styles.fields)}>
-                    <Field label={t('taskDetail.tier')}>
-                      {taskTierLabel(task().tier)}
-                    </Field>
-                    <Field label={t('taskDetail.fileCount')}>{task().fileCount}</Field>
-                    <Field label={t('taskDetail.retries')}>{task().retryCount}</Field>
-                    <Field label={t('taskDetail.createdAt')}>{formatDateTime(task().createdAt)}</Field>
-                    <Field label={t('taskDetail.startedAt')}>{formatDateTime(task().startedAt)}</Field>
-                    <Field label={t('taskDetail.completedAt')}>{formatDateTime(task().completedAt)}</Field>
-                    <Field label={t('taskDetail.elapsed')}>
-                      {(() => {
-                        const started = task().startedAt;
-                        return started ? formatDuration(started, task().completedAt) : '—';
-                      })()}
-                    </Field>
-                  </dl>
+                <dl {...stylex.attrs(styles.fields)}>
+                  <Field label={t('taskDetail.tier')}>
+                    {taskTierLabel(task().tier)}
+                  </Field>
+                  <Field label={t('taskDetail.fileCount')}>{task().fileCount}</Field>
+                  <Field label={t('taskDetail.retries')}>{task().retryCount}</Field>
+                  <Field label={t('taskDetail.createdAt')}>{formatDateTime(task().createdAt)}</Field>
+                  <Field label={t('taskDetail.startedAt')}>{formatDateTime(task().startedAt)}</Field>
+                  <Field label={t('taskDetail.completedAt')}>{formatDateTime(task().completedAt)}</Field>
+                  <Field label={t('taskDetail.elapsed')}>
+                    {(() => {
+                      const started = task().startedAt;
+                      return started ? formatDuration(started, task().completedAt) : '—';
+                    })()}
+                  </Field>
+                </dl>
 
+                <div {...stylex.attrs(layout.mt16)}>
+                  <p {...stylex.attrs(typography.metaMuted, layout.mb4)}>
+                    {t('taskDetail.fileList')}
+                  </p>
+                  <ul {...stylex.attrs(typography.body, styles.fileList)}>
+                    <For each={task().fileNames}>{(name) => <li>{name}</li>}</For>
+                  </ul>
+                </div>
+
+                <Show when={task().error}>
                   <div {...stylex.attrs(layout.mt16)}>
                     <p {...stylex.attrs(typography.metaMuted, layout.mb4)}>
-                      {t('taskDetail.fileList')}
+                      {t('taskDetail.error')}
                     </p>
-                    <ul {...stylex.attrs(typography.body, styles.fileList)}>
-                      <For each={task().fileNames}>{(name) => <li>{name}</li>}</For>
-                    </ul>
+                    <pre {...stylex.attrs(typography.body, styles.errorPre)}>
+                      {task().error}
+                    </pre>
                   </div>
-
-                  <Show when={task().error}>
-                    <div {...stylex.attrs(layout.mt16)}>
-                      <p {...stylex.attrs(typography.metaMuted, layout.mb4)}>
-                        {t('taskDetail.error')}
-                      </p>
-                      <pre {...stylex.attrs(typography.body, styles.errorPre)}>
-                        {task().error}
-                      </pre>
-                    </div>
-                  </Show>
-                </div>
-
-                <Show when={task().status === 'partial' && task().hasResult}>
-                  <p {...stylex.attrs(controls.alert, controls.alertWarning)}>
-                    {t('taskDetail.partialResultHint')}
-                  </p>
                 </Show>
+              </div>
 
-                <div {...stylex.attrs(styles.actions)}>
-                  <Show when={isActiveTaskStatus(task().status)}>
-                    <button
-                      type="button"
-                      disabled={isActing()}
-                      onClick={handleCancel}
-                      {...stylex.attrs(
-                        controls.button,
-                        controls.buttonOutline,
-                        actions.outlineDanger,
-                      )}
-                    >
-                      {t('taskDetail.cancel')}
-                    </button>
-                  </Show>
-                  <Show when={task().hasResult}>
-                    <DownloadSplitButton
-                      label={t('taskDetail.download')}
-                      rawLabel={t('taskDetail.downloadRaw')}
-                      rawHint={t('taskDetail.downloadRawHint')}
-                      disabled={isActing()}
-                      onDownload={handleDownload}
-                      onDownloadRaw={handleDownloadRaw}
-                    />
-                  </Show>
-                </div>
-              </>
-            )}
-          </Show>
+              <Show when={task().status === 'partial' && task().hasResult}>
+                <p {...stylex.attrs(controls.alert, controls.alertWarning)}>
+                  {t('taskDetail.partialResultHint')}
+                </p>
+              </Show>
+
+              <div {...stylex.attrs(styles.actions)}>
+                <Show when={isActiveTaskStatus(task().status)}>
+                  <button
+                    type="button"
+                    disabled={isActing()}
+                    onClick={handleCancel}
+                    {...stylex.attrs(
+                      controls.button,
+                      controls.buttonOutline,
+                      actions.outlineDanger,
+                    )}
+                  >
+                    {t('taskDetail.cancel')}
+                  </button>
+                </Show>
+                <Show when={task().hasResult}>
+                  <DownloadSplitButton
+                    label={t('taskDetail.download')}
+                    rawLabel={t('taskDetail.downloadRaw')}
+                    rawHint={t('taskDetail.downloadRawHint')}
+                    disabled={isActing()}
+                    onDownload={handleDownload}
+                    onDownloadRaw={handleDownloadRaw}
+                  />
+                </Show>
+              </div>
+            </>
+          )}
         </Show>
       </Show>
     </div>

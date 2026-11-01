@@ -15,11 +15,6 @@ interface ApiKeyTableProps {
   isLoading: boolean;
   /** Message shown when `keys` is empty. */
   emptyText: string;
-  /**
-   * Prefix of the key this browser currently uses, if any. The matching row
-   * gets an "In Use" badge; omit it on pages without an active-key concept.
-   */
-  activePrefix?: string | null;
   /** Id of the key whose revoke request is in flight, if any. */
   revokingId: string | null;
   onRevoke: (key: ApiKeyInfo) => void;
@@ -31,9 +26,6 @@ interface ApiKeyTableProps {
  * instead of removing it.
  */
 export default function ApiKeyTable(props: ApiKeyTableProps) {
-  const isInUse = (prefix: string) =>
-    props.activePrefix != null && props.activePrefix.startsWith(prefix);
-
   return (
     <Show
       when={!props.isLoading}
@@ -66,11 +58,6 @@ export default function ApiKeyTable(props: ApiKeyTableProps) {
                 >
                   <td {...stylex.attrs(table.td)}>
                     <code {...stylex.attrs(typography.meta)}>{key.apiKeyPrefix}…</code>
-                    <Show when={isInUse(key.apiKeyPrefix)}>
-                      <span {...stylex.attrs(badges.pill, badges.blue, badges.inUse)}>
-                        {t('keyTable.inUse')}
-                      </span>
-                    </Show>
                   </td>
                   <td {...stylex.attrs(table.td)}>{key.label || '—'}</td>
                   <td {...stylex.attrs(table.td)}>{formatDateTime(key.createdAt)}</td>

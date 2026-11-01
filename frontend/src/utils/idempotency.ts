@@ -4,7 +4,7 @@
  * `crypto.randomUUID()` is only exposed in secure contexts (HTTPS or
  * localhost). The SPA may be served over plain HTTP on a LAN, so fall back to
  * `crypto.getRandomValues()`, which is available in insecure contexts. The key
- * only needs to be unique per API key; it is not a secret.
+ * only needs to be unique per credential; it is not a secret.
  */
 export function newIdempotencyKey(): string {
   const cryptoApi = globalThis.crypto;

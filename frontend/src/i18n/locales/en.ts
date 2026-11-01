@@ -34,7 +34,7 @@ export const en = {
   'errors.detail.invalidCredentials': 'Invalid credentials',
   'errors.detail.invalidRefreshToken': 'Invalid refresh token',
   'errors.detail.notAuthenticated': 'Not authenticated',
-  'errors.detail.apiKeyRequired': 'API key required',
+  'errors.detail.apiKeyRequired': 'Authentication required',
   'errors.detail.invalidApiKey': 'Invalid API key',
   'errors.detail.invalidAdminToken': 'Invalid or missing admin token',
   'errors.detail.emailNotVerified': 'Email not verified',
@@ -198,7 +198,6 @@ export const en = {
   'keyTable.expiresAt': 'Expires At',
   'keyTable.status': 'Status',
   'keyTable.actions': 'Actions',
-  'keyTable.inUse': 'In Use',
   'keyTable.valid': 'Active',
   'keyTable.revoked': 'Revoked',
   'keyTable.revoke': 'Revoke',
@@ -208,6 +207,8 @@ export const en = {
   'keyTable.revokedToast': 'API key revoked',
 
   // API keys page
+  'apiKeys.description':
+    'API keys are for external programs. The web UI uses your login session, so you do not need a key here to upload or manage tasks.',
   'apiKeys.createTitle': 'Create New Key',
   'apiKeys.label': 'Label (optional)',
   'apiKeys.labelPlaceholder': 'e.g. laptop',
@@ -215,29 +216,15 @@ export const en = {
   'apiKeys.creating': 'Creating…',
   'apiKeys.create': 'Create',
   'apiKeys.listTitle': 'My Keys',
-  'apiKeys.empty': 'No API keys yet. Create one to get started.',
+  'apiKeys.empty': 'No API keys yet. Create one for an external client.',
   'apiKeys.errUnverified':
     'Your email is not verified. Verify your email before creating an API key.',
-  'apiKeys.activeKeyTitle': 'Active Key',
-  'apiKeys.activeKeyDesc':
-    'Task endpoints (list, upload, download) are authenticated with an API key. After creating a key you can use it in this browser with one click, or paste an existing key.',
-  'apiKeys.notSet': 'Not set. Task pages will not be able to load data.',
-  'apiKeys.manualTitle': 'Manually Set an Existing Key',
-  'apiKeys.pastePlaceholder': 'Paste the full API key',
-  'apiKeys.set': 'Set',
   'apiKeys.createdToast': 'API key created',
-
-  // NoActiveKey placeholder
-  'noActiveKey.title': 'API Key Required',
-  'noActiveKey.description':
-    'Task endpoints are authenticated with an API key. Create a key on the API Keys page and use it in this browser, or paste an existing key.',
-  'noActiveKey.goTo': 'Go to API Keys',
 
   // One-time key reveal
   'apiKeyReveal.title': 'Key created — save it now, the full key is shown only once',
   'apiKeyReveal.copied': 'Copied',
   'apiKeyReveal.copy': 'Copy',
-  'apiKeyReveal.useHere': 'Use this key in this browser',
 
   // Admin token gate
   'adminGate.title': 'Admin Token Required',
@@ -331,14 +318,14 @@ export const en = {
   'oauth.verifyFailedBody':
     'The verification link is invalid or has expired. Please request a new verification email.',
   'oauth.verifySuccessTitle': 'Email Verified',
-  'oauth.verifySuccessBody': 'Your email is now verified. You can create an API key.',
+  'oauth.verifySuccessBody': 'Your email is now verified. You can use the web app and create API keys for external clients.',
   'oauth.goLogin': 'Sign In',
   'oauth.goHome': 'Go Home',
 
   // Email verification dialog
   'emailVerification.title': 'Email Verification',
   'emailVerification.body':
-    'Your email is not verified yet. You must verify your email before creating an API key. A verification email has been sent to your address — please check your inbox and click the verification link. If it did not arrive, use the button below to resend it.',
+    'Your email is not verified yet. Verify it before creating tasks or API keys. A verification email has been sent to your address — please check your inbox and click the verification link. If it did not arrive, use the button below to resend it.',
   'emailVerification.sent': 'Verification email sent. Please check your inbox.',
   'emailVerification.send': 'Send Verification Email',
   'emailVerification.resend': 'Resend Verification Email',

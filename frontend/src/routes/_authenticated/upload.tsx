@@ -13,7 +13,6 @@ import {
   type MineruOutputFormat,
   type MineruTier,
 } from '@/api/schemas/mineru-options';
-import NoActiveKey from '@/components/NoActiveKey';
 import CheckboxGroupField from '@/components/CheckboxGroupField';
 import SelectField from '@/components/SelectField';
 import { t } from '@/i18n';
@@ -22,7 +21,6 @@ import {
   mineruOutputFormatLabel,
   mineruTierLabel,
 } from '@/i18n/labels';
-import { useApiKey } from '@/stores/api-key-context';
 import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
 import { ROUTES } from '@/utils/constants';
@@ -112,7 +110,6 @@ const MAX_TASK_FILES = 100;
 const OCR_MODE_OPTIONS = MINERU_OCR_MODES.map((value) => ({ value, label: value }));
 
 function UploadPage() {
-  const apiKeyStore = useApiKey();
   const toast = useToast();
 
   const [files, setFiles] = createSignal<File[]>([]);
@@ -216,8 +213,6 @@ function UploadPage() {
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
-    const key = apiKeyStore.activeKey();
-    if (!key) return;
     if (files().length === 0) {
       setError(t('upload.errNoFile'));
       return;
@@ -238,7 +233,6 @@ function UploadPage() {
 
     try {
       const result = await submitTask({
-        apiKey: key,
         idempotencyKey,
         parseFields: {
           files: files(),
@@ -263,143 +257,137 @@ function UploadPage() {
 
   return (
     <div {...stylex.attrs(layout.stack16, layout.pageWidth768)}>
-      <Show when={!apiKeyStore.activeKey()}>
-        <NoActiveKey />
-      </Show>
-
-      <Show when={apiKeyStore.activeKey()}>
-        <Show when={submitted()}>
-          {(s) => (
-            <div {...stylex.attrs(feedback.successBox)}>
-              <h3 {...stylex.attrs(feedback.successTitle)}>{t('upload.submitted')}</h3>
-              <p {...stylex.attrs(feedback.successText, layout.mb8)}>
-                {t('upload.taskIdLabel')}
-                <code>{s().taskId}</code>
-                {t('upload.fileCount', { count: s().fileNames.length })}
-              </p>
-              <Link
-                to={ROUTES.taskDetail(s().taskId)}
-                class={stylex.attrs(controls.link, typography.body).class}
-              >
-                {t('upload.viewDetail')}
-              </Link>
-            </div>
-          )}
-        </Show>
-
-        <Show when={error()}>
-          <p {...stylex.attrs(controls.alert, controls.alertError)}>{error()}</p>
-        </Show>
-
-        <form onSubmit={handleSubmit} {...stylex.attrs(layout.stack16)}>
-          {/* File picker */}
-          <section {...stylex.attrs(controls.card, layout.column)}>
-            <h2 {...stylex.attrs(typography.sectionHeading, layout.mb12)}>
-              {t('upload.fileSection')}
-            </h2>
-            <label
-              {...stylex.attrs(
-                layout.transitionColors,
-                styles.dropzone,
-                isDragging() ? styles.dropzoneDragging : styles.dropzoneIdle,
-              )}
-              onDragEnter={handleDragEnter}
-              onDragOver={(e) => e.preventDefault()}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
+      <Show when={submitted()}>
+        {(s) => (
+          <div {...stylex.attrs(feedback.successBox)}>
+            <h3 {...stylex.attrs(feedback.successTitle)}>{t('upload.submitted')}</h3>
+            <p {...stylex.attrs(feedback.successText, layout.mb8)}>
+              {t('upload.taskIdLabel')}
+              <code>{s().taskId}</code>
+              {t('upload.fileCount', { count: s().fileNames.length })}
+            </p>
+            <Link
+              to={ROUTES.taskDetail(s().taskId)}
+              class={stylex.attrs(controls.link, typography.body).class}
             >
-              <FileUp class={stylex.attrs(icons.lg, styles.fileIcon).class} />
-              <span {...stylex.attrs(typography.bodyMuted)}>{t('upload.filePicker')}</span>
-              <input
-                type="file"
-                multiple
-                {...stylex.attrs(styles.hidden)}
-                onChange={(e) => {
-                  // Reset so re-picking the same file (e.g. after a rejected
-                  // selection or a successful submit) fires change again.
-                  addFiles(e.currentTarget.files);
-                  e.currentTarget.value = '';
-                }}
-              />
-            </label>
-            <Show when={files().length > 0}>
-              <ul {...stylex.attrs(styles.fileList)}>
-                <For each={files()}>
-                  {(file, index) => (
-                    <li {...stylex.attrs(typography.body, styles.fileItem)}>
-                      <span>
-                        {file.name}
-                        <span {...stylex.attrs(styles.fileSize)}>
-                          {formatFileSize(file.size)}
-                        </span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removeFile(index())}
-                        {...stylex.attrs(controls.iconButton, styles.removeButton)}
-                      >
-                        <X class={stylex.attrs(icons.sm).class} />
-                      </button>
-                    </li>
-                  )}
-                </For>
-              </ul>
-              <p {...stylex.attrs(typography.metaFaint, layout.mt8)}>
-                {t('upload.sizeSummary', {
-                  count: files().length,
-                  size: formatFileSize(totalSize()),
-                  limit: formatFileSize(env.maxUploadSizeBytes),
-                })}
-              </p>
-            </Show>
-          </section>
-
-          {/* Parse options */}
-          <section {...stylex.attrs(controls.card, layout.stack16)}>
-            <h2 {...stylex.attrs(typography.sectionHeading)}>
-              {t('upload.optionsSection')}
-            </h2>
-
-            <div {...stylex.attrs(styles.optionsGrid)}>
-              <SelectField
-                label={t('upload.tier')}
-                value={tier()}
-                options={tierOptions()}
-                onChange={(value) => updateOption(setTier, value)}
-              />
-              <SelectField
-                label={t('upload.ocrMode')}
-                value={ocrMode()}
-                options={OCR_MODE_OPTIONS}
-                onChange={(value) => updateOption(setOcrMode, value)}
-              />
-            </div>
-
-            <CheckboxGroupField
-              label={t('upload.outputFormats')}
-              options={formatOptions()}
-              selected={outputFormats()}
-              onToggle={toggleOutputFormat}
-              hint={t('upload.outputFormatsHint')}
-            />
-          </section>
-
-          <button
-            type="submit"
-            disabled={isSubmitting() || files().length === 0}
-            {...stylex.attrs(
-              controls.button,
-              controls.buttonPrimary,
-              controls.buttonLarge,
-              styles.submit,
-            )}
-          >
-            {isSubmitting()
-              ? t('upload.submitting')
-              : t('upload.submit', { count: files().length })}
-          </button>
-        </form>
+              {t('upload.viewDetail')}
+            </Link>
+          </div>
+        )}
       </Show>
+
+      <Show when={error()}>
+        <p {...stylex.attrs(controls.alert, controls.alertError)}>{error()}</p>
+      </Show>
+
+      <form onSubmit={handleSubmit} {...stylex.attrs(layout.stack16)}>
+        {/* File picker */}
+        <section {...stylex.attrs(controls.card, layout.column)}>
+          <h2 {...stylex.attrs(typography.sectionHeading, layout.mb12)}>
+            {t('upload.fileSection')}
+          </h2>
+          <label
+            {...stylex.attrs(
+              layout.transitionColors,
+              styles.dropzone,
+              isDragging() ? styles.dropzoneDragging : styles.dropzoneIdle,
+            )}
+            onDragEnter={handleDragEnter}
+            onDragOver={(e) => e.preventDefault()}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            <FileUp class={stylex.attrs(icons.lg, styles.fileIcon).class} />
+            <span {...stylex.attrs(typography.bodyMuted)}>{t('upload.filePicker')}</span>
+            <input
+              type="file"
+              multiple
+              {...stylex.attrs(styles.hidden)}
+              onChange={(e) => {
+                // Reset so re-picking the same file (e.g. after a rejected
+                // selection or a successful submit) fires change again.
+                addFiles(e.currentTarget.files);
+                e.currentTarget.value = '';
+              }}
+            />
+          </label>
+          <Show when={files().length > 0}>
+            <ul {...stylex.attrs(styles.fileList)}>
+              <For each={files()}>
+                {(file, index) => (
+                  <li {...stylex.attrs(typography.body, styles.fileItem)}>
+                    <span>
+                      {file.name}
+                      <span {...stylex.attrs(styles.fileSize)}>
+                        {formatFileSize(file.size)}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(index())}
+                      {...stylex.attrs(controls.iconButton, styles.removeButton)}
+                    >
+                      <X class={stylex.attrs(icons.sm).class} />
+                    </button>
+                  </li>
+                )}
+              </For>
+            </ul>
+            <p {...stylex.attrs(typography.metaFaint, layout.mt8)}>
+              {t('upload.sizeSummary', {
+                count: files().length,
+                size: formatFileSize(totalSize()),
+                limit: formatFileSize(env.maxUploadSizeBytes),
+              })}
+            </p>
+          </Show>
+        </section>
+
+        {/* Parse options */}
+        <section {...stylex.attrs(controls.card, layout.stack16)}>
+          <h2 {...stylex.attrs(typography.sectionHeading)}>
+            {t('upload.optionsSection')}
+          </h2>
+
+          <div {...stylex.attrs(styles.optionsGrid)}>
+            <SelectField
+              label={t('upload.tier')}
+              value={tier()}
+              options={tierOptions()}
+              onChange={(value) => updateOption(setTier, value)}
+            />
+            <SelectField
+              label={t('upload.ocrMode')}
+              value={ocrMode()}
+              options={OCR_MODE_OPTIONS}
+              onChange={(value) => updateOption(setOcrMode, value)}
+            />
+          </div>
+
+          <CheckboxGroupField
+            label={t('upload.outputFormats')}
+            options={formatOptions()}
+            selected={outputFormats()}
+            onToggle={toggleOutputFormat}
+            hint={t('upload.outputFormatsHint')}
+          />
+        </section>
+
+        <button
+          type="submit"
+          disabled={isSubmitting() || files().length === 0}
+          {...stylex.attrs(
+            controls.button,
+            controls.buttonPrimary,
+            controls.buttonLarge,
+            styles.submit,
+          )}
+        >
+          {isSubmitting()
+            ? t('upload.submitting')
+            : t('upload.submit', { count: files().length })}
+        </button>
+      </form>
     </div>
   );
 }

@@ -102,7 +102,6 @@ function getApi(): typeof ky_default {
 export function registerAuthHooks(
   getToken: () => string | null,
   refresh: () => Promise<string | null>,
-  onApiKeyRejected?: () => void,
 ): void {
   _beforeRequestHook = createAuthBeforeRequest(getToken);
   // `ky.retry()` returns a marker that ky's own retry machinery understands:
@@ -113,7 +112,6 @@ export function registerAuthHooks(
   _afterResponseHook = createAuthAfterResponse(
     refresh,
     (req: Request) => ky_default.retry({ request: req }),
-    onApiKeyRejected,
   );
   _api = _createApi(env.apiPrefix);
 }
@@ -324,7 +322,6 @@ export function createAuthBeforeRequest(
 export function createAuthAfterResponse(
   refresh: () => Promise<string | null>,
   retryFn: (request: Request) => unknown,
-  onApiKeyRejected?: () => void,
 ): (
   state: {
     request: Request;
@@ -337,10 +334,8 @@ export function createAuthAfterResponse(
   return async (state) => {
     if (state.response.status !== 401) return;
 
-    if (state.request.headers.get('X-Api-Key')) {
-      onApiKeyRejected?.();
-      return;
-    }
+    // External API-key requests must not trigger a JWT refresh.
+    if (state.request.headers.get('X-Api-Key')) return;
 
     if (state.request.url.includes('/auth/jwt/refresh')) return;
     if (state.retryCount > 0) return;

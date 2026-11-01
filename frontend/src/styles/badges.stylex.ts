@@ -40,7 +40,4 @@ export const badges = stylex.create({
     backgroundColor: colors.gray100,
     color: colors.gray600,
   },
-  inUse: {
-    marginInlineStart: space.px8,
-  },
 });

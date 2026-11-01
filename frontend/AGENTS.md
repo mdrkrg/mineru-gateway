@@ -42,8 +42,8 @@ src/
     functions/      # endpoint functions (auth, health, tasks)
     schemas/        # request/response schemas + types
   routes/           # TanStack file-based routes (__root.tsx, _authenticated.tsx layout, ...)
-  components/       # shared UI (layout/, StatusBadge, Pagination, NoActiveKey, ApiKeyReveal, AdminTokenGate)
-  stores/           # global state (auth, api-key, admin-token)
+  components/       # shared UI (layout/, StatusBadge, Pagination, ApiKeyReveal, AdminTokenGate)
+  stores/           # global state (auth, admin-token)
   styles/           # StyleX tokens + shared styles, reset.css
   utils/            # constants, format, download, api-error helpers
   env.ts            # typed import.meta.env access
@@ -53,7 +53,7 @@ src/
 specs/core/         # infra-layer behavioral contracts (source of truth)
 tests/core/         # tests for the infrastructure layer
 tests/api/          # tests for the API/auth layer (hooks, etc.)
-tests/stores/       # tests for global stores (auth, api-key, admin-token)
+tests/stores/       # tests for global stores (auth, admin-token)
 tests/utils/        # tests for utils (format, constants, download)
 tests/e2e/          # e2e tests against running gateway + mock upstream
 ```
@@ -85,8 +85,6 @@ Build-time deployment paths are configured by `VITE_APP_BASE_PATH` and
 | `auth.tsx` | `AuthStore` - JWT tokens in localStorage, `login`/`loginWithTokens`/`logout`/`refresh`/`init`, error mapping |
 | `auth-context.tsx` | `AuthContext` + `useAuth()` hook + `AuthProvider` |
 | `guard.ts` | `requireAuth()` / `requireSuperuser()` - throw redirects for route `beforeLoad` |
-| `api-key.tsx` | `ApiKeyStore` - active `X-API-Key` for task endpoints, localStorage-backed |
-| `api-key-context.tsx` | `useApiKey()` hook + `ApiKeyProvider` |
 | `admin-token.tsx` | `AdminTokenStore` - gateway admin token, sessionStorage-backed (tab-scoped) |
 | `admin-token-context.tsx` | `useAdminToken()` hook + `AdminTokenProvider` |
 
@@ -96,9 +94,10 @@ Build-time deployment paths are configured by `VITE_APP_BASE_PATH` and
   `requireAuth` and wraps children in `AppShell` (Sidebar + Header). All
   protected pages live under `routes/_authenticated/`.
 - Admin pages additionally run `requireSuperuser` in `beforeLoad`.
-- **Two credential systems**: user endpoints use the JWT (`Authorization:
-  Bearer`), task endpoints use `X-API-Key`. Pages calling task APIs read the
-  active key from `useApiKey()` and render `<NoActiveKey/>` when unset.
+- **One web credential**: all web endpoints (user and task) use the JWT
+  (`Authorization: Bearer`). Task ownership is by user, so task pages do not
+  need an API key. `X-API-Key` remains for external clients only (see
+  `../specs/task-ownership.md`).
   Admin endpoints take the gateway admin token from `useAdminToken()`,
   gated by `<AdminTokenGate/>`.
 

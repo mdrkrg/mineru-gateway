@@ -8,8 +8,6 @@ import { routeTree } from '@/routeTree.gen';
 import { createAuthStore } from '@/stores/auth';
 import { AuthProvider } from '@/stores/auth-context';
 import { registerAuthHooks } from '@/core/http-client';
-import { createApiKeyStore } from '@/stores/api-key';
-import { ApiKeyProvider } from '@/stores/api-key-context';
 import { createAdminTokenStore } from '@/stores/admin-token';
 import { AdminTokenProvider } from '@/stores/admin-token-context';
 import { createToastStore } from '@/stores/toast';
@@ -18,12 +16,7 @@ import { createConfirmStore } from '@/stores/confirm';
 import { ConfirmProvider } from '@/stores/confirm-context';
 import { env } from '@/env';
 
-const apiKeyStore = createApiKeyStore();
-const authStore = createAuthStore({
-  // Drop the active API key whenever the JWT session ends so a different
-  // user logging in on the same browser cannot inherit it.
-  onSessionCleared: () => apiKeyStore.clearActiveKey(),
-});
+const authStore = createAuthStore();
 const adminTokenStore = createAdminTokenStore();
 const toastStore = createToastStore();
 const confirmStore = createConfirmStore();
@@ -33,7 +26,6 @@ registerAuthHooks(
   // Returns the fresh access token, or null when the refresh failed for any
   // reason, so the retry hook never re-issues a request with a stale token.
   () => authStore.refresh(),
-  () => apiKeyStore.clearActiveKey(),
 );
 
 const router = createRouter({
@@ -66,15 +58,13 @@ if (!rootElement.innerHTML) {
   render(
     () => (
       <AuthProvider store={authStore}>
-        <ApiKeyProvider store={apiKeyStore}>
-          <AdminTokenProvider store={adminTokenStore}>
-            <ToastProvider store={toastStore}>
-              <ConfirmProvider store={confirmStore}>
-                <RouterProvider router={router} />
-              </ConfirmProvider>
-            </ToastProvider>
-          </AdminTokenProvider>
-        </ApiKeyProvider>
+        <AdminTokenProvider store={adminTokenStore}>
+          <ToastProvider store={toastStore}>
+            <ConfirmProvider store={confirmStore}>
+              <RouterProvider router={router} />
+            </ConfirmProvider>
+          </ToastProvider>
+        </AdminTokenProvider>
       </AuthProvider>
     ),
     rootElement,

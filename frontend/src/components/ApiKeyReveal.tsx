@@ -37,11 +37,11 @@ const styles = stylex.create({
 /**
  * One-time reveal of a freshly created API key. The full key is only
  * returned at creation time, so this block pushes the user to copy it
- * immediately. Optionally offers an action to mark it active locally.
+ * immediately. The web UI authenticates with its JWT; keys are for external
+ * clients and are never stored in the browser.
  */
 export default function ApiKeyReveal(props: {
   created: ApiKeyCreatedResponse;
-  onUseKey?: (key: string) => void;
 }) {
   const [copied, setCopied] = createSignal(false);
 
@@ -74,17 +74,6 @@ export default function ApiKeyReveal(props: {
           {copied() ? t('apiKeyReveal.copied') : t('apiKeyReveal.copy')}
         </button>
       </div>
-      <Show when={props.onUseKey}>
-        {(use) => (
-          <button
-            type="button"
-            onClick={() => use()(props.created.apiKey)}
-            {...stylex.attrs(controls.button, controls.buttonPrimary)}
-          >
-            {t('apiKeyReveal.useHere')}
-          </button>
-        )}
-      </Show>
     </div>
   );
 }

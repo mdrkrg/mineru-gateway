@@ -19,22 +19,6 @@ export interface AuthStore {
   refreshUser: () => Promise<void>;
 }
 
-/**
- * Optional wiring for {@link createAuthStore}.
- *
- * Decouples the auth store from sibling credential stores (e.g. the active
- * API key store). Kept as a callback so the auth store stays the single
- * source of truth without importing other stores directly.
- */
-export interface AuthStoreOptions {
-  /**
-   * Invoked whenever the session is cleared (logout, expired/invalid tokens).
-   * Sibling credential stores should drop any credential scoped to the
-   * previous user here to prevent cross-account leakage.
-   */
-  onSessionCleared?: () => void;
-}
-
 // TODO: Migrate token management to BFF
 
 const ACCESS_TOKEN_KEY = 'auth_access_token';
@@ -64,7 +48,7 @@ function clearTokens() {
   localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
-export function createAuthStore(options: AuthStoreOptions = {}): AuthStore {
+export function createAuthStore(): AuthStore {
   const [user, setUser] = createSignal<UserRead | null>(null);
   const [accessToken, setAccessToken] = createSignal<string | null>(null);
   const [refreshToken, setRefreshToken] = createSignal<string | null>(null);
@@ -72,16 +56,12 @@ export function createAuthStore(options: AuthStoreOptions = {}): AuthStore {
   const [error, setError] = createSignal<string | null>(null);
   const isAuthenticated = createMemo(() => accessToken() !== null);
 
-  /**
-   * Terminates the client-side session: clears user + tokens from state and
-   * localStorage, then notifies siblings (see {@link AuthStoreOptions}).
-   */
+  /** Terminates the client-side session: clears user + tokens. */
   function clearSession() {
     setUser(null);
     setAccessToken(null);
     setRefreshToken(null);
     clearTokens();
-    options.onSessionCleared?.();
   }
 
   async function init() {
@@ -172,7 +152,7 @@ export function createAuthStore(options: AuthStoreOptions = {}): AuthStore {
     if (result.isErr()) {
       const err = result.error;
       // Only 401/403 mean the refresh token is dead; network and server
-      // errors keep the session (and the active API key) intact.
+      // errors keep the session intact.
       if (isHttpError(err) && DEAD_SESSION_STATUSES.has(err.status)) {
         clearSession();
       }

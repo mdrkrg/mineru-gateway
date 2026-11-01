@@ -99,7 +99,7 @@ export function saveBlob(blob: Blob, filename: string): void {
 /** Fetches a task result as a blob: `downloadTaskResult` / `getRawTaskResult`. */
 export type ResultFetcher = (
   taskId: string,
-  apiKey: string,
+  apiKey?: string,
 ) => ResultAsync<BlobResult, ApiError<HttpError<number, unknown>>>;
 
 /**
@@ -109,8 +109,8 @@ export type ResultFetcher = (
 export async function downloadResultFile(
   fetchResult: ResultFetcher,
   taskId: string,
-  apiKey: string,
   fileNames: readonly string[],
+  apiKey?: string,
 ): Promise<string | null> {
   const result = await fetchResult(taskId, apiKey);
   if (result.isErr()) return errorMessage(result.error);

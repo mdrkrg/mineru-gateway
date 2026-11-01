@@ -37,7 +37,7 @@ export const zhCN: Dict = {
   'errors.detail.invalidCredentials': '邮箱或密码错误',
   'errors.detail.invalidRefreshToken': '登录状态已失效，请重新登录',
   'errors.detail.notAuthenticated': '登录状态已失效，请重新登录',
-  'errors.detail.apiKeyRequired': '请先在 API Keys 页面设置 API Key',
+  'errors.detail.apiKeyRequired': '请先登录，或提供 API Key',
   'errors.detail.invalidApiKey': 'API Key 无效或已被吊销，请在 API Keys 页面重新设置',
   'errors.detail.invalidAdminToken': '管理令牌无效，请重新输入',
   'errors.detail.emailNotVerified': '邮箱尚未验证，请先完成邮箱验证',
@@ -198,7 +198,6 @@ export const zhCN: Dict = {
   'keyTable.expiresAt': '过期时间',
   'keyTable.status': '状态',
   'keyTable.actions': '操作',
-  'keyTable.inUse': '当前使用',
   'keyTable.valid': '有效',
   'keyTable.revoked': '已吊销',
   'keyTable.revoke': '吊销',
@@ -208,6 +207,8 @@ export const zhCN: Dict = {
   'keyTable.revokedToast': 'API Key 已吊销',
 
   // API keys page
+  'apiKeys.description':
+    'API Key 用于外部程序调用。网页端使用登录会话，无需在这里设置 Key 即可上传和管理任务。',
   'apiKeys.createTitle': '创建新 Key',
   'apiKeys.label': '备注（可选）',
   'apiKeys.labelPlaceholder': '例如：笔记本',
@@ -215,26 +216,14 @@ export const zhCN: Dict = {
   'apiKeys.creating': '创建中…',
   'apiKeys.create': '创建',
   'apiKeys.listTitle': '我的 Keys',
-  'apiKeys.empty': '还没有 API Key，先创建一个吧。',
+  'apiKeys.empty': '还没有 API Key。需要给外部程序调用时再创建一个。',
   'apiKeys.errUnverified': '邮箱未验证，无法创建 API Key。请先完成邮箱验证后重试。',
-  'apiKeys.activeKeyTitle': '当前使用的 Key',
-  'apiKeys.activeKeyDesc': '任务相关接口（列表、上传、下载）通过 API Key 鉴权。创建 Key 后可一键在此浏览器使用，或粘贴已有 Key。',
-  'apiKeys.notSet': '尚未设置，任务页面将无法加载数据。',
-  'apiKeys.manualTitle': '手动设置已有 Key',
-  'apiKeys.pastePlaceholder': '粘贴完整 API Key',
-  'apiKeys.set': '设置',
   'apiKeys.createdToast': 'API Key 创建成功',
-
-  // NoActiveKey placeholder
-  'noActiveKey.title': '需要先设置 API Key',
-  'noActiveKey.description': '任务相关接口通过 API Key 鉴权。请先在 API Keys 页面创建一个 Key 并在此浏览器中使用，或粘贴已有 Key。',
-  'noActiveKey.goTo': '前往 API Keys',
 
   // One-time key reveal
   'apiKeyReveal.title': 'Key 创建成功：请立即保存，完整 Key 只显示这一次',
   'apiKeyReveal.copied': '已复制',
   'apiKeyReveal.copy': '复制',
-  'apiKeyReveal.useHere': '在此浏览器中使用此 Key',
 
   // Admin token gate
   'adminGate.title': '需要管理令牌',
@@ -325,13 +314,13 @@ export const zhCN: Dict = {
   'oauth.verifyFailedTitle': '邮箱验证失败',
   'oauth.verifyFailedBody': '验证链接无效或已过期，请重新申请验证邮件。',
   'oauth.verifySuccessTitle': '邮箱验证成功',
-  'oauth.verifySuccessBody': '您的邮箱已通过验证，现在可以创建 API Key。',
+  'oauth.verifySuccessBody': '邮箱已验证，现在可以使用网页端，也可以创建供外部程序使用的 API Key。',
   'oauth.goLogin': '去登录',
   'oauth.goHome': '返回首页',
 
   // Email verification dialog
   'emailVerification.title': '邮箱验证',
-  'emailVerification.body': '您的邮箱尚未验证。验证邮箱后才能创建 API Key。验证邮件已发送至您的邮箱，请查收并点击其中的验证链接；未收到时可点击下方按钮重新发送。',
+  'emailVerification.body': '您的邮箱尚未验证。验证后才能创建任务或 API Key。验证邮件已发送至您的邮箱，请查收并点击其中的验证链接；未收到时可点击下方按钮重新发送。',
   'emailVerification.sent': '验证邮件已发送，请查收。',
   'emailVerification.send': '发送验证邮件',
   'emailVerification.resend': '重新发送验证邮件',

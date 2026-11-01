@@ -3,14 +3,12 @@ import { For, Show, createMemo, createSignal, onMount } from 'solid-js';
 import { createFileRoute } from '@tanstack/solid-router';
 import { listTasks, cancelTask, batchCancelTasks } from '@/api/functions/tasks';
 import type { TaskListItem } from '@/api/schemas/tasks';
-import NoActiveKey from '@/components/NoActiveKey';
 import Pagination from '@/components/Pagination';
 import SelectField from '@/components/SelectField';
 import StatusBadge from '@/components/StatusBadge';
 import TaskFileCell from '@/components/TaskFileCell';
 import { t } from '@/i18n';
 import { taskStatusLabel, taskTierLabel } from '@/i18n/labels';
-import { useApiKey } from '@/stores/api-key-context';
 import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
@@ -48,7 +46,6 @@ const styles = stylex.create({
 });
 
 function TaskListPage() {
-  const apiKeyStore = useApiKey();
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -68,12 +65,6 @@ function TaskListPage() {
   );
 
   async function load(targetPage = page(), opts: { silent?: boolean } = {}) {
-    const key = apiKeyStore.activeKey();
-    if (!key) {
-      setIsLoading(false);
-      polling.stop();
-      return;
-    }
     if (!opts.silent) {
       setIsLoading(true);
       setError(null);
@@ -81,7 +72,6 @@ function TaskListPage() {
 
     const filters = appliedFilters();
     const result = await listTasks({
-      apiKey: key,
       status: filters.status || undefined,
       fileName: filters.fileName.trim() || undefined,
       page: targetPage,
@@ -140,8 +130,6 @@ function TaskListPage() {
   }
 
   async function handleCancel(task: TaskListItem) {
-    const key = apiKeyStore.activeKey();
-    if (!key) return;
     const confirmed = await confirm.ask({
       title: t('tasks.confirmCancelTitle'),
       description: t('tasks.confirmCancel', { shortId: shortTaskId(task.taskId) }),
@@ -152,7 +140,7 @@ function TaskListPage() {
 
     setIsActing(true);
     setError(null);
-    const result = await cancelTask(task.taskId, key);
+    const result = await cancelTask(task.taskId);
     if (result.isErr()) {
       setError(errorMessage(result.error));
     } else {
@@ -166,8 +154,6 @@ function TaskListPage() {
   }
 
   async function handleBatchCancel() {
-    const key = apiKeyStore.activeKey();
-    if (!key) return;
     const ids = [...selected()];
     if (ids.length === 0) return;
     const confirmed = await confirm.ask({
@@ -180,7 +166,7 @@ function TaskListPage() {
 
     setIsActing(true);
     setError(null);
-    const result = await batchCancelTasks(ids, key);
+    const result = await batchCancelTasks(ids);
     if (result.isErr()) {
       setError(errorMessage(result.error));
     } else {
@@ -209,169 +195,163 @@ function TaskListPage() {
 
   return (
     <div {...stylex.attrs(layout.stack16)}>
-      <Show when={!apiKeyStore.activeKey()}>
-        <NoActiveKey />
-      </Show>
-
-      <Show when={apiKeyStore.activeKey()}>
-        {/* Filters */}
-        <form
-          onSubmit={applyFilters}
-          {...stylex.attrs(controls.card, styles.filterForm)}
-        >
-          <SelectField
-            label={t('tasks.filterStatus')}
-            value={statusFilter()}
-            placeholder={t('tasks.filterAll')}
-            options={statusOptions()}
-            onChange={setStatusFilter}
-          />
-          <label {...stylex.attrs(controls.field)}>
-            <span {...stylex.attrs(controls.fieldLabel)}>{t('tasks.filterFileName')}</span>
-            <input
-              type="text"
-              value={fileNameFilter()}
-              onInput={(e) => setFileNameFilter(e.currentTarget.value)}
-              placeholder={t('tasks.searchPlaceholder')}
-              {...stylex.attrs(controls.input, forms.inputMedium)}
-            />
-          </label>
-          <button
-            type="submit"
-            {...stylex.attrs(controls.button, controls.buttonPrimary)}
-          >
-            {t('tasks.search')}
-          </button>
-        </form>
-
-        <Show when={error()}>
-          <p {...stylex.attrs(controls.alert, controls.alertError)}>{error()}</p>
-        </Show>
-
-        {/* Batch actions */}
-        <div {...stylex.attrs(styles.actionRow)}>
-          <button
-            type="button"
-            disabled={selected().size === 0 || isActing()}
-            onClick={handleBatchCancel}
-            {...stylex.attrs(
-              controls.button,
-              controls.buttonOutline,
-              actions.outlineDanger,
-              actions.outlineCompact,
-            )}
-          >
-            {t('tasks.batchCancel', { count: selected().size })}
-          </button>
-          <button
-            type="button"
-            onClick={() => load()}
-            {...stylex.attrs(
-              controls.button,
-              controls.buttonOutline,
-              actions.outlineCompact,
-            )}
-          >
-            {t('common.refresh')}
-          </button>
-          <Show when={hasActiveTasks()}>
-            <span {...stylex.attrs(typography.metaMuted)}>
-              {t('tasks.autoRefreshHint')}
-            </span>
-          </Show>
-        </div>
-
-        {/* Table */}
-        <div {...stylex.attrs(table.card)}>
-          <Show
-            when={!isLoading()}
-            fallback={<p {...stylex.attrs(table.message)}>{t('common.loading')}</p>}
-          >
-            <Show
-              when={items().length > 0}
-              fallback={<p {...stylex.attrs(table.message)}>{t('tasks.empty')}</p>}
-            >
-              <table {...stylex.attrs(table.root)}>
-                <thead>
-                  <tr {...stylex.attrs(table.headRow)}>
-                    <th {...stylex.attrs(table.thCheck)}>
-                      <input
-                        type="checkbox"
-                        checked={selectableCount() > 0 && selected().size === selectableCount()}
-                        onChange={(e) => toggleSelectAll(e.currentTarget.checked)}
-                        disabled={selectableCount() === 0}
-                      />
-                    </th>
-                    <th {...stylex.attrs(table.th)}>{t('tasks.thFiles')}</th>
-                    <th {...stylex.attrs(table.th)}>{t('tasks.thStatus')}</th>
-                    <th {...stylex.attrs(table.th)}>{t('tasks.thTier')}</th>
-                    <th {...stylex.attrs(table.th)}>{t('tasks.thCreatedAt')}</th>
-                    <th {...stylex.attrs(table.th)}>{t('tasks.thRetries')}</th>
-                    <th {...stylex.attrs(table.th)}>{t('tasks.thActions')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <For each={items()}>
-                    {(task, index) => (
-                      <tr
-                        {...stylex.attrs(
-                          table.row,
-                          index() === items().length - 1 && table.lastRow,
-                        )}
-                      >
-                        <td {...stylex.attrs(table.tdCheck)}>
-                          <input
-                            type="checkbox"
-                            disabled={!isActiveTaskStatus(task.status)}
-                            checked={selected().has(task.taskId)}
-                            onChange={(e) => toggleSelect(task.taskId, e.currentTarget.checked)}
-                          />
-                        </td>
-                        <td {...stylex.attrs(table.truncate, table.truncateNarrow)}>
-                          <TaskFileCell taskId={task.taskId} fileNames={task.fileNames} />
-                        </td>
-                        <td {...stylex.attrs(table.td)}>
-                          <StatusBadge status={task.status} />
-                        </td>
-                        <td {...stylex.attrs(table.td, typography.meta)}>
-                          {taskTierLabel(task.tier)}
-                        </td>
-                        <td {...stylex.attrs(table.nowrap)}>
-                          {formatDateTime(task.createdAt)}
-                        </td>
-                        <td {...stylex.attrs(table.td)}>{task.retryCount}</td>
-                        <td {...stylex.attrs(table.td)}>
-                          <Show when={isActiveTaskStatus(task.status)}>
-                            <button
-                              type="button"
-                              disabled={isActing()}
-                              onClick={() => handleCancel(task)}
-                              {...stylex.attrs(
-                                actions.text,
-                                actions.textDanger,
-                                actions.disabled40,
-                              )}
-                            >
-                              {t('tasks.cancel')}
-                            </button>
-                          </Show>
-                        </td>
-                      </tr>
-                    )}
-                  </For>
-                </tbody>
-              </table>
-            </Show>
-          </Show>
-        </div>
-
-        <Pagination
-          page={page()}
-          pageSize={PAGE_SIZE}
-          total={total()}
-          onChange={(p) => load(p)}
+      {/* Filters */}
+      <form
+        onSubmit={applyFilters}
+        {...stylex.attrs(controls.card, styles.filterForm)}
+      >
+        <SelectField
+          label={t('tasks.filterStatus')}
+          value={statusFilter()}
+          placeholder={t('tasks.filterAll')}
+          options={statusOptions()}
+          onChange={setStatusFilter}
         />
+        <label {...stylex.attrs(controls.field)}>
+          <span {...stylex.attrs(controls.fieldLabel)}>{t('tasks.filterFileName')}</span>
+          <input
+            type="text"
+            value={fileNameFilter()}
+            onInput={(e) => setFileNameFilter(e.currentTarget.value)}
+            placeholder={t('tasks.searchPlaceholder')}
+            {...stylex.attrs(controls.input, forms.inputMedium)}
+          />
+        </label>
+        <button
+          type="submit"
+          {...stylex.attrs(controls.button, controls.buttonPrimary)}
+        >
+          {t('tasks.search')}
+        </button>
+      </form>
+
+      <Show when={error()}>
+        <p {...stylex.attrs(controls.alert, controls.alertError)}>{error()}</p>
       </Show>
+
+      {/* Batch actions */}
+      <div {...stylex.attrs(styles.actionRow)}>
+        <button
+          type="button"
+          disabled={selected().size === 0 || isActing()}
+          onClick={handleBatchCancel}
+          {...stylex.attrs(
+            controls.button,
+            controls.buttonOutline,
+            actions.outlineDanger,
+            actions.outlineCompact,
+          )}
+        >
+          {t('tasks.batchCancel', { count: selected().size })}
+        </button>
+        <button
+          type="button"
+          onClick={() => load()}
+          {...stylex.attrs(
+            controls.button,
+            controls.buttonOutline,
+            actions.outlineCompact,
+          )}
+        >
+          {t('common.refresh')}
+        </button>
+        <Show when={hasActiveTasks()}>
+          <span {...stylex.attrs(typography.metaMuted)}>
+            {t('tasks.autoRefreshHint')}
+          </span>
+        </Show>
+      </div>
+
+      {/* Table */}
+      <div {...stylex.attrs(table.card)}>
+        <Show
+          when={!isLoading()}
+          fallback={<p {...stylex.attrs(table.message)}>{t('common.loading')}</p>}
+        >
+          <Show
+            when={items().length > 0}
+            fallback={<p {...stylex.attrs(table.message)}>{t('tasks.empty')}</p>}
+          >
+            <table {...stylex.attrs(table.root)}>
+              <thead>
+                <tr {...stylex.attrs(table.headRow)}>
+                  <th {...stylex.attrs(table.thCheck)}>
+                    <input
+                      type="checkbox"
+                      checked={selectableCount() > 0 && selected().size === selectableCount()}
+                      onChange={(e) => toggleSelectAll(e.currentTarget.checked)}
+                      disabled={selectableCount() === 0}
+                    />
+                  </th>
+                  <th {...stylex.attrs(table.th)}>{t('tasks.thFiles')}</th>
+                  <th {...stylex.attrs(table.th)}>{t('tasks.thStatus')}</th>
+                  <th {...stylex.attrs(table.th)}>{t('tasks.thTier')}</th>
+                  <th {...stylex.attrs(table.th)}>{t('tasks.thCreatedAt')}</th>
+                  <th {...stylex.attrs(table.th)}>{t('tasks.thRetries')}</th>
+                  <th {...stylex.attrs(table.th)}>{t('tasks.thActions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <For each={items()}>
+                  {(task, index) => (
+                    <tr
+                      {...stylex.attrs(
+                        table.row,
+                        index() === items().length - 1 && table.lastRow,
+                      )}
+                    >
+                      <td {...stylex.attrs(table.tdCheck)}>
+                        <input
+                          type="checkbox"
+                          disabled={!isActiveTaskStatus(task.status)}
+                          checked={selected().has(task.taskId)}
+                          onChange={(e) => toggleSelect(task.taskId, e.currentTarget.checked)}
+                        />
+                      </td>
+                      <td {...stylex.attrs(table.truncate, table.truncateNarrow)}>
+                        <TaskFileCell taskId={task.taskId} fileNames={task.fileNames} />
+                      </td>
+                      <td {...stylex.attrs(table.td)}>
+                        <StatusBadge status={task.status} />
+                      </td>
+                      <td {...stylex.attrs(table.td, typography.meta)}>
+                        {taskTierLabel(task.tier)}
+                      </td>
+                      <td {...stylex.attrs(table.nowrap)}>
+                        {formatDateTime(task.createdAt)}
+                      </td>
+                      <td {...stylex.attrs(table.td)}>{task.retryCount}</td>
+                      <td {...stylex.attrs(table.td)}>
+                        <Show when={isActiveTaskStatus(task.status)}>
+                          <button
+                            type="button"
+                            disabled={isActing()}
+                            onClick={() => handleCancel(task)}
+                            {...stylex.attrs(
+                              actions.text,
+                              actions.textDanger,
+                              actions.disabled40,
+                            )}
+                          >
+                            {t('tasks.cancel')}
+                          </button>
+                        </Show>
+                      </td>
+                    </tr>
+                  )}
+                </For>
+              </tbody>
+            </table>
+          </Show>
+        </Show>
+      </div>
+
+      <Pagination
+        page={page()}
+        pageSize={PAGE_SIZE}
+        total={total()}
+        onChange={(p) => load(p)}
+      />
     </div>
   );
 }

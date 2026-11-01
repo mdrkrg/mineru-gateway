@@ -33,6 +33,11 @@ import {
  */
 const TASK_SUBMIT_TIMEOUT_MS = 10 * 60_000;
 
+/** API keys are optional for the web UI; the JWT is injected by http-client. */
+function taskAuthHeaders(apiKey?: string): Record<string, string> {
+  return apiKey ? { 'X-API-Key': apiKey } : {};
+}
+
 /**
  * Result generation and result-zip builds can take much longer than ky's 10s
  * default. Use the same generous bound as submission until the zip path gets
@@ -88,7 +93,7 @@ export function parseFile(
 // ===== Task List =====
 
 export interface TaskListParams {
-  apiKey: string;
+  apiKey?: string;
   status?: string;
   tier?: MineruTier;
   fileName?: string;
@@ -122,14 +127,14 @@ export function listTasks(
     success: TaskListResponseSchema,
     failures: { 401: ErrorDetailSchema },
   }, {
-    headers: { 'X-API-Key': params.apiKey },
+    headers: taskAuthHeaders(params.apiKey),
   }) as ResultAsync<TaskListResponse, ApiError<HttpError<401, { detail: string }>>>;
 }
 
 // ===== Task Stats =====
 
 export function getTaskStats(
-  apiKey: string,
+  apiKey?: string,
 ): ResultAsync<
   TaskStatsResponse,
   ApiError<HttpError<401, { detail: string }>>
@@ -138,7 +143,7 @@ export function getTaskStats(
     success: TaskStatsResponseSchema,
     failures: { 401: ErrorDetailSchema },
   }, {
-    headers: { 'X-API-Key': apiKey },
+    headers: taskAuthHeaders(apiKey),
   }) as ResultAsync<TaskStatsResponse, ApiError<HttpError<401, { detail: string }>>>;
 }
 
@@ -146,7 +151,7 @@ export function getTaskStats(
 
 export function getTaskDetail(
   taskId: string,
-  apiKey: string,
+  apiKey?: string,
 ): ResultAsync<
   TaskDetail,
   ApiError<HttpError<401, { detail: string }> | HttpError<404, { detail: string }>>
@@ -155,7 +160,7 @@ export function getTaskDetail(
     success: TaskDetailSchema,
     failures: { 401: ErrorDetailSchema, 404: ErrorDetailSchema },
   }, {
-    headers: { 'X-API-Key': apiKey },
+    headers: taskAuthHeaders(apiKey),
   }) as ResultAsync<
     TaskDetail,
     ApiError<HttpError<401, { detail: string }> | HttpError<404, { detail: string }>>
@@ -166,7 +171,7 @@ export function getTaskDetail(
 
 export function cancelTask(
   taskId: string,
-  apiKey: string,
+  apiKey?: string,
 ): ResultAsync<
   TaskCancelResponse,
   ApiError<
@@ -180,7 +185,7 @@ export function cancelTask(
     failures: { 401: ErrorDetailSchema, 404: ErrorDetailSchema, 409: ErrorDetailSchema },
   }, {
     method: 'DELETE',
-    headers: { 'X-API-Key': apiKey },
+    headers: taskAuthHeaders(apiKey),
   }) as ResultAsync<
     TaskCancelResponse,
     ApiError<
@@ -196,10 +201,10 @@ export function cancelTask(
 /** Download the artifacts requested at submission (single file or ZIP). */
 export function downloadTaskResult(
   taskId: string,
-  apiKey: string,
+  apiKey?: string,
 ): ResultAsync<BlobResult, ApiError<HttpError<number, unknown>>> {
   return request(`v1/tasks/${taskId}/download`, {
-    headers: { 'X-API-Key': apiKey },
+    headers: taskAuthHeaders(apiKey),
     timeout: TASK_RESULT_TIMEOUT_MS,
   }).andThen(parseBlob);
 }
@@ -207,10 +212,10 @@ export function downloadTaskResult(
 /** Download MinerU's raw JSON result, independent of the artifact selection. */
 export function getRawTaskResult(
   taskId: string,
-  apiKey: string,
+  apiKey?: string,
 ): ResultAsync<BlobResult, ApiError<HttpError<number, unknown>>> {
   return request(`v1/tasks/${taskId}/result`, {
-    headers: { 'X-API-Key': apiKey },
+    headers: taskAuthHeaders(apiKey),
     searchParams: { response_format: 'json' },
     timeout: TASK_RESULT_TIMEOUT_MS,
   }).andThen(parseBlob);
@@ -220,7 +225,7 @@ export function getRawTaskResult(
 
 export function downloadResultZip(
   taskIds: string[],
-  apiKey: string,
+  apiKey?: string,
 ): ResultAsync<
   BlobResult,
   ApiError<HttpError<409, NonDownloadableError> | HttpError<404, { detail: string }>>
@@ -233,7 +238,7 @@ export function downloadResultZip(
   }, {
     method: 'POST',
     json: validated.value,
-    headers: { 'X-API-Key': apiKey },
+    headers: taskAuthHeaders(apiKey),
     timeout: TASK_RESULT_TIMEOUT_MS,
   }) as ResultAsync<
     BlobResult,
@@ -245,7 +250,7 @@ export function downloadResultZip(
 
 export function batchCancelTasks(
   taskIds: string[],
-  apiKey: string,
+  apiKey?: string,
 ): ResultAsync<
   BatchCancelResponse,
   ApiError<HttpError<401, { detail: string }>>
@@ -259,7 +264,7 @@ export function batchCancelTasks(
   }, {
     method: 'POST',
     json: validated.value,
-    headers: { 'X-API-Key': apiKey },
+    headers: taskAuthHeaders(apiKey),
   }) as ResultAsync<
     BatchCancelResponse,
     ApiError<HttpError<401, { detail: string }>>

@@ -63,6 +63,15 @@ describe('task result downloads', () => {
     });
   });
 
+  it('omits X-API-Key when the web UI uses its JWT', async () => {
+    await downloadTaskResult('task-1');
+
+    expect(mocks.request).toHaveBeenCalledWith('v1/tasks/task-1/download', {
+      headers: {},
+      timeout: TASK_RESULT_TIMEOUT_MS,
+    });
+  });
+
   it('gives result-zip downloads more than the ky default', async () => {
     await downloadResultZip(['task-1'], 'key');
 

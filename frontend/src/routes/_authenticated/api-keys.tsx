@@ -1,7 +1,6 @@
 import * as stylex from '@stylexjs/stylex';
 import { Show, createSignal, onMount } from 'solid-js';
 import { createFileRoute } from '@tanstack/solid-router';
-import { KeyRound } from 'lucide-solid';
 import {
   createMyApiKey,
   listMyApiKeys,
@@ -12,39 +11,19 @@ import ApiKeyReveal from '@/components/ApiKeyReveal';
 import ApiKeyTable from '@/components/ApiKeyTable';
 import { t } from '@/i18n';
 import { isHttpError } from '@/core/error-model';
-import { useApiKey } from '@/stores/api-key-context';
 import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
 import { errorMessage } from '@/utils/api-error';
-import { actions } from '@/styles/actions.stylex';
 import { controls } from '@/styles/controls.stylex';
 import { forms } from '@/styles/forms.stylex';
-import { icons } from '@/styles/icons.stylex';
 import { layout } from '@/styles/layout.stylex';
-import { colors, radius, space } from '@/styles/tokens.stylex';
 import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/api-keys')({
   component: ApiKeysPage,
 });
 
-const styles = stylex.create({
-  notSet: {
-    color: colors.amber600,
-  },
-  code: {
-    backgroundColor: colors.gray100,
-    borderRadius: radius.px4,
-    paddingInline: space.px8,
-    paddingBlock: space.px4,
-  },
-  clear: {
-    marginLeft: space.px12,
-  },
-});
-
 function ApiKeysPage() {
-  const apiKeyStore = useApiKey();
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -58,9 +37,6 @@ function ApiKeysPage() {
   const [expiresAt, setExpiresAt] = createSignal('');
   const [isCreating, setIsCreating] = createSignal(false);
   const [created, setCreated] = createSignal<ApiKeyCreatedResponse | null>(null);
-
-  // Manual active-key paste
-  const [pastedKey, setPastedKey] = createSignal('');
 
   // `silent` keeps the current table mounted while reconciling with the
   // server, so post-action refreshes do not flash a loading state.
@@ -140,6 +116,8 @@ function ApiKeysPage() {
 
   return (
     <div {...stylex.attrs(layout.stack24, layout.pageWidth896)}>
+      <p {...stylex.attrs(typography.bodyMuted)}>{t('apiKeys.description')}</p>
+
       <Show when={error()}>
         <p {...stylex.attrs(controls.alert, controls.alertError)}>{error()}</p>
       </Show>
@@ -147,10 +125,7 @@ function ApiKeysPage() {
       {/* Newly created key — shown once */}
       <Show when={created()}>
         {(c) => (
-          <ApiKeyReveal
-            created={c()}
-            onUseKey={(key) => apiKeyStore.setActiveKey(key)}
-          />
+          <ApiKeyReveal created={c()} />
         )}
       </Show>
 
@@ -194,76 +169,9 @@ function ApiKeysPage() {
           keys={keys()}
           isLoading={isLoading()}
           emptyText={t('apiKeys.empty')}
-          activePrefix={apiKeyStore.activeKey()}
           revokingId={revokingId()}
           onRevoke={handleRevoke}
         />
-      </section>
-
-      {/* Active key for task endpoints */}
-      <section {...stylex.attrs(controls.card)}>
-        <h2
-          {...stylex.attrs(
-            layout.rowCenter8,
-            typography.sectionHeading,
-            layout.mb8,
-          )}
-        >
-          <KeyRound class={stylex.attrs(icons.md).class} />
-          {t('apiKeys.activeKeyTitle')}
-        </h2>
-        <p {...stylex.attrs(typography.bodyMuted, layout.mb16)}>
-          {t('apiKeys.activeKeyDesc')}
-        </p>
-        <Show
-          when={apiKeyStore.activeKey()}
-          fallback={
-            <p {...stylex.attrs(typography.body, layout.mb16, styles.notSet)}>
-              {t('apiKeys.notSet')}
-            </p>
-          }
-        >
-          <p {...stylex.attrs(typography.body, layout.mb16)}>
-            <code {...stylex.attrs(styles.code)}>
-              {apiKeyStore.activeKey()!.slice(0, 12)}…
-            </code>
-            <button
-              type="button"
-              onClick={() => apiKeyStore.clearActiveKey()}
-              {...stylex.attrs(actions.clear, actions.textDanger, styles.clear)}
-            >
-              {t('common.clear')}
-            </button>
-          </p>
-        </Show>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            const k = pastedKey().trim();
-            if (k) {
-              apiKeyStore.setActiveKey(k);
-              setPastedKey('');
-            }
-          }}
-          {...stylex.attrs(forms.rowTight)}
-        >
-          <label {...stylex.attrs(controls.field, layout.flex1)}>
-            <span {...stylex.attrs(controls.fieldLabel)}>{t('apiKeys.manualTitle')}</span>
-            <input
-              type="password"
-              value={pastedKey()}
-              onInput={(e) => setPastedKey(e.currentTarget.value)}
-              placeholder={t('apiKeys.pastePlaceholder')}
-              {...stylex.attrs(controls.input)}
-            />
-          </label>
-          <button
-            type="submit"
-            {...stylex.attrs(controls.button, controls.buttonOutline, actions.weightNormal)}
-          >
-            {t('apiKeys.set')}
-          </button>
-        </form>
       </section>
     </div>
   );

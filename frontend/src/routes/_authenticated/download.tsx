@@ -8,12 +8,10 @@ import {
   listTasks,
 } from '@/api/functions/tasks';
 import type { TaskListItem } from '@/api/schemas/tasks';
-import NoActiveKey from '@/components/NoActiveKey';
 import Pagination from '@/components/Pagination';
 import StatusBadge from '@/components/StatusBadge';
 import TaskFileCell from '@/components/TaskFileCell';
 import { t } from '@/i18n';
-import { useApiKey } from '@/stores/api-key-context';
 import { errorMessage } from '@/utils/api-error';
 import { isHttpError } from '@/core/error-model';
 import { filenameFromContentDisposition, downloadResultFile, saveBlob } from '@/utils/download';
@@ -32,8 +30,6 @@ export const Route = createFileRoute('/_authenticated/download')({
 const PAGE_SIZE = 20;
 
 function ResultDownloadPage() {
-  const apiKeyStore = useApiKey();
-
   const [items, setItems] = createSignal<TaskListItem[]>([]);
   const [total, setTotal] = createSignal(0);
   const [page, setPage] = createSignal(1);
@@ -43,16 +39,10 @@ function ResultDownloadPage() {
   const [isActing, setIsActing] = createSignal(false);
 
   async function load(targetPage = page()) {
-    const key = apiKeyStore.activeKey();
-    if (!key) {
-      setIsLoading(false);
-      return;
-    }
     setIsLoading(true);
     setError(null);
 
     const result = await listTasks({
-      apiKey: key,
       hasResult: true,
       page: targetPage,
       pageSize: PAGE_SIZE,
@@ -82,26 +72,21 @@ function ResultDownloadPage() {
   }
 
   async function handleDownloadOne(task: TaskListItem) {
-    const key = apiKeyStore.activeKey();
-    if (!key) return;
-
     setIsActing(true);
     setError(null);
     setError(
-      await downloadResultFile(downloadTaskResult, task.taskId, key, task.fileNames),
+      await downloadResultFile(downloadTaskResult, task.taskId, task.fileNames),
     );
     setIsActing(false);
   }
 
   async function handleDownloadZip() {
-    const key = apiKeyStore.activeKey();
-    if (!key) return;
     const ids = [...selected()];
     if (ids.length === 0) return;
 
     setIsActing(true);
     setError(null);
-    const result = await downloadResultZip(ids, key);
+    const result = await downloadResultZip(ids);
     if (result.isErr()) {
       const err = result.error;
       if (isHttpError(err) && err.status === 409) {
@@ -130,125 +115,119 @@ function ResultDownloadPage() {
 
   return (
     <div {...stylex.attrs(layout.stack16)}>
-      <Show when={!apiKeyStore.activeKey()}>
-        <NoActiveKey />
+      <p {...stylex.attrs(typography.bodyMuted)}>{t('download.description')}</p>
+
+      <Show when={error()}>
+        <p {...stylex.attrs(controls.alert, controls.alertError)}>{error()}</p>
       </Show>
 
-      <Show when={apiKeyStore.activeKey()}>
-        <p {...stylex.attrs(typography.bodyMuted)}>{t('download.description')}</p>
+      <div {...stylex.attrs(layout.rowCenter12)}>
+        <button
+          type="button"
+          disabled={selected().size === 0 || isActing()}
+          onClick={handleDownloadZip}
+          {...stylex.attrs(
+            controls.button,
+            controls.buttonPrimary,
+            actions.disabled40,
+          )}
+        >
+          <Package class={stylex.attrs(icons.sm).class} />
+          {t('download.pack', { count: selected().size })}
+        </button>
+        <button
+          type="button"
+          onClick={() => load()}
+          {...stylex.attrs(
+            controls.button,
+            controls.buttonOutline,
+            actions.outlineCompact,
+          )}
+        >
+          {t('common.refresh')}
+        </button>
+      </div>
 
-        <Show when={error()}>
-          <p {...stylex.attrs(controls.alert, controls.alertError)}>{error()}</p>
-        </Show>
-
-        <div {...stylex.attrs(layout.rowCenter12)}>
-          <button
-            type="button"
-            disabled={selected().size === 0 || isActing()}
-            onClick={handleDownloadZip}
-            {...stylex.attrs(
-              controls.button,
-              controls.buttonPrimary,
-              actions.disabled40,
-            )}
-          >
-            <Package class={stylex.attrs(icons.sm).class} />
-            {t('download.pack', { count: selected().size })}
-          </button>
-          <button
-            type="button"
-            onClick={() => load()}
-            {...stylex.attrs(
-              controls.button,
-              controls.buttonOutline,
-              actions.outlineCompact,
-            )}
-          >
-            {t('common.refresh')}
-          </button>
-        </div>
-
-        <div {...stylex.attrs(table.card)}>
+      <div {...stylex.attrs(table.card)}>
+        <Show
+          when={!isLoading()}
+          fallback={<p {...stylex.attrs(table.message)}>{t('common.loading')}</p>}
+        >
           <Show
-            when={!isLoading()}
-            fallback={<p {...stylex.attrs(table.message)}>{t('common.loading')}</p>}
+            when={items().length > 0}
+            fallback={<p {...stylex.attrs(table.message)}>{t('download.empty')}</p>}
           >
-            <Show
-              when={items().length > 0}
-              fallback={<p {...stylex.attrs(table.message)}>{t('download.empty')}</p>}
-            >
-              <table {...stylex.attrs(table.root)}>
-                <thead>
-                  <tr {...stylex.attrs(table.headRow)}>
-                    <th {...stylex.attrs(table.thCheck)}>
-                      <input
-                        type="checkbox"
-                        checked={items().length > 0 && selected().size === items().length}
-                        onChange={(e) => toggleSelectAll(e.currentTarget.checked)}
-                      />
-                    </th>
-                    <th {...stylex.attrs(table.th)}>{t('download.thFiles')}</th>
-                    <th {...stylex.attrs(table.th)}>{t('download.thStatus')}</th>
-                    <th {...stylex.attrs(table.th)}>{t('download.thCompletedAt')}</th>
-                    <th {...stylex.attrs(table.th)}>{t('download.thActions')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <For each={items()}>
-                    {(task, index) => (
-                      <tr
-                        {...stylex.attrs(
-                          table.row,
-                          index() === items().length - 1 && table.lastRow,
-                        )}
-                      >
-                        <td {...stylex.attrs(table.tdCheck)}>
-                          <input
-                            type="checkbox"
-                            checked={selected().has(task.taskId)}
-                            onChange={(e) => toggleSelect(task.taskId, e.currentTarget.checked)}
-                          />
-                        </td>
-                        <td {...stylex.attrs(table.truncate, table.truncateWide)}>
-                          <TaskFileCell taskId={task.taskId} fileNames={task.fileNames} />
-                        </td>
-                        <td {...stylex.attrs(table.td)}>
-                          <StatusBadge status={task.status} />
-                        </td>
-                        <td {...stylex.attrs(table.nowrap)}>
-                          {formatDateTime(task.completedAt)}
-                        </td>
-                        <td {...stylex.attrs(table.td)}>
-                          <button
-                            type="button"
-                            disabled={isActing()}
-                            onClick={() => handleDownloadOne(task)}
-                            {...stylex.attrs(
-                              actions.text,
-                              actions.textPrimary,
-                              actions.disabled40,
-                            )}
-                          >
-                            <Download class={stylex.attrs(icons.xs).class} />
-                            {t('download.one')}
-                          </button>
-                        </td>
-                      </tr>
-                    )}
-                  </For>
-                </tbody>
-              </table>
-            </Show>
+            <table {...stylex.attrs(table.root)}>
+              <thead>
+                <tr {...stylex.attrs(table.headRow)}>
+                  <th {...stylex.attrs(table.thCheck)}>
+                    <input
+                      type="checkbox"
+                      checked={items().length > 0 && selected().size === items().length}
+                      onChange={(e) => toggleSelectAll(e.currentTarget.checked)}
+                    />
+                  </th>
+                  <th {...stylex.attrs(table.th)}>{t('download.thFiles')}</th>
+                  <th {...stylex.attrs(table.th)}>{t('download.thStatus')}</th>
+                  <th {...stylex.attrs(table.th)}>{t('download.thCompletedAt')}</th>
+                  <th {...stylex.attrs(table.th)}>{t('download.thActions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <For each={items()}>
+                  {(task, index) => (
+                    <tr
+                      {...stylex.attrs(
+                        table.row,
+                        index() === items().length - 1 && table.lastRow,
+                      )}
+                    >
+                      <td {...stylex.attrs(table.tdCheck)}>
+                        <input
+                          type="checkbox"
+                          checked={selected().has(task.taskId)}
+                          onChange={(e) => toggleSelect(task.taskId, e.currentTarget.checked)}
+                        />
+                      </td>
+                      <td {...stylex.attrs(table.truncate, table.truncateWide)}>
+                        <TaskFileCell taskId={task.taskId} fileNames={task.fileNames} />
+                      </td>
+                      <td {...stylex.attrs(table.td)}>
+                        <StatusBadge status={task.status} />
+                      </td>
+                      <td {...stylex.attrs(table.nowrap)}>
+                        {formatDateTime(task.completedAt)}
+                      </td>
+                      <td {...stylex.attrs(table.td)}>
+                        <button
+                          type="button"
+                          disabled={isActing()}
+                          onClick={() => handleDownloadOne(task)}
+                          {...stylex.attrs(
+                            actions.text,
+                            actions.textPrimary,
+                            actions.disabled40,
+                          )}
+                        >
+                          <Download class={stylex.attrs(icons.xs).class} />
+                          {t('download.one')}
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                </For>
+              </tbody>
+            </table>
           </Show>
-        </div>
+        </Show>
+      </div>
 
-        <Pagination
-          page={page()}
-          pageSize={PAGE_SIZE}
-          total={total()}
-          onChange={(p) => load(p)}
-        />
-      </Show>
+      <Pagination
+        page={page()}
+        pageSize={PAGE_SIZE}
+        total={total()}
+        onChange={(p) => load(p)}
+      />
     </div>
   );
 }
