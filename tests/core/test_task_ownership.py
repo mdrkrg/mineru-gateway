@@ -207,6 +207,42 @@ async def test_unverified_jwt_submission_is_rejected(
     assert parse.status_code == 403
 
 
+async def test_jwt_reads_result_and_download(client, app, user_headers, sample_files):
+    """Result downloads follow the same owner scope as task detail."""
+    submitted = await _submit(client, user_headers, sample_files)
+    assert submitted.status_code == 202, submitted.text
+    task_id = submitted.json()["task_id"]
+
+    async with app.state.db.session_factory() as session:
+        task = await session.get(TaskRecord, uuid.UUID(task_id))
+        task.status = "completed"
+        await session.commit()
+
+    result = await client.get(f"/v1/tasks/{task_id}/result", headers=user_headers)
+    assert result.status_code == 200
+
+    download = await client.get(f"/v1/tasks/{task_id}/download", headers=user_headers)
+    assert download.status_code == 200
+
+
+async def test_file_parse_by_jwt_belongs_to_the_user(
+    client, app, user_headers, sample_files
+):
+    """The synchronous parse route attributes tasks to the JWT user too."""
+    parsed = await client.post(
+        "/v1/file_parse", headers=user_headers, files=sample_files
+    )
+    assert parsed.status_code in {200, 202}, parsed.text
+
+    async with app.state.db.session_factory() as session:
+        task = await session.get(
+            TaskRecord, uuid.UUID(parsed.headers["X-MinerU-Task-Id"])
+        )
+        assert task is not None
+        assert task.owner_id is not None
+        assert task.api_key_id is None
+
+
 async def test_jwt_lost_race_replays_winner(
     client, user_headers, sample_files, miss_first_lookup
 ):
