@@ -1,8 +1,9 @@
 """Per-request structured access logging (§3.6).
 
 Emits one JSON log record per HTTP request with ``request_id``, ``method``,
-``path``, ``status_code`` and ``duration_ms``. ``api_key_id`` is included when
-an authenticated dependency stored it on ``request.state``.
+``path``, ``status_code`` and ``duration_ms``. Authentication context
+(``api_key_id`` / ``user_id`` / ``owner_id`` / ``auth_type``) is included when
+a dependency stored it on ``request.state``.
 """
 
 from __future__ import annotations
@@ -53,5 +54,8 @@ class RequestLoggingMiddleware:
                     "status_code": status_code,
                     "duration_ms": duration_ms,
                     "api_key_id": state.get("api_key_id"),
+                    "user_id": state.get("user_id"),
+                    "owner_id": state.get("owner_id"),
+                    "auth_type": state.get("auth_type"),
                 },
             )

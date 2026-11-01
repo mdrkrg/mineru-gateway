@@ -18,6 +18,7 @@ import httpx
 import pytest
 
 from tests.e2e.conftest import _start_gateway, sample_files
+from tests.e2e.conftest import create_key
 
 
 @pytest.mark.e2e
@@ -47,14 +48,8 @@ async def test_full_lifecycle_real_http(mock_control, mock_upstream_url, tmp_pat
     )
     try:
         async with httpx.AsyncClient(base_url=url) as c:
-            # 1. Issue key
-            resp = await c.post(
-                "/auth/keys",
-                json={"label": "e2e-lifecycle"},
-                headers={"X-Admin-Token": "e2e-admin-token"},
-            )
-            assert resp.status_code == 201
-            key = resp.json()["api_key"]
+            # 1. Issue key (owned by a freshly registered user)
+            key = await create_key(c, label="e2e-lifecycle")
             headers = {"X-API-Key": key}
 
             # 2. Submit task
@@ -121,13 +116,7 @@ async def test_result_zip_real_http(mock_control, mock_upstream_url, tmp_path):
     )
     try:
         async with httpx.AsyncClient(base_url=url) as c:
-            key = (
-                await c.post(
-                    "/auth/keys",
-                    json={"label": "e2e-rzip"},
-                    headers={"X-Admin-Token": "e2e-admin-token"},
-                )
-            ).json()["api_key"]
+            key = await create_key(c, label="e2e-rzip")
             h = {"X-API-Key": key}
 
             # (1) Submit and let status sync reach a terminal state.
@@ -213,12 +202,7 @@ async def test_concurrency_cap_real_http(mock_upstream_url, mock_control, tmp_pa
     try:
         async with httpx.AsyncClient(base_url=url) as c:
             # Create key
-            resp = await c.post(
-                "/auth/keys",
-                json={"label": "e2e-cap"},
-                headers={"X-Admin-Token": "e2e-admin-token"},
-            )
-            key = resp.json()["api_key"]
+            key = await create_key(c, label="e2e-cap")
             h = {"X-API-Key": key}
 
             files = sample_files()
@@ -278,12 +262,7 @@ async def test_file_size_limit_real_http(mock_upstream_url, mock_control, tmp_pa
     )
     try:
         async with httpx.AsyncClient(base_url=url) as c:
-            resp = await c.post(
-                "/auth/keys",
-                json={"label": "e2e-size"},
-                headers={"X-Admin-Token": "e2e-admin-token"},
-            )
-            key = resp.json()["api_key"]
+            key = await create_key(c, label="e2e-size")
             h = {"X-API-Key": key}
 
             # Oversized - _MINIMAL_PDF ~433 bytes + multipart framing > 500 limit

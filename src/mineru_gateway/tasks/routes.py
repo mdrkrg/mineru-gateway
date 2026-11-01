@@ -1,7 +1,9 @@
 """Task management routes (Phase 2): list, detail, result, cancel.
 
-Spec: mvp-implementation.md §3.2, §5.1, §5.3. All endpoints require X-API-Key
-and enforce per-key ownership (§3.3).
+Spec: mvp-implementation.md §3.2, §5.1, §5.3; task-ownership.md.
+Task endpoints accept X-API-Key or a Bearer JWT and enforce owner-based
+access: every credential resolves to one owner, and only that owner's tasks
+are visible.
 Also batch-endpoints.md: POST /v1/tasks/result-zip, POST /v1/tasks/cancel.
 """
 
@@ -25,8 +27,9 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import MutableHeaders
 
-from ..auth.dependencies import get_session, require_api_key
-from ..models import ApiKey, TaskRecord
+from ..auth.dependencies import get_session, require_task_principal
+from ..auth.principals import TaskPrincipal
+from ..models import TaskRecord
 from ..upstream.client import UpstreamClient
 from ..upstream.params import INLINE_OUTPUT_FORMATS, OutputFormat
 from ..upstream.response import relay_headers, relay_response
@@ -59,11 +62,12 @@ async def _cache(request: Request) -> FileCache:
     return request.app.state.file_cache
 
 
-def _require_key(api_key: ApiKey | None) -> ApiKey:
-    # Gateway-owned list, stats, and batch operations always require an owner.
-    if api_key is None:
-        raise HTTPException(status_code=401, detail="API key required")
-    return api_key
+def _require_owner(principal: TaskPrincipal | None) -> uuid.UUID:
+    # Gateway-owned list, stats, and batch operations always require a
+    # credential; anonymous callers only get upstream passthrough.
+    if principal is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return principal.owner_id
 
 
 def _local_task_id(task_id: str) -> uuid.UUID:
@@ -84,11 +88,10 @@ def _result_format_for(task: TaskRecord) -> Literal["zip", "json"]:
 
 
 async def _require_downloadable_task(
-    session: AsyncSession, api_key: ApiKey | None, task_id: str
+    session: AsyncSession, owner_id: uuid.UUID, task_id: str
 ) -> TaskRecord:
     """Ownership plus terminal-state guards shared by result downloads."""
-    key = _require_key(api_key)
-    task = await service.get_owned(session, _local_task_id(task_id), key.id)
+    task = await service.get_in_scope(session, _local_task_id(task_id), owner_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     if task.status not in service.TERMINAL_STATES:
@@ -135,13 +138,13 @@ async def list_tasks(
     has_result: bool | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
-    api_key: ApiKey | None = Depends(require_api_key),
+    principal: TaskPrincipal | None = Depends(require_task_principal),
     session: AsyncSession = Depends(get_session),
 ) -> TaskListResponse:
-    key = _require_key(api_key)
+    owner_id = _require_owner(principal)
     tasks, total = await service.list_tasks(
         session,
-        key.id,
+        owner_id,
         status=status,
         tier=tier,
         file_name=file_name,
@@ -171,25 +174,25 @@ async def list_tasks(
 
 @router.get("/stats", response_model=TaskStatsResponse)
 async def task_stats(
-    api_key: ApiKey | None = Depends(require_api_key),
+    principal: TaskPrincipal | None = Depends(require_task_principal),
     session: AsyncSession = Depends(get_session),
 ) -> TaskStatsResponse:
-    key = _require_key(api_key)
-    stats = await service.get_stats(session, key.id)
+    owner_id = _require_owner(principal)
+    stats = await service.get_stats(session, owner_id)
     return TaskStatsResponse(**stats)
 
 
 @router.get("/{task_id}", response_model=TaskDetail)
 async def get_task(
     task_id: str,
-    api_key: ApiKey | None = Depends(require_api_key),
+    principal: TaskPrincipal | None = Depends(require_task_principal),
     session: AsyncSession = Depends(get_session),
     upstream: UpstreamClient = Depends(_upstream),
 ) -> TaskDetail | Response:
-    if api_key is None:
+    if principal is None:
         return relay_response(await upstream.get_task_status(task_id))
-    key = _require_key(api_key)
-    task = await service.get_owned(session, _local_task_id(task_id), key.id)
+    owner_id = _require_owner(principal)
+    task = await service.get_in_scope(session, _local_task_id(task_id), owner_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return TaskDetail(
@@ -211,15 +214,15 @@ async def get_task(
 async def get_task_result(
     task_id: str,
     response_format: Literal["json", "zip"] | None = None,
-    api_key: ApiKey | None = Depends(require_api_key),
+    principal: TaskPrincipal | None = Depends(require_task_principal),
     session: AsyncSession = Depends(get_session),
     upstream: UpstreamClient = Depends(_upstream),
 ) -> Response:
-    if api_key is None:
+    if principal is None:
         return relay_response(
             await upstream.get_task_result(task_id, response_format=response_format)
         )
-    task = await _require_downloadable_task(session, api_key, task_id)
+    task = await _require_downloadable_task(session, _require_owner(principal), task_id)
 
     # A task submitted with `zip` defaults to the ZIP result; otherwise the
     # native JSON result is relayed, with `response_format` as the escape hatch.
@@ -235,7 +238,7 @@ async def get_task_result(
 @router.get("/{task_id}/download")
 async def download_task_result(
     task_id: str,
-    api_key: ApiKey | None = Depends(require_api_key),
+    principal: TaskPrincipal | None = Depends(require_task_principal),
     session: AsyncSession = Depends(get_session),
     upstream: UpstreamClient = Depends(_upstream),
 ) -> Response:
@@ -246,7 +249,7 @@ async def download_task_result(
     them: a single artifact is returned directly, several are packed into a
     ZIP. Errors and unknown payloads fall back to the relayed response.
     """
-    task = await _require_downloadable_task(session, api_key, task_id)
+    task = await _require_downloadable_task(session, _require_owner(principal), task_id)
     response_format = _result_format_for(task)
     upstream_resp = await upstream.get_task_result(
         task.upstream_task_id, response_format=response_format
@@ -289,15 +292,15 @@ def _relayed_result(task: TaskRecord, upstream_resp: Any) -> Response:
 @router.delete("/{task_id}", response_model=TaskCancelResponse)
 async def cancel_task(
     task_id: str,
-    api_key: ApiKey | None = Depends(require_api_key),
+    principal: TaskPrincipal | None = Depends(require_task_principal),
     session: AsyncSession = Depends(get_session),
     upstream: UpstreamClient = Depends(_upstream),
     cache: FileCache = Depends(_cache),
 ) -> TaskCancelResponse | Response:
-    if api_key is None:
+    if principal is None:
         return relay_response(await upstream.cancel_task(task_id))
-    key = _require_key(api_key)
-    task = await service.get_owned(session, _local_task_id(task_id), key.id)
+    owner_id = _require_owner(principal)
+    task = await service.get_in_scope(session, _local_task_id(task_id), owner_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     if task.status not in service.CANCELLABLE_STATES:
@@ -321,15 +324,15 @@ async def cancel_task(
 @router.post("/result-zip", responses={409: {"model": NonDownloadableError}})
 async def result_zip(
     body: ResultZipRequest,
-    api_key: ApiKey | None = Depends(require_api_key),
+    principal: TaskPrincipal | None = Depends(require_task_principal),
     session: AsyncSession = Depends(get_session),
     upstream: UpstreamClient = Depends(_upstream),
 ) -> Response:
-    key = _require_key(api_key)
+    owner_id = _require_owner(principal)
 
     tasks_by_id: dict[uuid.UUID, TaskRecord] = {}
     for task_id in body.task_ids:
-        task = await service.get_owned(session, task_id, key.id)
+        task = await service.get_in_scope(session, task_id, owner_id)
         if task is None:
             raise HTTPException(
                 status_code=404, detail="Task not found for one or more task_ids"
@@ -679,18 +682,18 @@ def _artifact_response(
 )
 async def batch_cancel(
     body: BatchCancelRequest,
-    api_key: ApiKey | None = Depends(require_api_key),
+    principal: TaskPrincipal | None = Depends(require_task_principal),
     session: AsyncSession = Depends(get_session),
     upstream: UpstreamClient = Depends(_upstream),
     cache: FileCache = Depends(_cache),
 ) -> BatchCancelResponse:
-    key = _require_key(api_key)
+    owner_id = _require_owner(principal)
 
     cancelled_ids: list[uuid.UUID] = []
     errors: list[BatchCancelError] = []
 
     for task_id in body.task_ids:
-        task = await service.get_owned(session, task_id, key.id)
+        task = await service.get_in_scope(session, task_id, owner_id)
         if task is None:
             errors.append(BatchCancelError(task_id=task_id, reason="not_found"))
             continue

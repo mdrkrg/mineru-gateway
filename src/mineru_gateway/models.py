@@ -49,23 +49,38 @@ class ApiKey(Base):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+    owner_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(),
         ForeignKey("users.id", name="fk_api_keys_owner_id"),
-        nullable=True,
+        nullable=False,
         index=True,
     )
 
     # Relationships
-    owner: Mapped["User | None"] = relationship("User", back_populates="api_keys")
+    owner: Mapped["User"] = relationship("User", back_populates="api_keys")
 
 
 class TaskRecord(Base):
     __tablename__ = "tasks"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(), primary_key=True, default=get_uuid)
-    api_key_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(), ForeignKey("api_keys.id"), nullable=False, index=True
+    # Authoritative owner: every task and every key belongs to exactly one user.
+    # Every key (including admin-issued ones) belongs to a real user, so there
+    # is no "unowned" scope and no key-scoped fallback anywhere.
+    # No ON DELETE CASCADE yet: there is no account-deletion endpoint, so a user
+    # row is never removed. Adding one must cancel in-flight tasks, release their
+    # cache_dir, then delete the tasks before the user row.
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(),
+        ForeignKey("users.id", name="fk_tasks_owner_id"),
+        nullable=False,
+    )
+    # Credential used at creation time. NULL for JWT-created tasks. Audit only:
+    # never part of task scope or of the idempotency domain.
+    api_key_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(),
+        ForeignKey("api_keys.id"),
+        nullable=True,
     )
     status: Mapped[str] = mapped_column(String(20), index=True, default="pending")
     idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -106,9 +121,9 @@ class TaskRecord(Base):
     upstream_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
-        Index("ix_tasks_key_status_created", "api_key_id", "status", "created_at"),
+        Index("ix_tasks_owner_status_created", "owner_id", "status", "created_at"),
         UniqueConstraint(
-            "api_key_id", "idempotency_key", name="uq_tasks_key_idempotency"
+            "owner_id", "idempotency_key", name="uq_tasks_owner_idempotency"
         ),
     )
 

@@ -22,6 +22,7 @@ import httpx
 import pytest
 
 from tests.mock_upstream import create_mock_upstream, state as mock_state
+from tests.conftest import create_key
 
 
 async def test_submit_requires_key_when_anonymous_disabled(client, sample_files):
@@ -88,9 +89,7 @@ async def test_submit_rejects_when_total_exceeds_max_size(
     """§3.5: 文件大小限制按请求累计生效 — 多个小文件合计超限也应 413."""
     # Issue a key on an app whose settings we can inspect; use the shared app but
     # drive many files so the cumulative size trips the per-request limit.
-    raw = (
-        await client.post("/auth/keys", json={"label": "sz"}, headers=admin_headers)
-    ).json()["api_key"]
+    raw = (await create_key(client, label="sz")).json()["api_key"]
     max_size = client._transport.app.state.settings.max_upload_size
     half = b"x" * (max_size // 2 + 1)
     files = [
@@ -353,9 +352,7 @@ async def test_file_parse_rejects_more_than_100_files_before_upstream(client, ap
 
 async def test_file_parse_429_when_rate_limited(client, admin_headers, sample_files):
     """§3.5: /v1/file_parse 也走按 Key 内存限流 — 耗尽突发预算后 429 + Retry-After."""
-    raw = (
-        await client.post("/auth/keys", json={"label": "fp-rl"}, headers=admin_headers)
-    ).json()["api_key"]
+    raw = (await create_key(client, label="fp-rl")).json()["api_key"]
     hit_429 = False
     for _ in range(40):
         resp = await client.post(
@@ -550,6 +547,28 @@ async def test_idempotent_repeat_same_key_returns_replay(client, api_key, sample
         assert count == 1
 
 
+async def test_idempotent_lost_race_replays_winner(
+    client, api_key, sample_files, miss_first_lookup
+):
+    """specs/task-ownership.md §8: losing the insert race replays the winner.
+
+    Both requests can pass the pre-check while the winner is still talking to
+    upstream, so the loser hits the unique constraint and must recover from
+    the IntegrityError instead of failing the request.
+    """
+    headers = {"X-API-Key": api_key, "X-Idempotency-Key": "t-race-key"}
+    winner = await client.post("/v1/tasks", headers=headers, files=sample_files)
+    assert winner.status_code == 202
+
+    miss_once = miss_first_lookup(task_service, "get_by_idempotency")
+
+    loser = await client.post("/v1/tasks", headers=headers, files=sample_files)
+    assert loser.status_code == 202, loser.text
+    assert loser.headers.get("X-Idempotency-Key-Replayed") == "true"
+    assert loser.json()["task_id"] == winner.json()["task_id"]
+    assert miss_once["calls"] == 2
+
+
 async def test_idempotent_repeat_after_task_completed(client, api_key, sample_files):
     """T3 sec 6.1: resubmit with same idempotency key after task completed.
     Should return original response (status: pending), not completed."""
@@ -634,12 +653,8 @@ async def test_idempotent_different_keys_same_idempotency_key(
     """T6 sec 6.2: two different API Keys using the same idempotency key
     each create independent tasks. No conflict, no replay."""
     idem_key = "shared-key"
-    resp_a = (
-        await client.post("/auth/keys", json={"label": "key-A"}, headers=admin_headers)
-    ).json()
-    resp_b = (
-        await client.post("/auth/keys", json={"label": "key-B"}, headers=admin_headers)
-    ).json()
+    resp_a = (await create_key(client, label="key-A")).json()
+    resp_b = (await create_key(client, label="key-B")).json()
     key_a, key_b = resp_a["api_key"], resp_b["api_key"]
 
     r1 = await client.post(
@@ -734,7 +749,7 @@ async def test_idempotent_concurrent_same_key(client, api_key, sample_files):
 
     Mocks task_service.create to simulate a race condition: the first call
     succeeds, the second raises IntegrityError once the winner has committed.
-    Also mocks get_by_idempotency_key to return None for the first two calls
+    Also mocks get_by_idempotency to return None for the first two calls
     (the two idempotency pre-checks) so both requests reach create."""
     idem_key = "t9-race-key"
     headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
@@ -754,7 +769,7 @@ async def test_idempotent_concurrent_same_key(client, api_key, sample_files):
             raise IntegrityError(
                 "mock",
                 {},
-                Exception("UNIQUE constraint failed: uq_tasks_key_idempotency"),
+                Exception("UNIQUE constraint failed: uq_tasks_owner_idempotency"),
             )
         winner_committed = asyncio.Event()
         try:
@@ -762,19 +777,19 @@ async def test_idempotent_concurrent_same_key(client, api_key, sample_files):
         finally:
             winner_committed.set()
 
-    original_lookup = task_service.get_by_idempotency_key
+    original_lookup = task_service.get_by_idempotency
     _lookup_count = 0
 
-    async def racing_lookup(session, api_key_id, key):
+    async def racing_lookup(session, owner_id, key):
         nonlocal _lookup_count
         _lookup_count += 1
         if _lookup_count <= 2:
             return None
-        return await original_lookup(session, api_key_id, key)
+        return await original_lookup(session, owner_id, key)
 
     with patch.object(task_service, "create", side_effect=racing_create):
         with patch.object(
-            task_service, "get_by_idempotency_key", side_effect=racing_lookup
+            task_service, "get_by_idempotency", side_effect=racing_lookup
         ):
             r1, r2 = await asyncio.gather(
                 client.post("/v1/tasks", headers=headers, files=sample_files),
@@ -826,25 +841,25 @@ async def test_idempotent_concurrent_failure_releases_cache(
                 raise IntegrityError(
                     "mock",
                     {},
-                    Exception("UNIQUE constraint failed: uq_tasks_key_idempotency"),
+                    Exception("UNIQUE constraint failed: uq_tasks_owner_idempotency"),
                 )
             result = await original_create(session, **fields)
             first_committed = True
             return result
 
-    original_lookup = task_service.get_by_idempotency_key
+    original_lookup = task_service.get_by_idempotency
     _lookup_count = 0
 
-    async def racing_lookup(session, api_key_id, key):
+    async def racing_lookup(session, owner_id, key):
         nonlocal _lookup_count
         _lookup_count += 1
         if _lookup_count <= 2:
             return None
-        return await original_lookup(session, api_key_id, key)
+        return await original_lookup(session, owner_id, key)
 
     with patch.object(task_service, "create", side_effect=racing_create):
         with patch.object(
-            task_service, "get_by_idempotency_key", side_effect=racing_lookup
+            task_service, "get_by_idempotency", side_effect=racing_lookup
         ):
             with patch.object(
                 FileCache, "release", new_callable=AsyncMock
@@ -907,11 +922,7 @@ async def test_idempotent_replay_skips_rate_limit(tmp_path, sample_files):
         async with httpx.AsyncClient(
             transport=transport, base_url="http://testserver"
         ) as c:
-            r = await c.post(
-                "/auth/keys",
-                json={"label": "rl"},
-                headers={"X-Admin-Token": "test-admin-token"},
-            )
+            r = await create_key(c, label="rl")
             api_key = r.json()["api_key"]
 
             idem_key = "t12-rl-key"
@@ -1067,7 +1078,9 @@ async def test_unhandled_exception_returns_500_json(app, api_key, sample_files):
         )
         task_id = resp.json()["task_id"]
 
-        with patch.object(task_service, "get_owned", side_effect=RuntimeError("boom")):
+        with patch.object(
+            task_service, "get_in_scope", side_effect=RuntimeError("boom")
+        ):
             resp = await c.get(
                 f"/v1/tasks/{task_id}",
                 headers={"X-API-Key": api_key},

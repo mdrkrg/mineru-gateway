@@ -19,6 +19,7 @@ import socket
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +61,8 @@ def _wait_ready(url: str, timeout: float = 15.0) -> None:
 # ---------------------------------------------------------------------------
 
 _MOCK_SERVER_PATH = Path(__file__).resolve().parent / "mock_server.py"
+
+E2E_ADMIN_TOKEN = "e2e-admin-token"
 
 
 @pytest.fixture(scope="session")
@@ -181,6 +184,12 @@ def _gateway_env(
         "GATEWAY_MAX_UPLOAD_SIZE": "1048576",
         "GATEWAY_RATE_LIMIT_PER_KEY": "10",
         "GATEWAY_MAX_CONCURRENT_TASKS": "0",
+        # Admin-issued keys belong to a real user, so tests register owners.
+        "GATEWAY_USER_AUTH_ENABLED": "true",
+        "GATEWAY_OPEN_REGISTRATION": "true",
+        "GATEWAY_JWT_SECRET": "e2e-jwt-secret-at-least-32-characters",
+        # No SMTP in e2e: registration must not require email verification.
+        "GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS": "true",
     }
     env.update(overrides)
     return env
@@ -287,14 +296,42 @@ def e2e_admin_headers() -> dict[str, str]:
     return {"X-Admin-Token": "e2e-admin-token"}
 
 
-@pytest.fixture
-async def e2e_api_key(e2e_client, e2e_admin_headers):
-    """Create an API key via the admin token and return it."""
-    resp = await e2e_client.post(
-        "/auth/keys", json={"label": "e2e"}, headers=e2e_admin_headers
+async def create_key(client, label: str = "e2e") -> str:
+    """Register a user and issue an admin key owned by them."""
+    email = f"e2e-{uuid.uuid4().hex[:10]}@example.com"
+    registered = await client.post(
+        "/auth/register", json={"email": email, "password": "E2e!Passw0rd"}
+    )
+    assert registered.status_code == 201, registered.text
+    resp = await client.post(
+        "/auth/keys",
+        json={"label": label, "email": email},
+        headers={"X-Admin-Token": E2E_ADMIN_TOKEN},
     )
     assert resp.status_code == 201, f"failed to create API key: {resp.text}"
     return resp.json()["api_key"]
+
+
+def create_key_sync(client, label: str = "e2e") -> str:
+    """Sync variant for the real-upstream client."""
+    email = f"e2e-{uuid.uuid4().hex[:10]}@example.com"
+    registered = client.post(
+        "/auth/register", json={"email": email, "password": "E2e!Passw0rd"}
+    )
+    assert registered.status_code == 201, registered.text
+    resp = client.post(
+        "/auth/keys",
+        json={"label": label, "email": email},
+        headers={"X-Admin-Token": E2E_ADMIN_TOKEN},
+    )
+    assert resp.status_code == 201, f"failed to create API key: {resp.text}"
+    return resp.json()["api_key"]
+
+
+@pytest.fixture
+async def e2e_api_key(e2e_client):
+    """Create an API key owned by a freshly registered user."""
+    return await create_key(e2e_client)
 
 
 @pytest.fixture

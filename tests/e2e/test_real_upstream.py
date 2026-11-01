@@ -30,6 +30,7 @@ import pytest
 from mineru_gateway.config import Settings
 
 from tests.e2e.conftest import _start_gateway
+from tests.e2e.conftest import create_key_sync
 
 _ROOT = Path(__file__).resolve().parents[2]
 _ENV_FILE = _ROOT / ".env"
@@ -102,14 +103,8 @@ def _real_client(_real_gateway):
 
 @pytest.fixture(scope="session")
 def _real_key_headers(_real_client):
-    """Create one API key and return headers for all tests."""
-    resp = _real_client.post(
-        "/auth/keys",
-        json={"label": "real-e2e"},
-        headers={"X-Admin-Token": "e2e-admin-token"},
-    )
-    assert resp.status_code == 201
-    return {"X-API-Key": resp.json()["api_key"]}
+    """Create one API key (owned by a registered user) for all tests."""
+    return {"X-API-Key": create_key_sync(_real_client, label="real-e2e")}
 
 
 @pytest.fixture

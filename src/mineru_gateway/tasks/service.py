@@ -15,6 +15,11 @@ from ..upstream.params import VALID_TIERS
 from ..upstream.schemas import gateway_task_status
 
 
+def owned_by(owner_id: uuid.UUID):
+    """SQL condition for the only task scope: the owner (spec: task-ownership)."""
+    return TaskRecord.owner_id == owner_id
+
+
 async def create(session: AsyncSession, **fields: Any) -> TaskRecord:
     task = TaskRecord(**fields)
     session.add(task)
@@ -27,29 +32,30 @@ async def get(session: AsyncSession, task_id: uuid.UUID) -> TaskRecord | None:
     return await session.get(TaskRecord, task_id)
 
 
-async def get_by_idempotency_key(
-    session: AsyncSession, api_key_id: uuid.UUID, idempotency_key: str
+async def get_by_idempotency(
+    session: AsyncSession, owner_id: uuid.UUID, idempotency_key: str
 ) -> TaskRecord | None:
+    """Look up an owner's task by idempotency key (one domain per owner)."""
     result = await session.execute(
         select(TaskRecord).where(
-            TaskRecord.api_key_id == api_key_id,
+            TaskRecord.owner_id == owner_id,
             TaskRecord.idempotency_key == idempotency_key,
         )
     )
     return result.scalar_one_or_none()
 
 
-async def get_owned(
-    session: AsyncSession, task_id: uuid.UUID, api_key_id: uuid.UUID
+async def get_in_scope(
+    session: AsyncSession, task_id: uuid.UUID, owner_id: uuid.UUID
 ) -> TaskRecord | None:
-    task = await session.get(TaskRecord, task_id)
-    if task is None or task.api_key_id != api_key_id:
-        return None
-    return task
+    result = await session.execute(
+        select(TaskRecord).where(TaskRecord.id == task_id, owned_by(owner_id))
+    )
+    return result.scalar_one_or_none()
 
 
 def _build_filters(
-    api_key_id: uuid.UUID,
+    owner_id: uuid.UUID,
     status: str | None,
     tier: str | None,
     file_name: str | None,
@@ -57,7 +63,7 @@ def _build_filters(
     date_to: date | None,
     has_result: bool | None = None,
 ) -> list:
-    conditions = [TaskRecord.api_key_id == api_key_id]
+    conditions = [owned_by(owner_id)]
     if status:
         conditions.append(TaskRecord.status == status)
     if tier:
@@ -92,7 +98,7 @@ def _build_filters(
 
 async def list_tasks(
     session: AsyncSession,
-    api_key_id: uuid.UUID,
+    owner_id: uuid.UUID,
     *,
     status: str | None = None,
     tier: str | None = None,
@@ -104,7 +110,7 @@ async def list_tasks(
     page_size: int = 50,
 ) -> tuple[list[TaskRecord], int]:
     conditions = _build_filters(
-        api_key_id, status, tier, file_name, date_from, date_to, has_result
+        owner_id, status, tier, file_name, date_from, date_to, has_result
     )
 
     total = await session.scalar(
@@ -294,7 +300,7 @@ async def delete_expired(session: AsyncSession, retention_days: int) -> list[str
 # --- task statistics ---
 
 
-async def get_stats(session: AsyncSession, api_key_id: uuid.UUID) -> dict:
+async def get_stats(session: AsyncSession, owner_id: uuid.UUID) -> dict:
     today_start = datetime.now(timezone.utc).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
@@ -323,13 +329,13 @@ async def get_stats(session: AsyncSession, api_key_id: uuid.UUID) -> dict:
             )
             .label("today_failed"),
             func.sum(TaskRecord.file_total_bytes).label("total_bytes"),
-        ).where(TaskRecord.api_key_id == api_key_id)
+        ).where(owned_by(owner_id))
     )
     row = agg.one()
 
     completed_tasks = await session.execute(
         select(TaskRecord.started_at, TaskRecord.completed_at).where(
-            TaskRecord.api_key_id == api_key_id,
+            owned_by(owner_id),
             TaskRecord.status == "completed",
             TaskRecord.started_at.is_not(None),
             TaskRecord.completed_at.is_not(None),

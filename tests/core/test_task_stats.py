@@ -1,15 +1,15 @@
 """Spec: GET /v1/tasks/stats - Task Statistics Endpoint
 
 Returns per-status task counts and aggregate metrics scoped to the
-authenticated API key's owner.  Designed for dashboard overviews and
+authenticated principal's owner. Designed for dashboard overviews and
 frontends that need a summary without paginating through all tasks.
 
 Endpoint
 --------
 GET /v1/tasks/stats
-  Security: X-API-Key (required; anonymous requests are rejected)
-  Scope:    statistics cover only tasks owned by the key making the request.
-            A different key sees only its own data.
+  Security: X-API-Key or Bearer JWT (anonymous requests are rejected)
+  Scope:    owner-based (specs/task-ownership.md). A user's keys and JWT share
+            statistics; a key issued for another user only sees that user's.
 
 Response (200)
 --------------
@@ -29,8 +29,7 @@ Response (200)
 Behaviour
 ---------
 - A key with no tasks returns all counts as 0 and null for avg_duration_ms.
-- Counts are per-key: two different API keys never see each other's
-  statistics, even if they belong to the same user.
+- Counts are per owner: a user's keys and JWT share one set of statistics.
 - The endpoint is read-only and has no side effects.
 - Query parameters (status, date range, etc.) are intentionally NOT
   supported -- this is a fixed aggregate, not a filtered list.
@@ -50,7 +49,8 @@ from unittest.mock import patch
 import pytest
 from freezegun import freeze_time
 
-from mineru_gateway.models import TaskRecord
+from mineru_gateway.models import ApiKey, TaskRecord
+from tests.conftest import create_key
 
 
 # --- auth / access control ---
@@ -71,9 +71,7 @@ async def test_task_stats_rejects_invalid_key(client):
 # Spec: "two different API keys never see each other's statistics"
 async def test_task_stats_ownership_isolation(client, api_key, admin_headers):
     # Create a second key under the admin.
-    resp = await client.post(
-        "/auth/keys", json={"label": "other"}, headers=admin_headers
-    )
+    resp = await create_key(client, label="other")
     assert resp.status_code == 201
     other_key = resp.json()["api_key"]
 
@@ -112,8 +110,8 @@ async def test_task_stats_ownership_isolation(client, api_key, admin_headers):
     assert body["avg_duration_ms"] is None
 
 
-# Spec: "even if they belong to the same user"
-async def test_task_stats_ownership_isolation_same_user(client, user_headers):
+# Spec: keys of the same user share owner-scoped statistics.
+async def test_task_stats_shared_between_owner_keys(client, user_headers):
     resp1 = await client.post(
         "/me/api-keys", json={"label": "key-alpha"}, headers=user_headers
     )
@@ -130,27 +128,36 @@ async def test_task_stats_ownership_isolation_same_user(client, user_headers):
     resp = await client.post("/v1/tasks", headers={"X-API-Key": key1}, files=files)
     assert resp.status_code == 202
 
-    first = await client.get("/v1/tasks/stats", headers={"X-API-Key": key1})
-    assert first.status_code == 200
-    assert first.json()["pending"] >= 1
-
-    second = await client.get("/v1/tasks/stats", headers={"X-API-Key": key2})
-    assert second.status_code == 200
-    body = second.json()
-    for field in (
-        "pending",
-        "processing",
-        "retry_pending",
-        "completed",
-        "partial",
-        "failed",
-        "cancelled",
-        "today_completed",
-        "today_failed",
-        "total_bytes",
+    for headers in (
+        {"X-API-Key": key1},
+        {"X-API-Key": key2},
+        user_headers,
     ):
-        assert body[field] == 0, f"{field} should be 0 for isolated key"
-    assert body["avg_duration_ms"] is None
+        stats = await client.get("/v1/tasks/stats", headers=headers)
+        assert stats.status_code == 200
+        assert stats.json()["pending"] >= 1
+
+    # A different user must not see the first user's statistics.
+    other = await client.post(
+        "/auth/register",
+        json={
+            "email": "other-stats-user@example.com",
+            "password": "Str0ng!Pass",
+        },
+    )
+    assert other.status_code == 201
+    login = await client.post(
+        "/auth/jwt/login",
+        json={
+            "email": "other-stats-user@example.com",
+            "password": "Str0ng!Pass",
+        },
+    )
+    assert login.status_code == 200
+    other_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    isolated = await client.get("/v1/tasks/stats", headers=other_headers)
+    assert isolated.status_code == 200
+    assert isolated.json()["pending"] == 0
 
 
 # --- zero state ---
@@ -208,7 +215,10 @@ async def _seed_task(
         api_key_id = uuid.UUID(api_key_id)
 
     async with app.state.db.session_factory() as session:
+        key = await session.get(ApiKey, api_key_id)
+        assert key is not None
         task = TaskRecord(
+            owner_id=key.owner_id,
             api_key_id=api_key_id,
             status=status,
             file_names=["test.pdf"],
@@ -233,9 +243,7 @@ async def _seed_task(
 
 async def test_task_stats_counts_by_status(app, client, admin_headers):
     # Create a fresh key and get its UUID.
-    resp = await client.post(
-        "/auth/keys", json={"label": "counts-test"}, headers=admin_headers
-    )
+    resp = await create_key(client, label="counts-test")
     assert resp.status_code == 201
     key_data = resp.json()
     api_key_str = key_data["api_key"]
@@ -274,9 +282,7 @@ async def test_task_stats_today_counts_are_utc_scoped(app, client, admin_headers
     )
     yesterday = today_start - timedelta(days=1)
 
-    resp = await client.post(
-        "/auth/keys", json={"label": "today-test"}, headers=admin_headers
-    )
+    resp = await create_key(client, label="today-test")
     assert resp.status_code == 201
     key_data = resp.json()
     api_key_str = key_data["api_key"]
@@ -313,9 +319,7 @@ async def test_task_stats_today_counts_are_utc_scoped(app, client, admin_headers
 
 
 async def test_task_stats_total_bytes(app, client, admin_headers):
-    resp = await client.post(
-        "/auth/keys", json={"label": "bytes-test"}, headers=admin_headers
-    )
+    resp = await create_key(client, label="bytes-test")
     assert resp.status_code == 201
     key_data = resp.json()
     api_key_str = key_data["api_key"]
@@ -339,9 +343,7 @@ async def test_task_stats_total_bytes(app, client, admin_headers):
 async def test_task_stats_avg_duration(app, client, admin_headers):
     now = datetime.now(timezone.utc)
 
-    resp = await client.post(
-        "/auth/keys", json={"label": "duration-test"}, headers=admin_headers
-    )
+    resp = await create_key(client, label="duration-test")
     assert resp.status_code == 201
     key_data = resp.json()
     api_key_str = key_data["api_key"]
@@ -390,9 +392,7 @@ async def test_task_stats_avg_duration(app, client, admin_headers):
     assert avg == pytest.approx(450_000, rel=0.001)
 
     # avg_duration_ms should be null for a key with no completed tasks
-    resp2 = await client.post(
-        "/auth/keys", json={"label": "no-completed"}, headers=admin_headers
-    )
+    resp2 = await create_key(client, label="no-completed")
     assert resp2.status_code == 201
     empty_key = resp2.json()["api_key"]
     empty_key_id = resp2.json()["key_id"]

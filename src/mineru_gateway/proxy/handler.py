@@ -21,9 +21,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import UploadFile
 
+from ..auth.principals import TaskPrincipal
 from ..config import Settings
-from ..limiter.memory import MemoryTokenBucket
-from ..models import ApiKey
+from ..limiter.memory import MemoryTokenBucket, bucket_key
 from ..tasks import service as task_service
 from ..tasks.cache import FileCache
 from ..upstream.client import UpstreamClient
@@ -476,7 +476,7 @@ def _build_replay_response(task, settings: Settings) -> JSONResponse:
 
 async def handle_task_submission(
     request: Request,
-    api_key: ApiKey | None,
+    principal: TaskPrincipal | None,
     session: AsyncSession,
     upstream: UpstreamClient,
     limiter: MemoryTokenBucket,
@@ -485,16 +485,15 @@ async def handle_task_submission(
     x_idempotency_key: str | None = None,
 ) -> Response:
     idempotency_key = _normalize_idempotency_key(x_idempotency_key)
-    api_key_id = api_key.id if api_key is not None else None
 
-    if api_key_id is not None and idempotency_key is not None:
-        existing = await task_service.get_by_idempotency_key(
-            session, api_key_id, idempotency_key
+    if principal is not None and idempotency_key is not None:
+        existing = await task_service.get_by_idempotency(
+            session, principal.owner_id, idempotency_key
         )
         if existing is not None:
             return _build_replay_response(existing, settings)
 
-    if api_key_id is not None and not await limiter.acquire(str(api_key_id)):
+    if principal is not None and not await limiter.acquire(bucket_key(principal)):
         raise HTTPException(
             status_code=429,
             detail="Rate limit exceeded",
@@ -515,7 +514,7 @@ async def handle_task_submission(
     # Anonymous: read files from on-disk cache, forward to upstream,
     # then release the cache directory immediately (no record kept).
     # spec: streaming-upload.md sec 1.2
-    if api_key is None:
+    if principal is None:
         try:
             _, files = await cache.restore(cache_dir)
             upstream_resp = await upstream.submit_task(params, files)
@@ -565,7 +564,8 @@ async def handle_task_submission(
     try:
         task = await task_service.create(
             session,
-            api_key_id=api_key_id,
+            owner_id=principal.owner_id,
+            api_key_id=principal.api_key_id,
             status=gateway_task_status(payload.status),
             upstream_url=settings.upstream_url,
             upstream_task_id=payload.task_id,
@@ -594,7 +594,12 @@ async def handle_task_submission(
             extra={
                 "orphan_upstream_task_id": str(payload.task_id),
                 "idempotency_key": idempotency_key,
-                "api_key_id": str(api_key_id),
+                "api_key_id": (
+                    str(principal.api_key_id)
+                    if principal.api_key_id is not None
+                    else None
+                ),
+                "owner_id": str(principal.owner_id),
                 "upstream_url": settings.upstream_url,
                 "tier": tier,
                 "file_names": file_names[:10],
@@ -603,8 +608,8 @@ async def handle_task_submission(
         )
         if idempotency_key is None:
             raise
-        existing = await task_service.get_by_idempotency_key(
-            session, api_key_id, idempotency_key
+        existing = await task_service.get_by_idempotency(
+            session, principal.owner_id, idempotency_key
         )
         if existing is not None:
             return _build_replay_response(existing, settings)
@@ -637,14 +642,14 @@ async def handle_task_submission(
 
 async def handle_file_parse(
     request: Request,
-    api_key: ApiKey | None,
+    principal: TaskPrincipal | None,
     session: AsyncSession,
     upstream: UpstreamClient,
     limiter: MemoryTokenBucket,
     cache: FileCache,
     settings: Settings,
 ) -> Response:
-    if api_key and not await limiter.acquire(str(api_key.id)):
+    if principal is not None and not await limiter.acquire(bucket_key(principal)):
         raise HTTPException(
             status_code=429,
             detail="Rate limit exceeded",
@@ -663,7 +668,7 @@ async def handle_file_parse(
 
     upstream_resp = await upstream.parse_file(params, files)
 
-    if api_key is None or upstream_resp.status_code not in {200, 202, 409}:
+    if principal is None or upstream_resp.status_code not in {200, 202, 409}:
         return relay_response(upstream_resp)
 
     try:
@@ -692,7 +697,8 @@ async def handle_file_parse(
     try:
         task = await task_service.create(
             session,
-            api_key_id=api_key.id,
+            owner_id=principal.owner_id,
+            api_key_id=principal.api_key_id,
             status=status,
             upstream_url=settings.upstream_url,
             upstream_task_id=reference.task_id,

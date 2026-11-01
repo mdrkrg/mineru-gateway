@@ -7,6 +7,8 @@ Plan: Phase 3 — "过期任务 + 缓存清理".
 
 from __future__ import annotations
 
+import uuid
+
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -16,21 +18,30 @@ from mineru_gateway.tasks import service
 from mineru_gateway.tasks.cache import FileCache
 
 
-async def _seed_key(session):
+async def _seed_owner(session):
     from mineru_gateway.auth import service as auth_service
+    from mineru_gateway.models import User
 
-    record, _ = await auth_service.create_key(session, label="cln")
-    return record.id
+    user = User(
+        email=f"cln-{uuid.uuid4().hex[:8]}@example.com",
+        hashed_password="unusable",
+        is_active=True,
+        is_verified=True,
+    )
+    session.add(user)
+    await session.flush()
+    record, _ = await auth_service.create_key(session, user.id, label="cln")
+    return record.owner_id
 
 
 async def test_cleanup_deletes_expired_records(app):
     """§3.4: 超过保留 TTL 的任务记录被删除."""
     db = app.state.db
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
+        owner_id = await _seed_owner(session)
         old = await service.create(
             session,
-            api_key_id=key_id,
+            owner_id=owner_id,
             status="completed",
             upstream_url="http://mock-upstream",
             file_names=["old.pdf"],
@@ -43,7 +54,7 @@ async def test_cleanup_deletes_expired_records(app):
 
         recent = await service.create(
             session,
-            api_key_id=key_id,
+            owner_id=owner_id,
             status="completed",
             upstream_url="http://mock-upstream",
             file_names=["new.pdf"],
@@ -80,10 +91,10 @@ async def test_cleanup_releases_cache_of_expired_records(app, tmp_path):
     assert os.path.isdir(cache_dir)
 
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
+        owner_id = await _seed_owner(session)
         old = await service.create(
             session,
-            api_key_id=key_id,
+            owner_id=owner_id,
             status="completed",
             upstream_url="http://mock-upstream",
             file_names=["a.pdf"],

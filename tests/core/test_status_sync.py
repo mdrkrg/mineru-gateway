@@ -9,6 +9,8 @@ Each test drives the single-pass `sync_once` directly (the loop is just
 
 from __future__ import annotations
 
+import uuid
+
 
 from mineru_gateway.background import status_sync
 from mineru_gateway.tasks import service
@@ -18,9 +20,9 @@ from mineru_gateway.upstream.client import UpstreamClient
 from tests.mock_upstream import state as mock_state
 
 
-async def _make_task(session, api_key_id, **overrides):
+async def _make_task(session, owner_id, **overrides):
     fields = dict(
-        api_key_id=api_key_id,
+        owner_id=owner_id,
         status="pending",
         upstream_url="http://mock-upstream",
         upstream_task_id="up-123",
@@ -31,11 +33,20 @@ async def _make_task(session, api_key_id, **overrides):
     return await service.create(session, **fields)
 
 
-async def _seed_key(session):
+async def _seed_owner(session):
     from mineru_gateway.auth import service as auth_service
+    from mineru_gateway.models import User
 
-    record, _ = await auth_service.create_key(session, label="bg")
-    return record.id
+    user = User(
+        email=f"bg-{uuid.uuid4().hex[:8]}@example.com",
+        hashed_password="unusable",
+        is_active=True,
+        is_verified=True,
+    )
+    session.add(user)
+    await session.flush()
+    record, _ = await auth_service.create_key(session, user.id, label="bg")
+    return record.owner_id
 
 
 async def test_sync_updates_status_from_upstream(app, upstream_client):
@@ -43,8 +54,8 @@ async def test_sync_updates_status_from_upstream(app, upstream_client):
     db = app.state.db
     upstream = UpstreamClient(upstream_client)
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
-        task = await _make_task(session, key_id)
+        owner_id = await _seed_owner(session)
+        task = await _make_task(session, owner_id)
         task_id = task.id
 
     mock_state.task_status = "completed"
@@ -61,8 +72,8 @@ async def test_sync_increments_poll_failures_on_error(app, upstream_client):
     db = app.state.db
     upstream = UpstreamClient(upstream_client)
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
-        task = await _make_task(session, key_id)
+        owner_id = await _seed_owner(session)
+        task = await _make_task(session, owner_id)
         task_id = task.id
 
     mock_state.status_raises = True
@@ -80,9 +91,9 @@ async def test_sync_treats_malformed_payload_as_per_task_poll_failure(
     db = app.state.db
     upstream = UpstreamClient(upstream_client)
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
-        first = await _make_task(session, key_id, upstream_task_id="up-first")
-        second = await _make_task(session, key_id, upstream_task_id="up-second")
+        owner_id = await _seed_owner(session)
+        first = await _make_task(session, owner_id, upstream_task_id="up-first")
+        second = await _make_task(session, owner_id, upstream_task_id="up-second")
         task_ids = [first.id, second.id]
 
     mock_state.task_status_payload = {"status": "queued"}
@@ -100,9 +111,9 @@ async def test_sync_marks_retryable_at_threshold(app, upstream_client):
     db = app.state.db
     upstream = UpstreamClient(upstream_client)
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
+        owner_id = await _seed_owner(session)
         task = await _make_task(
-            session, key_id, consecutive_poll_failures=2, cache_dir="/tmp/x"
+            session, owner_id, consecutive_poll_failures=2, cache_dir="/tmp/x"
         )
         task_id = task.id
 
@@ -122,9 +133,9 @@ async def test_sync_does_not_mark_retryable_without_cache_dir(app, upstream_clie
     db = app.state.db
     upstream = UpstreamClient(upstream_client)
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
+        owner_id = await _seed_owner(session)
         task = await _make_task(
-            session, key_id, consecutive_poll_failures=2, cache_dir=None
+            session, owner_id, consecutive_poll_failures=2, cache_dir=None
         )
         task_id = task.id
 
@@ -143,9 +154,9 @@ async def test_sync_marks_all_retryable_when_upstream_unreachable(app, upstream_
     db = app.state.db
     upstream = UpstreamClient(upstream_client)
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
-        t1 = await _make_task(session, key_id, cache_dir="/tmp/a")
-        t2 = await _make_task(session, key_id, cache_dir="/tmp/b")
+        owner_id = await _seed_owner(session)
+        t1 = await _make_task(session, owner_id, cache_dir="/tmp/a")
+        t2 = await _make_task(session, owner_id, cache_dir="/tmp/b")
         ids = [t1.id, t2.id]
 
     mock_state.health_raises = True
@@ -162,8 +173,8 @@ async def test_sync_ignores_terminal_tasks(app, upstream_client):
     db = app.state.db
     upstream = UpstreamClient(upstream_client)
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
-        task = await _make_task(session, key_id, status="completed")
+        owner_id = await _seed_owner(session)
+        task = await _make_task(session, owner_id, status="completed")
         task_id = task.id
 
     mock_state.task_status = "running"
@@ -187,8 +198,8 @@ async def test_sync_releases_cache_on_terminal_state(app, upstream_client, tmp_p
     assert os.path.isdir(cache_dir)
 
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
-        task = await _make_task(session, key_id, cache_dir=cache_dir)
+        owner_id = await _seed_owner(session)
+        task = await _make_task(session, owner_id, cache_dir=cache_dir)
         task_id = task.id
 
     mock_state.task_status = "completed"
@@ -206,8 +217,8 @@ async def test_sync_sets_completed_at_on_upstream_cancelled(app, upstream_client
     db = app.state.db
     upstream = UpstreamClient(upstream_client)
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
-        task = await _make_task(session, key_id)
+        owner_id = await _seed_owner(session)
+        task = await _make_task(session, owner_id)
         task_id = task.id
 
     mock_state.task_status = "canceled"
@@ -233,8 +244,8 @@ async def test_sync_maps_partial_and_extracts_file_error(
     cache_dir = await writer.finish({"tier": "basic"})
 
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
-        task = await _make_task(session, key_id, cache_dir=cache_dir)
+        owner_id = await _seed_owner(session)
+        task = await _make_task(session, owner_id, cache_dir=cache_dir)
         task_id = task.id
 
     mock_state.task_status = "partial"

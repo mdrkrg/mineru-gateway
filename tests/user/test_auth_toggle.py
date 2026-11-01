@@ -8,6 +8,7 @@ Spec: user-management-and-oauth.md
 """
 
 from __future__ import annotations
+from tests.conftest import create_key
 
 
 # ===== Section 6.3 / 9.8: USER_AUTH_ENABLED=false =====
@@ -62,9 +63,7 @@ async def test_disabled_user_auth_oauth_routes_return_404(no_auth_client):
 
 async def test_disabled_user_auth_admin_keys_route_works(no_auth_client, admin_headers):
     """Section 9.8: USER_AUTH_ENABLED=false -> /auth/keys works normally."""
-    resp = await no_auth_client.post(
-        "/auth/keys", json={"label": "test"}, headers=admin_headers
-    )
+    resp = await create_key(no_auth_client, label="test")
     assert resp.status_code == 201
 
     resp = await no_auth_client.get("/auth/keys", headers=admin_headers)
@@ -81,9 +80,7 @@ async def test_disabled_user_auth_business_routes_work(
     no_auth_client, admin_headers, sample_files
 ):
     """Section 9.8 / 4.6: USER_AUTH_ENABLED=false -> business routes work."""
-    key_resp = await no_auth_client.post(
-        "/auth/keys", json={"label": "biz"}, headers=admin_headers
-    )
+    key_resp = await create_key(no_auth_client, label="biz")
     assert key_resp.status_code == 201
     raw_key = key_resp.json()["api_key"]
 
@@ -122,9 +119,7 @@ async def test_enabled_user_auth_routes_accessible(client):
 
 async def test_auth_keys_create_unchanged(client, admin_headers):
     """Section 9.9 / 4.6: POST /auth/keys behavior unchanged."""
-    resp = await client.post(
-        "/auth/keys", json={"label": "regression"}, headers=admin_headers
-    )
+    resp = await create_key(client, label="regression")
     assert resp.status_code == 201
     body = resp.json()
     assert body["api_key"].startswith("mru_")
@@ -135,7 +130,7 @@ async def test_auth_keys_create_unchanged(client, admin_headers):
 
 async def test_auth_keys_list_unchanged(client, admin_headers):
     """Section 9.9 / 4.6: GET /auth/keys behavior unchanged."""
-    await client.post("/auth/keys", json={"label": "list-test"}, headers=admin_headers)
+    await create_key(client, label="list-test")
     resp = await client.get("/auth/keys", headers=admin_headers)
     assert resp.status_code == 200
     keys = resp.json()["keys"]
@@ -147,9 +142,7 @@ async def test_auth_keys_list_unchanged(client, admin_headers):
 
 async def test_auth_keys_revoke_unchanged(client, admin_headers, sample_files):
     """Section 9.9 / 4.6: DELETE /auth/keys/{id} behavior unchanged."""
-    created = await client.post(
-        "/auth/keys", json={"label": "revoke-test"}, headers=admin_headers
-    )
+    created = await create_key(client, label="revoke-test")
     key_id = created.json()["key_id"]
     raw_key = created.json()["api_key"]
 
@@ -181,9 +174,7 @@ async def test_admin_keys_list_includes_user_created_keys(
     assert user_resp.status_code == 201
 
     # Admin creates a key
-    admin_resp = await client.post(
-        "/auth/keys", headers=admin_headers, json={"label": "admin-key"}
-    )
+    admin_resp = await create_key(client, label="admin-key")
     assert admin_resp.status_code == 201
 
     # Admin list should include both
@@ -220,9 +211,7 @@ async def test_business_endpoints_work_with_admin_key(
     client, admin_headers, sample_files
 ):
     """Section 9.9 / 4.6: business endpoints work with admin-created key."""
-    key_resp = await client.post(
-        "/auth/keys", json={"label": "biz-admin"}, headers=admin_headers
-    )
+    key_resp = await create_key(client, label="biz-admin")
     raw_key = key_resp.json()["api_key"]
 
     resp = await client.post(
@@ -235,9 +224,7 @@ async def test_file_parse_endpoint_works_with_admin_key(
     client, admin_headers, sample_files
 ):
     """Section 9.9 / 4.6: POST /v1/file_parse behavior unchanged."""
-    key_resp = await client.post(
-        "/auth/keys", json={"label": "parse-key"}, headers=admin_headers
-    )
+    key_resp = await create_key(client, label="parse-key")
     raw_key = key_resp.json()["api_key"]
 
     resp = await client.post(
@@ -308,3 +295,13 @@ def test_jwt_secret_long_enough_starts_successfully(tmp_path):
     )
     app = create_app(settings=settings)
     assert app is not None
+
+
+async def test_disabled_user_auth_task_jwt_is_rejected(no_auth_client, sample_files):
+    """Task endpoints do not accept Bearer JWTs when user auth is disabled."""
+    resp = await no_auth_client.post(
+        "/v1/tasks",
+        headers={"Authorization": "Bearer not-a-real-token"},
+        files=sample_files,
+    )
+    assert resp.status_code == 401

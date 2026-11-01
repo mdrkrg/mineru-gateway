@@ -17,13 +17,12 @@ from mineru_gateway.main import create_app
 from mineru_gateway.upstream.client import UpstreamClient
 
 from tests.mock_upstream import create_mock_upstream, state as mock_state
+from tests.conftest import create_key
 
 
 async def test_full_lifecycle(client, admin_headers, app, upstream_client):
     # 1. Issue an API key with the admin token.
-    key = (
-        await client.post("/auth/keys", json={"label": "e2e"}, headers=admin_headers)
-    ).json()["api_key"]
+    key = (await create_key(client, label="e2e")).json()["api_key"]
     headers = {"X-API-Key": key}
 
     # 2. Submit an async task.
@@ -55,9 +54,7 @@ async def test_full_lifecycle(client, admin_headers, app, upstream_client):
 
 
 async def test_cancel_lifecycle(client, admin_headers):
-    key = (
-        await client.post("/auth/keys", json={"label": "e2e2"}, headers=admin_headers)
-    ).json()["api_key"]
+    key = (await create_key(client, label="e2e2")).json()["api_key"]
     headers = {"X-API-Key": key}
 
     files = [("files", ("doc.pdf", b"%PDF-1.4 e2e", "application/pdf"))]
@@ -100,13 +97,7 @@ async def test_protected_lifecycle_with_concurrency_cap(tmp_path):
         async with httpx.AsyncClient(
             transport=transport, base_url="http://testserver"
         ) as c:
-            key = (
-                await c.post(
-                    "/auth/keys",
-                    json={"label": "e2e-cap"},
-                    headers={"X-Admin-Token": "test-admin-token"},
-                )
-            ).json()["api_key"]
+            key = (await create_key(c, label="e2e-cap")).json()["api_key"]
             headers = {"X-API-Key": key}
 
             first = await c.post("/v1/tasks", headers=headers, files=files)

@@ -9,6 +9,8 @@ exists. Each test drives `retry_once` directly.
 
 from __future__ import annotations
 
+import uuid
+
 import os
 
 import pytest
@@ -21,19 +23,28 @@ from mineru_gateway.upstream.client import UpstreamClient
 from tests.mock_upstream import state as mock_state
 
 
-async def _seed_key(session):
+async def _seed_owner(session):
     from mineru_gateway.auth import service as auth_service
+    from mineru_gateway.models import User
 
-    record, _ = await auth_service.create_key(session, label="retry")
-    return record.id
+    user = User(
+        email=f"retry-{uuid.uuid4().hex[:8]}@example.com",
+        hashed_password="unusable",
+        is_active=True,
+        is_verified=True,
+    )
+    session.add(user)
+    await session.flush()
+    record, _ = await auth_service.create_key(session, user.id, label="retry")
+    return record.owner_id
 
 
-async def _retryable_task(session, cache, api_key_id, **overrides):
+async def _retryable_task(session, cache, owner_id, **overrides):
     writer = cache.create_streaming_cache()
     await writer.write_file_chunk("files", "a.pdf", "application/pdf", b"%PDF-1.4 data")
     cache_dir = await writer.finish({"tier": "basic"})
     fields = dict(
-        api_key_id=api_key_id,
+        owner_id=owner_id,
         status="retry_pending",
         upstream_url="http://mock-upstream",
         upstream_task_id="up-old",
@@ -51,8 +62,8 @@ async def test_retry_resubmits_when_upstream_healthy(app, upstream_client, tmp_p
     upstream = UpstreamClient(upstream_client)
     cache = FileCache(str(tmp_path))
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
-        task = await _retryable_task(session, cache, key_id)
+        owner_id = await _seed_owner(session)
+        task = await _retryable_task(session, cache, owner_id)
         task_id = task.id
 
     await retry.retry_once(db, upstream, cache, max_retries=3)
@@ -78,8 +89,8 @@ async def test_retry_skips_when_upstream_unhealthy(app, upstream_client, tmp_pat
     upstream = UpstreamClient(upstream_client)
     cache = FileCache(str(tmp_path))
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
-        task = await _retryable_task(session, cache, key_id)
+        owner_id = await _seed_owner(session)
+        task = await _retryable_task(session, cache, owner_id)
         task_id = task.id
 
     mock_state.status = "overloaded"
@@ -97,8 +108,8 @@ async def test_retry_marks_failed_after_max_retries(app, upstream_client, tmp_pa
     upstream = UpstreamClient(upstream_client)
     cache = FileCache(str(tmp_path))
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
-        task = await _retryable_task(session, cache, key_id, retry_count=2)
+        owner_id = await _seed_owner(session)
+        task = await _retryable_task(session, cache, owner_id, retry_count=2)
         task_id = task.id
         cache_dir = str(task.cache_dir)
 
@@ -120,8 +131,8 @@ async def test_retry_marks_failed_on_malformed_response(app, upstream_client, tm
     upstream = UpstreamClient(upstream_client)
     cache = FileCache(str(tmp_path))
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
-        task = await _retryable_task(session, cache, key_id)
+        owner_id = await _seed_owner(session)
+        task = await _retryable_task(session, cache, owner_id)
         task_id = task.id
 
     mock_state.submit_malformed = True
@@ -140,8 +151,8 @@ async def test_retry_marks_failed_on_non_json_202(app, upstream_client, tmp_path
     upstream = UpstreamClient(upstream_client)
     cache = FileCache(str(tmp_path))
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
-        task = await _retryable_task(session, cache, key_id)
+        owner_id = await _seed_owner(session)
+        task = await _retryable_task(session, cache, owner_id)
         task_id = task.id
 
     mock_state.submit_raw_body = "not json"
@@ -162,8 +173,8 @@ async def test_retry_captures_upstream_error_body_on_reject(
     upstream = UpstreamClient(upstream_client)
     cache = FileCache(str(tmp_path))
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
-        task = await _retryable_task(session, cache, key_id)
+        owner_id = await _seed_owner(session)
+        task = await _retryable_task(session, cache, owner_id)
         task_id = task.id
 
     mock_state.submit_status = 400
@@ -185,8 +196,8 @@ async def test_retry_consumes_retry_on_transient_http_response(
     upstream = UpstreamClient(upstream_client)
     cache = FileCache(str(tmp_path))
     async with db.session_factory() as session:
-        key_id = await _seed_key(session)
-        task = await _retryable_task(session, cache, key_id)
+        owner_id = await _seed_owner(session)
+        task = await _retryable_task(session, cache, owner_id)
         task_id = task.id
         cache_dir = str(task.cache_dir)
 

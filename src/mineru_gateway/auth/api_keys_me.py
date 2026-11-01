@@ -31,6 +31,7 @@ async def list_my_keys(
         keys=[
             ApiKeyInfo(
                 id=r.id,
+                owner_id=r.owner_id,
                 api_key_prefix=r.key_prefix,
                 label=r.label,
                 created_at=r.created_at,
@@ -59,7 +60,7 @@ async def create_my_key(
     GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS (default false -> 403 for
     unverified users).
     """
-    record, raw = await service.create_key_for_user(
+    record, raw = await service.create_key(
         session, user.id, label=body.label, expires_at=body.expires_at
     )
     return ApiKeyCreated(

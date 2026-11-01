@@ -20,6 +20,7 @@ from tests.mock_v1_contract import inline_result_payload
 from mineru_gateway import models
 from mineru_gateway.models import ApiKey
 from mineru_gateway.tasks import service
+from tests.conftest import create_key
 
 
 async def _submit(client, api_key, data=None):
@@ -74,9 +75,7 @@ async def test_get_task_detail_unknown_id_404(client, api_key):
 async def test_get_task_detail_enforces_ownership(client, admin_headers, api_key):
     """§3.3: 另一个 Key 不能查看不属于自己的任务 (404, 不泄露存在性)."""
     task_id = await _submit(client, api_key)
-    other = (
-        await client.post("/auth/keys", json={"label": "other"}, headers=admin_headers)
-    ).json()["api_key"]
+    other = (await create_key(client, label="other")).json()["api_key"]
     resp = await client.get(f"/v1/tasks/{task_id}", headers={"X-API-Key": other})
     assert resp.status_code == 404
 
@@ -95,9 +94,7 @@ async def test_list_only_returns_own_tasks(client, admin_headers, api_key):
     """§3.3: 列表仅返回当前 Key 拥有的任务."""
     await _submit(client, api_key)
     await _submit(client, api_key)
-    other = (
-        await client.post("/auth/keys", json={"label": "o2"}, headers=admin_headers)
-    ).json()["api_key"]
+    other = (await create_key(client, label="o2")).json()["api_key"]
     await _submit(client, other)
 
     resp = await client.get("/v1/tasks", headers={"X-API-Key": api_key})
@@ -382,9 +379,7 @@ async def test_download_requires_auth(client):
 async def test_get_result_enforces_ownership(client, admin_headers, api_key):
     """§3.3: 非拥有者不得获取结果 (404)."""
     task_id = await _submit(client, api_key)
-    other = (
-        await client.post("/auth/keys", json={"label": "o3"}, headers=admin_headers)
-    ).json()["api_key"]
+    other = (await create_key(client, label="o3")).json()["api_key"]
     resp = await client.get(f"/v1/tasks/{task_id}/result", headers={"X-API-Key": other})
     assert resp.status_code == 404
 
@@ -396,6 +391,7 @@ async def test_get_result_409_when_no_upstream_task_id(client, api_key):
         key = (await session.execute(select(ApiKey))).scalars().first()
         task = await service.create(
             session,
+            owner_id=key.owner_id,
             api_key_id=key.id,
             status="pending",
             upstream_url="http://mock-upstream",
@@ -442,9 +438,7 @@ async def test_cancel_only_allowed_for_pending(client, api_key):
 async def test_cancel_enforces_ownership(client, admin_headers, api_key):
     """§3.3: 非拥有者不能取消他人任务 (404)."""
     task_id = await _submit(client, api_key)
-    other = (
-        await client.post("/auth/keys", json={"label": "o4"}, headers=admin_headers)
-    ).json()["api_key"]
+    other = (await create_key(client, label="o4")).json()["api_key"]
     resp = await client.delete(f"/v1/tasks/{task_id}", headers={"X-API-Key": other})
     assert resp.status_code == 404
 
@@ -650,6 +644,7 @@ async def test_result_download_no_filenames_keeps_upstream_disposition(client, a
         key = (await session.execute(select(ApiKey))).scalars().first()
         task = await service.create(
             session,
+            owner_id=key.owner_id,
             api_key_id=key.id,
             status="completed",
             upstream_url="http://mock-upstream",
@@ -771,9 +766,7 @@ async def test_result_zip_all_non_downloadable(client, api_key):
 async def test_result_zip_not_owned(client, admin_headers, api_key):
     """§1.4 Z4: task owned by Key-A, requested by Key-B -> 404."""
     tid, _ = await _submit_and_set_status(client, api_key, "completed")
-    other_key = (
-        await client.post("/auth/keys", json={"label": "other"}, headers=admin_headers)
-    ).json()["api_key"]
+    other_key = (await create_key(client, label="other")).json()["api_key"]
 
     resp = await client.post(
         "/v1/tasks/result-zip",
@@ -1010,9 +1003,7 @@ async def test_batch_cancel_mixed_statuses(client, api_key):
 
 async def test_batch_cancel_not_found_and_not_owned(client, admin_headers, api_key):
     """§2.5 C3: 1 non-existent, 1 owned by other key -> cancelled_count=0, 2 not_found."""
-    other_key = (
-        await client.post("/auth/keys", json={"label": "o2"}, headers=admin_headers)
-    ).json()["api_key"]
+    other_key = (await create_key(client, label="o2")).json()["api_key"]
     tid_other, _ = await _submit_and_set_status(client, other_key, "pending")
 
     fake_id = str(uuid.uuid4())
@@ -1110,6 +1101,7 @@ async def test_result_zip_missing_upstream_task_id(client, api_key):
         key = (await session.execute(select(ApiKey))).scalars().first()
         task = await service.create(
             session,
+            owner_id=key.owner_id,
             api_key_id=key.id,
             status="completed",
             upstream_url="http://mock-upstream",
@@ -1202,9 +1194,7 @@ async def test_result_zip_ownership_checked_before_downloadability(
 ):
     """§1.2 steps 3-4 review: ownership check (404) takes priority over downloadability (409)."""
     tid_owned, _ = await _submit_and_set_status(client, api_key, "processing")
-    other_key = (
-        await client.post("/auth/keys", json={"label": "other"}, headers=admin_headers)
-    ).json()["api_key"]
+    other_key = (await create_key(client, label="other")).json()["api_key"]
 
     resp = await client.post(
         "/v1/tasks/result-zip",
@@ -1377,6 +1367,7 @@ async def test_detail_has_no_result_without_upstream_id(client, api_key):
         key = (await session.execute(select(ApiKey))).scalars().first()
         task = await service.create(
             session,
+            owner_id=key.owner_id,
             api_key_id=key.id,
             status="failed",
             upstream_url="http://mock-upstream",

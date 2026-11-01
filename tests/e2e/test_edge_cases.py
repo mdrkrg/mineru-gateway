@@ -13,6 +13,7 @@ import httpx
 import pytest
 
 from tests.e2e.conftest import _start_gateway, sample_files
+from tests.e2e.conftest import create_key
 
 
 @pytest.mark.e2e
@@ -33,12 +34,7 @@ async def test_rate_limit_real_http(mock_upstream_url, mock_control, tmp_path):
     )
     try:
         async with httpx.AsyncClient(base_url=url) as c:
-            resp = await c.post(
-                "/auth/keys",
-                json={"label": "e2e-rl"},
-                headers={"X-Admin-Token": "e2e-admin-token"},
-            )
-            key = resp.json()["api_key"]
+            key = await create_key(c, label="e2e-rl")
             h = {"X-API-Key": key}
 
             files = sample_files()

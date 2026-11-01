@@ -5,9 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.dependencies import get_session, require_api_key
+from ..auth.dependencies import get_session, require_task_principal
+from ..auth.principals import TaskPrincipal, ensure_can_create_tasks
 from ..config import Settings
-from ..models import ApiKey
 from ..tasks.cache import FileCache
 from ..upstream.client import UpstreamClient
 from .handler import handle_file_parse, handle_task_submission
@@ -34,7 +34,7 @@ async def _cache(req: Request) -> FileCache:
 @router.post("/tasks")
 async def submit_task(
     request: Request,
-    api_key: ApiKey | None = Depends(require_api_key),
+    principal: TaskPrincipal | None = Depends(require_task_principal),
     session: AsyncSession = Depends(get_session),
     upstream: UpstreamClient = Depends(_upstream),
     limiter=Depends(_limiter),
@@ -42,9 +42,10 @@ async def submit_task(
     settings: Settings = Depends(_settings),
     x_idempotency_key: str | None = Header(None, alias="X-Idempotency-Key"),
 ):
+    ensure_can_create_tasks(principal, settings)
     return await handle_task_submission(
         request=request,
-        api_key=api_key,
+        principal=principal,
         session=session,
         upstream=upstream,
         limiter=limiter,
@@ -57,16 +58,17 @@ async def submit_task(
 @router.post("/file_parse")
 async def parse_file(
     request: Request,
-    api_key: ApiKey | None = Depends(require_api_key),
+    principal: TaskPrincipal | None = Depends(require_task_principal),
     session: AsyncSession = Depends(get_session),
     upstream: UpstreamClient = Depends(_upstream),
     limiter=Depends(_limiter),
     cache: FileCache = Depends(_cache),
     settings: Settings = Depends(_settings),
 ):
+    ensure_can_create_tasks(principal, settings)
     return await handle_file_parse(
         request=request,
-        api_key=api_key,
+        principal=principal,
         session=session,
         upstream=upstream,
         limiter=limiter,

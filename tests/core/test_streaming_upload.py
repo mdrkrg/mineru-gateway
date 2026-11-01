@@ -21,6 +21,7 @@ from mineru_gateway.main import create_app
 from mineru_gateway.models import TaskRecord
 
 from tests.mock_upstream import create_mock_upstream, state as mock_state
+from tests.conftest import create_key
 
 
 # ---------------------------------------------------------------------------
@@ -625,11 +626,7 @@ async def test_t6_over_limit_rejected(tmp_path):
 
     gen = _make_streaming_app(tmp_path, max_upload_size=limit)
     async for client, app, settings in gen:
-        r = await client.post(
-            "/auth/keys",
-            json={"label": "t6"},
-            headers={"X-Admin-Token": "test-admin-token"},
-        )
+        r = await create_key(client, label="t6")
         api_key = r.json()["api_key"]
 
         files = [("files", ("big.bin", b"x" * file_size, "application/octet-stream"))]
@@ -663,11 +660,7 @@ async def test_t7_exact_limit_passes(tmp_path):
     limit = 80_000
     gen = _make_streaming_app(tmp_path, max_upload_size=limit)
     async for client, app, settings in gen:
-        r = await client.post(
-            "/auth/keys",
-            json={"label": "t7"},
-            headers={"X-Admin-Token": "test-admin-token"},
-        )
+        r = await create_key(client, label="t7")
         api_key = r.json()["api_key"]
 
         files = [("files", ("exact.bin", b"y" * limit, "application/octet-stream"))]
@@ -695,11 +688,7 @@ async def test_t8_multi_file_cumulative_over_limit(tmp_path):
     per_file = 25_000  # 3 * 25000 = 75000 > 60000
     gen = _make_streaming_app(tmp_path, max_upload_size=limit)
     async for client, app, settings in gen:
-        r = await client.post(
-            "/auth/keys",
-            json={"label": "t8"},
-            headers={"X-Admin-Token": "test-admin-token"},
-        )
+        r = await create_key(client, label="t8")
         api_key = r.json()["api_key"]
 
         files = [
@@ -837,11 +826,7 @@ async def test_t10_upstream_rejection_cleans_cache(tmp_path):
 
     gen = _make_streaming_app(tmp_path, max_upload_size=100_000)
     async for client, app, settings in gen:
-        r = await client.post(
-            "/auth/keys",
-            json={"label": "t10"},
-            headers={"X-Admin-Token": "test-admin-token"},
-        )
+        r = await create_key(client, label="t10")
         api_key = r.json()["api_key"]
 
         resp = await client.post(
@@ -952,17 +937,17 @@ async def test_t11_idempotency_conflict_releases_cache(client, api_key, caplog):
     headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
 
     original_create = task_service.create
-    original_get = task_service.get_by_idempotency_key
+    original_get = task_service.get_by_idempotency
     call_count = 0
     lock = asyncio.Lock()
     first_committed = False
 
-    async def fake_get_by_key(session, key_id, key):
+    async def fake_get_by_key(session, owner_id, key):
         nonlocal call_count
         call_count += 1
         if call_count <= 2:
             return None
-        return await original_get(session, key_id, key)
+        return await original_get(session, owner_id, key)
 
     async def racing_create(session, **fields):
         nonlocal first_committed
@@ -971,15 +956,13 @@ async def test_t11_idempotency_conflict_releases_cache(client, api_key, caplog):
                 raise IntegrityError(
                     "mock",
                     {},
-                    Exception("UNIQUE constraint failed: uq_tasks_key_idempotency"),
+                    Exception("UNIQUE constraint failed: uq_tasks_owner_idempotency"),
                 )
             result = await original_create(session, **fields)
             first_committed = True
             return result
 
-    with patch.object(
-        task_service, "get_by_idempotency_key", side_effect=fake_get_by_key
-    ):
+    with patch.object(task_service, "get_by_idempotency", side_effect=fake_get_by_key):
         with patch.object(task_service, "create", side_effect=racing_create):
             with patch.object(
                 FileCache, "release", new_callable=AsyncMock
@@ -1093,11 +1076,7 @@ async def test_t17_cache_writer_cancel_on_disk_error(tmp_path):
 async def test_t18_interleaved_file_form_parts(tmp_path):
     gen = _make_streaming_app(tmp_path, max_upload_size=100_000)
     async for client, app, settings in gen:
-        r = await client.post(
-            "/auth/keys",
-            json={"label": "t18"},
-            headers={"X-Admin-Token": "test-admin-token"},
-        )
+        r = await create_key(client, label="t18")
         api_key = r.json()["api_key"]
 
         files = [
@@ -1138,13 +1117,7 @@ async def test_t19_duplicate_filename_parts_kept_distinct(tmp_path):
     """
     gen = _make_streaming_app(tmp_path, max_upload_size=100_000)
     async for client, app, settings in gen:
-        key = (
-            await client.post(
-                "/auth/keys",
-                json={"label": "t19"},
-                headers={"X-Admin-Token": "test-admin-token"},
-            )
-        ).json()["api_key"]
+        key = (await create_key(client, label="t19")).json()["api_key"]
 
         files = [
             ("files", ("dup.pdf", b"AAAA", "application/pdf")),
@@ -1174,11 +1147,7 @@ async def test_t8b_per_file_limit_rejected(tmp_path):
         tmp_path, max_upload_size=total_limit, max_file_size=file_limit
     )
     async for client, app, settings in gen:
-        r = await client.post(
-            "/auth/keys",
-            json={"label": "t8b"},
-            headers={"X-Admin-Token": "test-admin-token"},
-        )
+        r = await create_key(client, label="t8b")
         api_key = r.json()["api_key"]
 
         files = [

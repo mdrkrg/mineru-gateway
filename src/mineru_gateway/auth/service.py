@@ -31,16 +31,22 @@ def generate_raw_key() -> str:
 
 async def create_key(
     session: AsyncSession,
+    user_id: uuid.UUID,
     label: str | None = None,
     expires_at: datetime | None = None,
 ) -> tuple[ApiKey, str]:
-    """Create a key, returning (record, plaintext)."""
+    """Create a key owned by ``user_id``, returning (record, plaintext).
+
+    Every key has exactly one owner: admin-issued keys belong to a real user
+    too, so there is no ownerless key variant.
+    """
     raw = generate_raw_key()
     record = ApiKey(
         key_hash=_hash_key(raw),
         key_prefix=raw[:_PREFIX_LEN],
         label=label or "",
         expires_at=expires_at,
+        owner_id=user_id,
     )
     session.add(record)
     await session.commit()
@@ -83,27 +89,6 @@ async def verify_key(session: AsyncSession, raw_key: str) -> ApiKey | None:
 
 
 # ===== Owner-scoped API Key methods (Section 5.2) =====
-
-
-async def create_key_for_user(
-    session: AsyncSession,
-    user_id: uuid.UUID,
-    label: str | None = None,
-    expires_at: datetime | None = None,
-) -> tuple[ApiKey, str]:
-    """Section 5.2: create key with owner_id = user_id, return (record, raw)."""
-    raw = generate_raw_key()
-    record = ApiKey(
-        key_hash=_hash_key(raw),
-        key_prefix=raw[:_PREFIX_LEN],
-        label=label or "",
-        expires_at=expires_at,
-        owner_id=user_id,
-    )
-    session.add(record)
-    await session.commit()
-    await session.refresh(record)
-    return record, raw
 
 
 async def list_keys_for_user(session: AsyncSession, user_id: uuid.UUID) -> list[ApiKey]:

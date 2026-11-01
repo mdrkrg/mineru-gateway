@@ -11,6 +11,7 @@ from __future__ import annotations
 
 
 from mineru_gateway.limiter.memory import MemoryTokenBucket
+from tests.conftest import create_key
 
 
 async def test_acquire_is_async_and_blocks_after_burst():
@@ -43,9 +44,7 @@ async def test_prune_removes_idle_keys():
 
 async def test_rate_limit_enforced_via_endpoint(client, admin_headers, sample_files):
     """§3.5: 端到端 — 单 Key 高频提交耗尽突发预算后返回 429 + Retry-After."""
-    created = (
-        await client.post("/auth/keys", json={"label": "rl"}, headers=admin_headers)
-    ).json()
+    created = (await create_key(client, label="rl")).json()
     raw = created["api_key"]
     # burst defaults to rate*3 = 30; drive enough requests to hit 429.
     hit_429 = False

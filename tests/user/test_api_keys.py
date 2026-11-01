@@ -16,6 +16,7 @@ import pytest
 from asgi_lifespan import LifespanManager
 
 from mineru_gateway.main import create_app
+from tests.conftest import create_key
 
 
 # ===== Section 4.4 / 9.6: POST /me/api-keys (create) =====
@@ -144,7 +145,7 @@ async def test_list_my_keys_excludes_admin_created_keys(
 ):
     """Section 4.4 / 6.1: GET /me/api-keys excludes keys with owner_id=NULL (admin-created)."""
     # Admin creates a key (owner_id = NULL)
-    await client.post("/auth/keys", headers=admin_headers, json={"label": "admin-key"})
+    await create_key(client, label="admin-key")
 
     # User creates their own key
     await client.post("/me/api-keys", headers=user_headers, json={"label": "user-key"})
@@ -188,9 +189,7 @@ async def test_revoke_my_key_returns_204(client, user_headers):
 async def test_revoke_key_not_owned_returns_404(client, admin_headers, user_headers):
     """Section 9.6 / 4.4: revoking a key not owned -> 404 (no enumeration)."""
     # Admin creates a key (owner_id = NULL)
-    admin_key = await client.post(
-        "/auth/keys", headers=admin_headers, json={"label": "admin-only"}
-    )
+    admin_key = await create_key(client, label="admin-only")
     admin_key_id = admin_key.json()["key_id"]
 
     # User tries to revoke admin's key -> 404

@@ -54,6 +54,9 @@ def main() -> None:
         enable_background=False,
         create_tables=True,
         json_logs=False,
+        # Admin keys belong to a real user; the load test registers owners.
+        user_auth_enabled=True,
+        open_registration=True,
     )
     upstream_client = httpx.AsyncClient(base_url=settings.upstream_url)
     app = create_app(settings=settings, upstream_client=upstream_client)

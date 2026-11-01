@@ -13,6 +13,7 @@ import httpx
 import pytest
 
 from tests.e2e.conftest import _start_gateway, sample_files
+from tests.e2e.conftest import create_key
 
 # ---------------------------------------------------------------------------
 # Default gateway fixture (healthy upstream) - uses e2e_gateway_url
@@ -64,12 +65,7 @@ async def test_health_returns_503_when_upstream_unreachable(
     )
     try:
         async with httpx.AsyncClient(base_url=url) as c:
-            resp = await c.post(
-                "/auth/keys",
-                json={"label": "e2e-health"},
-                headers={"X-Admin-Token": "e2e-admin-token"},
-            )
-            key = resp.json()["api_key"]
+            key = await create_key(c, label="e2e-health")
             h = {"X-API-Key": key}
 
             health = await c.get("/v1/health")

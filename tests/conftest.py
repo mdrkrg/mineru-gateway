@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 
 import httpx
 import pytest
@@ -10,6 +11,7 @@ from asgi_lifespan import LifespanManager
 
 from mineru_gateway.config import Settings
 from mineru_gateway.main import create_app
+from mineru_gateway.models import User
 
 from .mock_upstream import create_mock_upstream, state as mock_state
 
@@ -90,13 +92,70 @@ def admin_headers() -> dict:
     return {"X-Admin-Token": ADMIN_TOKEN}
 
 
-@pytest.fixture
-async def api_key(client, admin_headers) -> str:
-    resp = await client.post(
-        "/auth/keys", json={"label": "test"}, headers=admin_headers
+async def create_key(
+    client,
+    *,
+    label: str = "test",
+    email: str | None = None,
+    expires_at: str | None = None,
+) -> httpx.Response:
+    """Issue an admin key for a fresh (or named) verified user.
+
+    Admin keys always belong to a real user, so the helper creates the owner
+    when no email is given. Returns the raw response so callers can keep
+    asserting on the API shape.
+    """
+    if email is None:
+        email = f"key-owner-{uuid.uuid4().hex[:12]}@example.com"
+        async with client._transport.app.state.db.session_factory() as session:
+            session.add(
+                User(
+                    email=email,
+                    hashed_password="unusable",
+                    display_name="Key Owner",
+                    is_active=True,
+                    is_verified=True,
+                )
+            )
+            await session.commit()
+    body: dict = {"label": label, "email": email}
+    if expires_at is not None:
+        body["expires_at"] = expires_at
+    return await client.post(
+        "/auth/keys", json=body, headers={"X-Admin-Token": ADMIN_TOKEN}
     )
+
+
+@pytest.fixture
+async def api_key(client) -> str:
+    resp = await create_key(client)
     assert resp.status_code == 201, resp.text
     return resp.json()["api_key"]
+
+
+@pytest.fixture
+def miss_first_lookup(monkeypatch):
+    """Make a task-idempotency pre-check miss once, as in a concurrent insert.
+
+    Two submissions can both pass the pre-check while the winner is still
+    talking to upstream; the loser then has to recover from the insert
+    conflict (specs/task-ownership.md §8).
+    """
+
+    def _install(module, name: str) -> dict:
+        real = getattr(module, name)
+        calls = {"calls": 0}
+
+        async def miss_once(session, scope_id, idempotency_key):
+            calls["calls"] += 1
+            if calls["calls"] == 1:
+                return None
+            return await real(session, scope_id, idempotency_key)
+
+        monkeypatch.setattr(module, name, miss_once)
+        return calls
+
+    return _install
 
 
 @pytest.fixture

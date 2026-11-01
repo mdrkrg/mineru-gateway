@@ -16,6 +16,7 @@ from mineru_gateway.config import Settings
 from mineru_gateway.main import create_app
 
 from tests.mock_upstream import create_mock_upstream
+from tests.conftest import create_key
 
 
 async def _client_with_cap(tmp_path, cap):
@@ -39,11 +40,7 @@ async def _client_with_cap(tmp_path, cap):
 
 
 async def _issue_key(client):
-    resp = await client.post(
-        "/auth/keys",
-        json={"label": "cap"},
-        headers={"X-Admin-Token": "test-admin-token"},
-    )
+    resp = await create_key(client, label="cap")
     return resp.json()["api_key"]
 
 

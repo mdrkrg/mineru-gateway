@@ -5,6 +5,19 @@ from __future__ import annotations
 import asyncio
 import time
 
+from ..auth.principals import AuthType, TaskPrincipal
+
+
+def bucket_key(principal: TaskPrincipal) -> str:
+    """Rate-limit bucket for a task request.
+
+    API clients keep per-key buckets; JWTs are per-user because there is no key
+    to scope them to.
+    """
+    if principal.auth_type is AuthType.API_KEY:
+        return f"key:{principal.api_key_id}"
+    return f"user:{principal.owner_id}"
+
 
 class MemoryTokenBucket:
     """Process-local token bucket. Only valid under single instance / worker."""

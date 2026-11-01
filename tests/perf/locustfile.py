@@ -48,10 +48,15 @@ _MINIMAL_PDF = (
 
 
 def _api_key(user) -> str:
+    """Register an owner, then issue an admin key for them."""
     if not hasattr(user, "_cached_key"):
+        email = f"load-{uuid.uuid4().hex[:8]}@example.com"
+        user.client.post(
+            "/auth/register", json={"email": email, "password": "L0ad!pass"}
+        )
         resp = user.client.post(
             "/auth/keys",
-            json={"label": f"load-{uuid.uuid4().hex[:6]}"},
+            json={"label": f"load-{uuid.uuid4().hex[:6]}", "email": email},
             headers={"X-Admin-Token": "perf-token"},
         )
         if resp.status_code == 201:
