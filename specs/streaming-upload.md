@@ -96,18 +96,18 @@ _extract_multipart_streaming(request, max_upload_size, max_file_size, cache)
 ```
 接收 POST /v1/tasks 请求
 
-1. 解析 X-API-Key 请求头
-   如果 Key 无效且不允许匿名 → 返回 401
+1. 解析 `X-API-Key` 或 Bearer JWT
+   如果凭据无效且不允许匿名 → 返回 401
 
 2. 如果 是认证请求 且 提供了有效 X-Idempotency-Key:
-     在数据库中查询 (api_key, idempotency_key)
+     在数据库中查询 (owner_id, idempotency_key)
      如果 命中:
          从已有记录重构响应（status 始终为 "pending"）
          附加 X-Idempotency-Key-Replayed: true
          返回 202                           ← 终止，不读取 body
 
 3. 如果 是认证请求:
-     按 key 扣减令牌桶
+     按限流桶扣减令牌
       如果 无可用令牌 → 返回 429 Retry-After: 60
 
 4. 流式解析 multipart body:                          ← 变更

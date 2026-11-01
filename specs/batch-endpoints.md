@@ -3,11 +3,11 @@
 > 本规约定义两个轻量后端端点——前者聚合 zip 下载，后者批量取消——均不引入新数据模型、不新增数据库迁移。
 
 > **上下文引用**（项目内已有行为）：
-> - `get_owned(session, task_id, api_key_id)` — 按 `id` + 所属 Key 检索 task；不存在或不属于当前 Key → 返回 `None`
+> - `get_in_scope(session, task_id, owner_id)` — 按 `id` + `owner_id` 检索 task；不存在或不在作用域 → 返回 `None`
 > - `mark_cancelled(session, task)` — 将 task 状态置为 `cancelled`、记录完成时间、返回被释放的 `cache_dir`
 > - `cache.release(cache_dir)` — 删除 task 暂存文件目录
 > - `upstream.cancel_task(upstream_task_id)` — 向 MinerU 上游发送取消（best-effort，异常吞没）
-> - `require_api_key` — FastAPI 依赖项，从 `X-API-Key` 头提取并验证 API Key
+> - `require_task_principal` — FastAPI 依赖项，从 `X-API-Key` 或 Bearer JWT 解析任务调用方
 
 ## 1. `POST /v1/tasks/result-zip` — 多任务结果 zip 下载
 
@@ -35,10 +35,10 @@ Content-Type: application/json
 
 ### 1.2 处理
 
-1. **认证**：`require_api_key` 依赖项验证 `X-API-Key`。无效或缺失 → `401`。
+1. **认证**：`require_task_principal` 验证 `X-API-Key` 或 Bearer JWT。无效或缺失 → `401`。
 2. **输入校验**：`task_ids` 长度 = 0、> 200 或包含重复值 → `422`。
-3. **所有权批量校验**：遍历 `task_ids`，每个 task 执行 `get_owned`（同时校验 `id` 存在 + `api_key_id` 匹配）。
-   - 若任意 task 不属于当前 Key → **`404`**（整请求拒绝，不区分单个与全部）。
+3. **所有权批量校验**：遍历 `task_ids`，每个 task 执行 `get_in_scope`（同时校验 `id` 存在 + owner 匹配）。
+   - 若任意 task 不属于当前调用方作用域 → **`404`**（整请求拒绝，不区分单个与全部）。
    - 原因：若允许跳过无权限 task，则此端点将成为他人的 task 所有权探测泄露源。
 4. **可下载性校验**：从步骤 3 通过的 task 中全部校验：
    - 须同时满足 `status IN ('completed', 'partial')` 且 `upstream_task_id IS NOT NULL`
@@ -93,8 +93,8 @@ HTTP body 为完整 zip。客户端应将其视为标准 zip 下载。zip 最后
 
 | 状态码 | 条件 | 响应体 |
 |:---:|------|--------|
-| `401` | 未提供有效 API Key | `{"detail": "API key required"}` |
-| `404` | 任一 task_id 不存在或不属于当前 Key | `{"detail": "Task not found for one or more task_ids"}` |
+| `401` | 未提供有效凭据（`X-API-Key` 或 JWT） | `{"detail": "Authentication required"}` |
+| `404` | 任一 task_id 不存在或不属于当前 owner | `{"detail": "Task not found for one or more task_ids"}` |
 | `409` | 提交的 tasks 中存在非 completed/partial 或缺少 upstream_task_id 的 task | `{"detail": "One or more tasks are not available for download", "non_downloadable": [{"task_id": "..", "status": "..", "reason": "not_completed"\|"missing_upstream_task_id"}]}` |
 | `422` | `task_ids` 为空数组、包含重复值或长度 > 200 | FastAPI 自动校验的 ValidationError |
 
@@ -119,7 +119,7 @@ HTTP body 为完整 zip。客户端应将其视为标准 zip 下载。zip 最后
 
 验证：HTTP `409`。响应体 `non_downloadable` 含 3 条 `not_completed`。
 
-**Z4 — task_id 不属于当前 Key**
+**Z4 — task_id 不属于当前 owner**
 Key-A 创建 task-1。Key-B 提交 `{"task_ids": [task-1.id]}`。
 
 验证：HTTP `404`。响应体含 `"Task not found for one or more task_ids"`。
@@ -188,11 +188,11 @@ Content-Type: application/json
 
 ### 2.2 处理
 
-1. **认证**：`require_api_key` 依赖项验证 `X-API-Key`。无效或缺失 → `401`。
+1. **认证**：`require_task_principal` 验证 `X-API-Key` 或 Bearer JWT。无效或缺失 → `401`。
 2. **输入校验**：`task_ids` 为空、包含重复值或长度 > 200 → `422`。
 3. **逐 task 处理**（各 task 之间独立，一个失败不影响其他）：
-   a. 按 `task_id` + `api_key_id` 查询 task（`get_owned`）
-   b. 若 task 不存在或不属于当前 Key → 记录错误（`"not_found"`），不创建 `TaskRecord` 操作，继续下一个
+   a. 按 `task_id` + `owner_id` 查询 task（`get_in_scope`）
+   b. 若 task 不存在或不属于当前调用方作用域 → 记录错误（`"not_found"`），不创建 `TaskRecord` 操作，继续下一个
    c. 若 task 存在但 `status NOT IN ('pending', 'processing')` → 记录错误（`"not_cancellable"` + 当前 status），继续下一个
    d. 若 task 处于 `pending` 或 `processing` → 执行现有取消逻辑：
       - 若 `upstream_task_id` 非空 → 尝试 `upstream.cancel_task(...)`（best-effort，异常吞没）
@@ -230,7 +230,7 @@ Content-Type: application/json
 - `cancelled_count` — 实际成功取消的 task 数
 - `cancelled_ids` — 成功取消的 task ID 列表
 - `errors` — 未能取消的 task 及原因：
-  - `not_found` — task 不存在或不属于当前 Key
+  - `not_found` — task 不存在或不属于当前 owner
   - `not_cancellable` — task 状态不是 `pending` / `processing`（含 `current_status` 字段告知当前状态）
 
 #### 错误
@@ -273,8 +273,8 @@ Content-Type: application/json
 | 约束 | 说明 |
 |------|------|
 | 端点路径 | `POST /v1/tasks/result-zip` 和 `POST /v1/tasks/cancel` |
-| 认证 | 请求须携带有效 `X-API-Key`；服务端对每个 `task_id` 校验所属权 |
-| 权限隔离 | `result-zip`：任一 `task_id` 不属于当前 Key → 整请求返回 `404`（防所有权探测泄露）。`cancel`：无权限的 task 在 `errors` 中记录 `not_found`，其他 task 照常处理 |
+| 认证 | 请求须携带有效 `X-API-Key` 或 JWT；服务端对每个 `task_id` 校验所属权 |
+| 权限隔离 | `result-zip`：任一 `task_id` 不属于当前调用方作用域 → 整请求返回 `404`（防所有权探测泄露）。`cancel`：无权限的 task 在 `errors` 中记录 `not_found`，其他 task 照常处理 |
 | 数据模型 | 不引入新的数据库表、列或迁移 |
 | 第三方依赖 | 不引入新的第三方 Python 包 |
 | 限流 | 两个端点不额外施加限流（不记录操作到限流 token bucket） |

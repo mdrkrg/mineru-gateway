@@ -93,13 +93,13 @@ the same internal layout - **routes / service / schemas** is the canonical split
 | `schemas.py` | shared Pydantic schemas |
 | `middleware.py` | pure-ASGI `RequestLoggingMiddleware` (one JSON log per request, `x-request-id`) |
 | `logging_config.py` | structured JSON logging setup |
-| `auth/` | API keys (default) + opt-in JWT/OAuth via `fastapi-users` |
+| `auth/` | API keys + opt-in JWT/OAuth via `fastapi-users`; task principals resolve JWT or key to an owner |
 | `proxy/` | transparent passthrough of `/v1/file_parse` and `/v1/tasks`; streaming multipart parser for uploads |
 | `tasks/` | task CRUD + batch, `FileCache` for staged uploads, `CacheWriter` for streaming writes |
 | `background/` | `status_sync`, `retry`, `cleanup` asyncio loops |
 | `upstream/` | `httpx` wrapper + `/v1/health` aggregation |
 | `health/` | aggregated `/v1/health` endpoint |
-| `limiter/` | in-memory per-key token bucket |
+| `limiter/` | in-memory token bucket (per key, or per user for JWT) |
 | `utils/` | small helpers (e.g. `uuid.py`) |
 
 ### Where things live when adding a feature
@@ -198,6 +198,6 @@ Before making non-trivial design changes, read the relevant doc:
 - `specs/mvp-implementation.md` - MVP feature spec
 - `specs/streaming-upload.md` - streaming multipart upload design
 - `specs/batch-endpoints.md`, `specs/idempotent-submission.md`,
-  `specs/user-management-and-oauth.md` - feature specs
+  `specs/user-management-and-oauth.md`, `specs/task-ownership.md` - feature specs
 - `plans/mvp-implementation-plan.md`, `plans/multi-worker-scaling.md`,
   `plans/future-enhancements.md` - roadmaps

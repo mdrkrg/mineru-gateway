@@ -4,6 +4,7 @@
 > 当前 MinerU 4.0 `/v1` 契约以 `docs/mineru-reference.md` 为准，后续实现的
 > 幂等提交、统计、用户体系/OAuth 和流式上传见对应 `specs/` 文档。
 > 分阶段实施记录见 `plans/mvp-implementation-plan.md`。
+> 任务归属见 `specs/task-ownership.md`：owner 是 User，Key 只是凭证。
 
 ## 0. MVP 目标与非目标
 
@@ -178,7 +179,8 @@ class TaskRecord(Base):
     __tablename__ = "tasks"
 
     id:              UUID (PK)          # Gateway 的 task_id（返回给客户端）
-    api_key_id:      FK → api_keys.id (NOT NULL, index)   # 每条任务都归属某个 Key
+    owner_id:        FK → users.id (NOT NULL)             # 权威归属，见 specs/task-ownership.md
+    api_key_id:      FK → api_keys.id (nullable)          # 创建凭据（审计，不参与作用域）
     status:          str (index)        # pending | processing | completed | partial | failed | cancelled | retry_pending
     #                                   # queued/running/canceled 映射为 pending/processing/cancelled
 
@@ -219,8 +221,8 @@ class TaskRecord(Base):
 
 ### 约束与索引
 
-- `(api_key_id, status, created_at)` 复合索引，支撑 `GET /v1/tasks` 的筛选与排序。
-- 匿名请求（`GATEWAY_ALLOW_ANONYMOUS=true` 时）为纯透传，**不写入 `tasks` 表**，故 `api_key_id` 为 `NOT NULL`（每条任务都归属某个 Key），索引无空值。
+- `(owner_id, status, created_at)` 复合索引，支撑 `GET /v1/tasks` 的筛选与排序。
+- 匿名请求（`GATEWAY_ALLOW_ANONYMOUS=true` 时）为纯透传，**不写入 `tasks` 表**，故 `owner_id` 为 `NOT NULL`（每条任务都归属某个 owner），索引无空值。
 
 ---
 
@@ -292,11 +294,11 @@ DELETE /auth/keys/{key_id}:
   response (204) — 仅限有效 UUID；格式错误返回 422
 
 
-# ===== 任务管理（需 X-API-Key）=====
+# ===== 任务管理（需 X-API-Key 或 JWT）=====
 
 GET /v1/tasks:
-  summary: 列出当前 Key 的任务
-  security: X-API-Key
+  summary: 列出当前 owner 的任务
+  security: X-API-Key | Bearer JWT
   parameters:
     - status: str (optional)      # pending|processing|completed|partial|failed|cancelled|retry_pending
     - tier: str (optional)
@@ -364,7 +366,7 @@ mineru_gateway/
 ├── schemas.py                       # Pydantic 请求/响应模型
 │
 ├── auth/
-│   ├── dependencies.py              # require_api_key（依 ALLOW_ANONYMOUS）、require_admin_token
+│   ├── dependencies.py              # require_task_principal（X-API-Key/JWT）、require_admin_token
 │   ├── service.py                   # create_key / list_keys / revoke_key / verify_key
 │   └── routes.py                    # /auth/keys 端点
 │

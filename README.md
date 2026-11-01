@@ -53,6 +53,10 @@ curl -X POST http://localhost:8000/v1/tasks \
   -F "tier=standard"
 ```
 
+Task endpoints accept either `X-API-Key` or `Authorization: Bearer <jwt>`; both
+resolve to one owner, so they share that owner's task history. The web UI uses
+JWT when `GATEWAY_USER_AUTH_ENABLED=true`. See `specs/task-ownership.md`.
+
 Interactive API docs are served at `/docs` (OpenAPI at `/openapi.json`).
 
 ## Container (Docker / Podman)

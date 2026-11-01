@@ -7,14 +7,13 @@
 
 ### 目标
 
-1. 客户端通过 `X-Idempotency-Key` 请求头实现 `POST /v1/tasks` 的幂等提交：同一 API Key 下相同 idempotency key 的重复请求，返回首次请求的结果，不会创建重复任务。
+1. 客户端通过 `X-Idempotency-Key` 请求头实现 `POST /v1/tasks` 的幂等提交：同一 owner 下相同 idempotency key 的重复请求，返回首次请求的结果，不会创建重复任务。
 2. 幂等命中时跳过限流、multipart body 读取、全局并发检查——重试成本为一次极轻量数据库查询。
 3. 并发场景下（同一 idempotency key 的多个请求几乎同时到达），通过数据库唯一约束保证最终仅有一条任务记录落库。
 
 ### 非目标
 
 - `POST /v1/file_parse` 不实现幂等提交（该端点为同步解析，结果即时返回，无可复用的异步任务记录）。
-- 匿名请求（`api_key is None`）不参与去重——`X-Idempotency-Key` 被忽略，保持纯透传行为不变。
 - 不校验请求 payload 一致性（见 §1）。
 
 ## 1. 核心设计决策
@@ -24,10 +23,10 @@
 | 决策 | 选择 | 理由 |
 |------|------|------|
 | 检查时机 | 认证后、限流前 | 命中时跳过限流，合法重试不消耗配额；跳过 multipart 读取免去大文件内存开销 |
-| 冲突域 | 每 API Key | 唯一约束为 `(api_key_id, idempotency_key)`；不同 Key 可用相同 key 同时提交 |
+| 冲突域 | 每 owner | 唯一约束为 `(owner_id, idempotency_key)`；同一 owner 的 JWT 与任意 Key 共享域，不同 owner 可用相同 key 同时提交 |
 | 命中响应 | 从 `TaskRecord` 字段重构 JSON | 无需缓存原始响应体，字段均已在 DB |
 | 命中 `status` | 始终为 `"pending"` | 与首次提交的响应体一致，不查询上游当前状态 |
-| 匿名请求 | 不参与去重 | 匿名走纯透传路径（不落库），`X-Idempotency-Key` 被忽略；`TaskRecord.api_key_id` 始终 NOT NULL |
+| 匿名请求 | 不参与去重 | 匿名走纯透传路径（不落库），`X-Idempotency-Key` 被忽略 |
 | Payload 一致性 | 不校验 | 简化实现；调用方必须保证同一 key 代表同一逻辑请求 |
 
 ## 2. 数据模型变更
@@ -45,10 +44,10 @@
 在 `TaskRecord.__table_args__` 中新增：
 
 ```
-UniqueConstraint("api_key_id", "idempotency_key")
+UniqueConstraint("owner_id", "idempotency_key")
 ```
 
-约束名：`uq_tasks_key_idempotency`。
+约束名：`uq_tasks_owner_idempotency`。
 
 SQL 标准下 NULL 不参与唯一性比较，因此已有的 `idempotency_key=NULL` 记录不触发冲突，多条不带幂等键的提交也可共存。
 
@@ -89,8 +88,8 @@ X-Idempotency-Key-Replayed: true
 
 | 术语 | 定义 |
 |------|------|
-| `require_api_key` | 解析 `X-API-Key` 请求头，返回 `ApiKey` 对象。若未提供 Key 且 `GATEWAY_ALLOW_ANONYMOUS=true`（环境变量，默认 `false`）则返回 `None` |
-| `MemoryTokenBucket` | 进程内按 Key 的令牌桶限流器。默认速率 10 令牌/秒，桶容量 burst=30。通过 `limiter.acquire(key_id)` 消费令牌 |
+| `require_task_principal` | 解析 `X-API-Key` 或 Bearer JWT，返回 `TaskPrincipal`；若未提供凭证且 `GATEWAY_ALLOW_ANONYMOUS=true`（默认 `false`）则返回 `None` |
+| `MemoryTokenBucket` | 进程内令牌桶限流器。API Key 按 key、JWT 按 user 计数；默认速率 10 令牌/秒，桶容量 burst=30。通过 `limiter.acquire(rate_key)` 消费令牌 |
 | `_extract_multipart_streaming` | 通过 `request.stream()` 解析 multipart；文件 chunk 直接写入缓存，校验单文件 `max_file_size`、累计 `max_upload_size`、最多 100 个文件。返回 data dict + cache_dir |
 | `count_in_flight` | 统计 DB 中 `status IN ('pending', 'processing', 'retry_pending')` 的任务数。超出 `max_concurrent_tasks`（默认 0 = 不限）时返回 503 |
 | `cache.restore` | 从流式解析产生的 `cache_dir` 恢复文件，用于向上游提交和崩溃后重提 |
@@ -100,7 +99,7 @@ X-Idempotency-Key-Replayed: true
 ### 4.1 步骤概览
 
 ```
-认证门控 (require_api_key)
+认证门控 (require_task_principal)
     │
     ▼
 幂等检查（仅认证请求、非空 key）
@@ -140,18 +139,18 @@ X-Idempotency-Key-Replayed: true
 
 ### 4.2 步骤 1：认证门控（现有行为，不变）
 
-`require_api_key` 依赖项解析 `X-API-Key` 请求头。返回 `ApiKey` 对象（认证成功）或 `None`（`GATEWAY_ALLOW_ANONYMOUS=true` 且未提供 Key）。
+`require_task_principal` 依赖项解析 `X-API-Key` 或 Bearer JWT，返回 `TaskPrincipal`（认证成功）或 `None`（`GATEWAY_ALLOW_ANONYMOUS=true` 且未提供凭证）。
 
 ### 4.3 步骤 2：幂等检查（新增）
 
-**触发条件**：`api_key is not None` 且 `X-Idempotency-Key` 请求头存在且有效。
+**触发条件**：认证请求（`principal is not None`）且 `X-Idempotency-Key` 请求头存在且有效。
 
 **执行内容**：
 
 1. 从请求头提取 `X-Idempotency-Key` 的值。
 2. 校验长度 ≤ 255 字符，超出返回 422。
 3. 去除首尾空白；若结果为空字符串，视为未提供，跳过幂等。
-4. 在数据库中按 `api_key_id` 和 `idempotency_key` 查询是否存在匹配的 TaskRecord。
+4. 在数据库中按 `owner_id` 和 `idempotency_key` 查询是否存在匹配的 TaskRecord。
 5. 若命中（查询返回一条 `TaskRecord`）：停止后续处理，从该记录字段重构响应体与响应头，返回 `202 Accepted`，附加 `X-Idempotency-Key-Replayed: true`。
 6. 若未命中（查询无结果）：释放 idempotency key 值传递到后续流程，继续步骤 3。
 
@@ -181,7 +180,7 @@ X-Idempotency-Key-Replayed: true
 
 1. 捕获 `IntegrityError`，回滚当前事务。
 2. 释放已分配的文件暂存目录（`cache_dir`），防止磁盘泄漏。
-3. 在新事务中重新查询 `SELECT * FROM tasks WHERE api_key_id = <X> AND idempotency_key = <Y>`。
+3. 在新事务中重新查询 `SELECT * FROM tasks WHERE owner_id = <X> AND idempotency_key = <Y>`。
 4. 此时已有记录（由第一个请求创建），按幂等命中返回：`202` + 重构响应 + `X-Idempotency-Key-Replayed: true`。
 
 **孤儿上游任务**：第二个请求在冲突前可能已成功提交到上游，获得了 `upstream_task_id`。该任务没有 `TaskRecord` 引用，网关无法轮询或下载它；恢复流程会记录该 id（warning 日志）以便排查，任务最终由上游 TTL 清理。不在这里取消：任务可能已开始处理，取消请求也会拖慢 replay 响应。
@@ -203,7 +202,7 @@ X-Idempotency-Key-Replayed: true
 初始 migration 的相关操作：
 
 1. 在 `tasks` 表添加 `idempotency_key` 列（`VARCHAR(255)`, `NULL`）。
-2. 在 `tasks` 表创建唯一约束 `uq_tasks_key_idempotency`，覆盖 `(api_key_id, idempotency_key)`。
+2. 在 `tasks` 表创建唯一约束 `uq_tasks_owner_idempotency`，覆盖 `(owner_id, idempotency_key)`。
 
 ### 5.2 SQLite 兼容性
 
@@ -236,8 +235,11 @@ T1 的任务变为 `failed`。客户端再次使用相同 key 提交。行为与
 
 ### 6.2 隔离性
 
-**T6 — 不同 API Key 使用相同 idempotency key**
-两个不同的 API Key（key-A 和 key-B）使用相同的 idempotency key（如 `"key-1"`）提交。两者各自正常创建任务，不冲突。验证数据库中有两条记录，`api_key_id` 不同，`idempotency_key` 相同。
+**T6 — 不同 owner 使用相同 idempotency key**
+两个不同 owner 的凭据使用相同的 idempotency key（如 `"key-1"`）提交。两者各自正常创建任务，不冲突。验证数据库中有两条记录，`owner_id` 不同，`idempotency_key` 相同。
+
+**T6b — 同一 owner 的 JWT 与 Key 使用相同 idempotency key**
+同一 owner 先用 JWT、再用其 API Key（或反过来）以相同 idempotency key 提交。第二次回放第一次的任务，响应头含 `X-Idempotency-Key-Replayed: true`，数据库仅一条记录。
 
 **T7 — 同一 API Key 使用不同 idempotency key**
 同一 Key 先后用 `"key-1"` 和 `"key-2"` 提交。两者各自正常创建任务，不同的 `task_id`。验证两任务互不影响。

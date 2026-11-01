@@ -22,7 +22,7 @@
 - 异步任务按提交的 `output_formats` 生成结果；需要 ZIP 时显式选择 `zip`。
 - 产物语义：`zip` 内含 `markdown.md`、`middle_json.json`、`structured_content.json`、可选 `model_output.json` 与 `images/`；图片与 `model_output` 随 ZIP 返回。
 - 限制：**200 MiB/文件**、总计 `GATEWAY_MAX_UPLOAD_SIZE`（默认 500 MiB）、100 文件/任务。
-- 认证：网关用 `X-API-Key`；上游若启用 `--api-key`，通过 `GATEWAY_UPSTREAM_API_KEY` 注入 `Authorization: Bearer`。
+- 认证：网关对客户端接受 `X-API-Key` 或 JWT（任务归属见 `specs/task-ownership.md`）；上游若启用 `--api-key`，通过 `GATEWAY_UPSTREAM_API_KEY` 注入 `Authorization: Bearer`。
 
 ## 任务状态
 

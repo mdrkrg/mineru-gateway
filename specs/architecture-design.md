@@ -14,7 +14,7 @@ mineru-gateway 是位于客户端与 mineru-api / mineru-router 之间的**网�
 **核心目标**：
 
 - **兼容**：代理 MinerU 4.0 V1 API（`/v1/file_parse`、`/v1/tasks`、`/v1/health`），匿名请求保持上游 wire contract。
-- **可控**：以 API Key 为鉴权主体，做访问控制与任务隔离。
+- **可控**：任务按 `owner_id` 隔离，凭据为 API Key 或 JWT。
 - **可靠**：任务元数据持久化，上游崩溃后可恢复重提。
 - **可保护**：限流、全局任务上限、文件大小限制及上游错误透传，避免打垮上游。
 
@@ -46,10 +46,11 @@ mineru-gateway 是位于客户端与 mineru-api / mineru-router 之间的**网�
 
 ## 3. 关键设计取舍
 
-### 3.1 鉴权：API Key 为主体，默认禁止匿名
+### 3.1 鉴权：任务归属 User，默认禁止匿名
 
-- 以 **API Key** 作为业务鉴权与任务归属主体；Key 可由
-  `X-Admin-Token` 签发，也可由启用后的用户体系自助管理。
+- 任务归属 **User**（`TaskRecord.owner_id`）：`X-API-Key` 与 JWT 都解析到该
+  owner，admin 用 `X-Admin-Token` 签发时按邮箱代指定用户。详见
+  `specs/task-ownership.md`。
 - 默认**禁止匿名**（可配置开启）；开启后无 Key 走纯透传、不记录任务，保持 MinerU V1 wire contract。
 
 ### 3.2 存储：DB 优先，Redis/MQ 按需

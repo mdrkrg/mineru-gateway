@@ -8,8 +8,8 @@
 
 1. 用户通过 email + password 注册（可选开关）和登录，获得 JWT 访问令牌。
 2. 用户通过 OIDC 提供商（如 Keycloak、Auth0 等）登录，自动创建/关联用户。
-3. 用户管理自己的 API Key（创建、列出、吊销），替代管理员手工签发。
-4. 现有的 `X-API-Key` 业务鉴权**不变**，`X-Admin-Token` 管理鉴权**不变**。
+3. 用户管理自己的 API Key（创建、列出、吊销）；管理员可按 `email` 代用户签发。
+4. 现有的 `X-API-Key` 业务鉴权保留，新增 JWT 作为等价入口；`X-Admin-Token` 管理鉴权**不变**。
 5. 访问令牌（access token）短期有效，刷新令牌（refresh token）长期有效，实现无状态令牌刷新。
 
 **非目标**：
@@ -25,14 +25,15 @@
 ### 1.1 双重鉴权模式
 
 ```
-X-API-Key ────────────►  require_api_key()
-                 ┌────►  (现有: 业务请求, /v1/tasks, /proxy)
+X-API-Key ────────────►  require_task_principal()
+                 ┌────►  (现有: 业务请求, /v1/tasks, /proxy; JWT 也接受)
                  │
 X-Admin-Token ───┤──►  require_admin_token()
                  │    (现有: 管理 Key, /auth/keys)
                  │
                  └────►  current_active_user()
-Authorization: Bearer <JWT> ──►  (新增: 用户管理, OAuth, /me/api-keys, /users/me)
+Authorization: Bearer <JWT> ──►  current_active_user() / require_task_principal()
+                                  (用户管理, OAuth, /me/api-keys, /users/me, 任务)
 ```
 
 三种鉴权方式**共存**，各自守卫不同端点：
@@ -41,7 +42,7 @@ Authorization: Bearer <JWT> ──►  (新增: 用户管理, OAuth, /me/api-key
 |---------|---------|------|
 | `X-API-Key` | `POST /v1/tasks`, `POST /v1/file_parse`, `GET /v1/tasks/*` 等 | 业务请求（现有） |
 | `X-Admin-Token` | `POST /auth/keys`, `GET /auth/keys`, `DELETE /auth/keys/{id}`, `POST /auth/users` | 管理员管理 Key 与用户（现有 + 新增） |
-| `Authorization: Bearer <JWT>` | `GET /users/me`, `PATCH /users/me`, `POST /auth/jwt/logout`, `GET /me/api-keys`, `POST /me/api-keys`, `DELETE /me/api-keys/{id}` | 用户自助（新增） |
+| `Authorization: Bearer <JWT>` | `GET /users/me`, `PATCH /users/me`, `POST /auth/jwt/logout`, `GET /me/api-keys`, `POST /me/api-keys`, `DELETE /me/api-keys/{id}`, `/v1/tasks/*` | 用户自助与任务（新增） |
 
 无鉴权的公共端点：`POST /auth/jwt/login`、`POST /auth/jwt/refresh`、`POST /auth/register`（受开关控制）、`GET /auth/oauth/providers`、`GET /auth/oauth/{provider}/authorize`、`GET /auth/oauth/{provider}/callback`。
 
@@ -124,13 +125,13 @@ Authorization: Bearer <JWT> ──►  (新增: 用户管理, OAuth, /me/api-key
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | ... | ... | 现有字段（`key_hash`、`key_prefix`、`label`、`created_at`、`last_used_at`、`expires_at`、`is_active`） |
-| `owner_id` | UUID, nullable, FK → users.id | 关联的用户。`None` 表示管理员通过 `X-Admin-Token` 创建的 Key |
+| `owner_id` | UUID, NOT NULL, FK → users.id | 归属用户；admin 与 `/me/api-keys` 签发的 Key 都有 owner |
 
 ### 2.2 关系图
 
 ```
 User ──1:N──► OAuthAccount（通过 user_id）
-User ──1:N──► ApiKey（通过 owner_id，nullable）
+User ──1:N──► ApiKey（通过 owner_id）
 ```
 
 ### 2.3 迁移状态
@@ -441,7 +442,7 @@ Authorization: Bearer <access_token>
 
 **失败**：401 — 无 JWT 或无效 JWT。
 
-**行为**：仅返回 `owner_id == 当前用户.id` 的 Key。不返回其他用户的 Key 或 `owner_id=NULL` 的 Key。
+**行为**：仅返回 `owner_id == 当前用户.id` 的 Key。不返回其他用户的 Key。
 
 #### 创建 API Key
 
@@ -622,10 +623,10 @@ Location: {frontend_redirect_url}#access_token=eyJ...&refresh_token=eyJ...&token
 
 | 端点 | 鉴权与行为 |
 |------|------------|
-| `POST /auth/keys` | `X-Admin-Token`；创建 `owner_id=NULL` 的 Key |
+| `POST /auth/keys` | `X-Admin-Token`；按 `email` 代指定用户签发（未知邮箱 404） |
 | `GET /auth/keys` | `X-Admin-Token`；列出全部 Key |
 | `DELETE /auth/keys/{key_id}` | `X-Admin-Token`；可吊销任意 Key |
-| `POST /v1/tasks`、`POST /v1/file_parse`、`GET /v1/tasks/*` | `X-API-Key` |
+| `POST /v1/tasks`、`POST /v1/file_parse`、`GET /v1/tasks/*` | `X-API-Key` 或 JWT；任务按 `owner_id` 归属 |
 | `GET /v1/health` | 无鉴权 |
 
 ## 5. 核心模块设计
@@ -689,7 +690,7 @@ src/mineru_gateway/auth/
 
 | 接口 | 输入 | 输出 | 行为 |
 |------|------|------|------|
-| `create_key_for_user(session, user_id, label, expires_at)` | `session: AsyncSession, user_id: UUID, label: str | None, expires_at: datetime | None` | `(ApiKey, raw_key: str)` | 创建 Key，`owner_id` 设为 `user_id`，返回记录和明文 |
+| `create_key(session, user_id, label, expires_at)` | `session: AsyncSession, user_id: UUID, label: str | None, expires_at: datetime | None` | `(ApiKey, raw_key: str)` | 创建 Key，`owner_id` 设为 `user_id`，返回记录和明文 |
 | `list_keys_for_user(session, user_id)` | `session: AsyncSession, user_id: UUID` | `list[ApiKey]` | 按 `owner_id` 过滤返回 |
 | `revoke_key_for_user(session, key_id, user_id)` | `session: AsyncSession, key_id: UUID, user_id: UUID` | `bool` | 校验 `owner_id == user_id`，设置 `is_active=False`；不匹配返回 `False` |
 
@@ -708,14 +709,16 @@ src/mineru_gateway/auth/
 
 | 创建途径 | `owner_id` | 谁可查看/吊销 |
 |---------|-----------|-------------|
-| `POST /auth/keys`（Admin Token） | `NULL` | 仅管理员（`X-Admin-Token`） |
+| `POST /auth/keys`（Admin Token，按 `email` 代签） | 指定用户的 ID | 该用户（JWT）和管理员（Admin Token） |
 | `POST /me/api-keys`（JWT） | 用户 ID | 用户自己（JWT）和管理员（Admin Token） |
 
 `GET /me/api-keys` 只返回 `owner_id == 当前用户.id` 的 Key，不影响 `/auth/keys` 的管理员全局视图。
 
 ### 6.2 与现有任务鉴权的关系
 
-`POST /v1/tasks`、`GET /v1/tasks` 等任务端点使用 `X-API-Key` 鉴权。通过 `/me/api-keys` 和管理员端点创建的 Key 均遵循同一任务鉴权契约。
+`POST /v1/tasks`、`GET /v1/tasks` 等任务端点接受 `X-API-Key` 或 JWT；
+两条创建路径得到的 Key 完全等价，任务归属其 owner。完整规则见
+`specs/task-ownership.md`。
 
 ### 6.3 用户认证总开关
 
@@ -723,7 +726,7 @@ src/mineru_gateway/auth/
 
 - 不注册任何 JWT/OAuth/用户相关路由。
 - 仅注册 `/auth/keys`（Admin Token）和业务路由。
-- `api_keys.owner_id` 字段存在但不使用（所有 Key 的 `owner_id` 为 `NULL`）。
+- `api_keys.owner_id` 始终非空：`/auth/keys` 仍需按 `email` 指定已存在的用户。
 
 `GATEWAY_USER_AUTH_ENABLED=true` 时：注册所有新增路由，用户可登录、注册（受开关控制）、OAuth 登录、管理 Key。
 
@@ -836,11 +839,11 @@ curl -X POST http://localhost:8000/auth/users \
   -H "Content-Type: application/json" \
   -d '{"email":"bob@example.com","password":"secret456","display_name":"Bob"}'
 
-# 管理员创建 Key（无 owner）
+# 管理员代用户签发 Key
 curl -X POST http://localhost:8000/auth/keys \
   -H "X-Admin-Token: <admin_token>" \
   -H "Content-Type: application/json" \
-  -d '{"label":"service-account"}'
+  -d '{"label":"bob-laptop","email":"bob@example.com"}'
 ```
 
 ## 9. 测试要点
