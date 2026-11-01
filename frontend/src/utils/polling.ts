@@ -10,15 +10,20 @@ export interface Polling {
   isRunning: () => boolean;
 }
 
+/** A background tab cannot show the result, so it does not poll. */
+function isHidden(): boolean {
+  return typeof document !== 'undefined' && document.visibilityState === 'hidden';
+}
+
 /**
  * Interval-based poller for refreshing async task state.
  *
- * `tick` is invoked every `intervalMs` milliseconds. Async ticks are not
- * awaited, but a new tick is skipped while the previous one is still running
- * so slow requests cannot pile up. The returned handle must be created within
- * a reactive owner: it registers an `onCleanup` that marks the poller as
- * disposed and stops the timer, so an in-flight tick resolving after unmount
- * cannot restart it.
+ * - Ticks run every `intervalMs` while the tab is visible. A hidden tab skips
+ *   its ticks, then refreshes once when it becomes visible again.
+ * - Ticks are not awaited. A new one is skipped while the previous one is still
+ *   in flight, so slow requests cannot pile up.
+ * - Must be created inside a reactive owner. `onCleanup` stops the timer, so an
+ *   in-flight tick resolving after unmount cannot restart it.
  *
  * @example
  * const polling = createPolling(() => load(page(), { silent: true }), 4000);
@@ -32,31 +37,43 @@ export function createPolling(
   let disposed = false;
   let inFlight = false;
 
+  const run = () => {
+    if (disposed || inFlight || isHidden()) return;
+    let result: void | Promise<void>;
+    try {
+      result = tick();
+    } catch {
+      return;
+    }
+    if (result instanceof Promise) {
+      inFlight = true;
+      void Promise.resolve(result)
+        .catch(() => {})
+        .finally(() => {
+          inFlight = false;
+        });
+    }
+  };
+
+  const onVisibilityChange = () => {
+    if (!isHidden()) run();
+  };
+
   const start = () => {
     if (disposed || timer !== null) return;
-    timer = setInterval(() => {
-      if (inFlight) return;
-      let result: void | Promise<void>;
-      try {
-        result = tick();
-      } catch {
-        return;
-      }
-      if (result instanceof Promise) {
-        inFlight = true;
-        void Promise.resolve(result)
-          .catch(() => {})
-          .finally(() => {
-            inFlight = false;
-          });
-      }
-    }, intervalMs);
+    timer = setInterval(run, intervalMs);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
   };
 
   const stop = () => {
     if (timer === null) return;
     clearInterval(timer);
     timer = null;
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    }
   };
 
   onCleanup(() => {

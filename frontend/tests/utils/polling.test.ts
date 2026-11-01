@@ -10,6 +10,33 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+function stubVisibility(): { hide: () => void; show: () => void; restore: () => void } {
+  let state: 'visible' | 'hidden' = 'visible';
+  const listeners = new Set<() => void>();
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: {
+      get visibilityState() {
+        return state;
+      },
+      addEventListener: (_type: string, fn: () => void) => listeners.add(fn),
+      removeEventListener: (_type: string, fn: () => void) => listeners.delete(fn),
+    },
+  });
+  return {
+    hide: () => {
+      state = 'hidden';
+    },
+    show: () => {
+      state = 'visible';
+      listeners.forEach((fn) => fn());
+    },
+    restore: () => {
+      Reflect.deleteProperty(globalThis, 'document');
+    },
+  };
+}
+
 describe('createPolling', () => {
   it('invokes tick on each interval once started', () => {
     const tick = vi.fn();
@@ -99,5 +126,42 @@ describe('createPolling', () => {
     await vi.advanceTimersByTimeAsync(0);
     vi.advanceTimersByTime(1000);
     expect(tick).toHaveBeenCalledTimes(2);
+  });
+
+  it('skips ticks in a hidden tab and refreshes when it is shown again', () => {
+    const visibility = stubVisibility();
+    try {
+      const tick = vi.fn();
+      const polling = createRoot(() => createPolling(tick, 1000));
+      polling.start();
+
+      visibility.hide();
+      vi.advanceTimersByTime(3000);
+      expect(tick).not.toHaveBeenCalled();
+
+      visibility.show();
+      expect(tick).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(1000);
+      expect(tick).toHaveBeenCalledTimes(2);
+    } finally {
+      visibility.restore();
+    }
+  });
+
+  it('stops listening for visibility changes once stopped', () => {
+    const visibility = stubVisibility();
+    try {
+      const tick = vi.fn();
+      const polling = createRoot(() => createPolling(tick, 1000));
+      polling.start();
+      polling.stop();
+
+      visibility.hide();
+      visibility.show();
+      expect(tick).not.toHaveBeenCalled();
+    } finally {
+      visibility.restore();
+    }
   });
 });
