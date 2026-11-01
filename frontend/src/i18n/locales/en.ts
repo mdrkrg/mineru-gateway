@@ -34,7 +34,7 @@ export const en = {
   'errors.detail.invalidCredentials': 'Invalid credentials',
   'errors.detail.invalidRefreshToken': 'Invalid refresh token',
   'errors.detail.notAuthenticated': 'Not authenticated',
-  'errors.detail.apiKeyRequired': 'Authentication required',
+  'errors.detail.authenticationRequired': 'Authentication required',
   'errors.detail.invalidApiKey': 'Invalid API key',
   'errors.detail.unknownUser': 'No account uses that email',
   'errors.detail.invalidAdminToken': 'Invalid or missing admin token',

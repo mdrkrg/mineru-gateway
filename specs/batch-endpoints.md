@@ -237,7 +237,7 @@ Content-Type: application/json
 
 | 状态码 | 条件 | 响应体 |
 |:---:|------|--------|
-| `401` | 未提供有效 API Key | `{"detail": "API key required"}` |
+| `401` | 未提供有效凭证 | `{"detail": "Authentication required"}` |
 | `422` | `task_ids` 为空、包含重复值或 > 200 | FastAPI 自动校验的 ValidationError |
 
 ### 2.4 与 `DELETE /v1/tasks/{id}` 的一致性

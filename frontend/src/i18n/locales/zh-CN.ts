@@ -37,7 +37,7 @@ export const zhCN: Dict = {
   'errors.detail.invalidCredentials': '邮箱或密码错误',
   'errors.detail.invalidRefreshToken': '登录状态已失效，请重新登录',
   'errors.detail.notAuthenticated': '登录状态已失效，请重新登录',
-  'errors.detail.apiKeyRequired': '请先登录，或提供 API Key',
+  'errors.detail.authenticationRequired': '请先登录',
   'errors.detail.invalidApiKey': 'API Key 无效或已被吊销',
   'errors.detail.unknownUser': '该邮箱没有对应的用户',
   'errors.detail.invalidAdminToken': '管理令牌无效，请重新输入',
