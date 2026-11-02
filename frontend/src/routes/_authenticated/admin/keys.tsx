@@ -192,6 +192,7 @@ function AdminKeysContent() {
           emptyText={t('adminKeys.empty')}
           revokingId={revokingId()}
           onRevoke={handleRevoke}
+          groupByOwner
         />
       </section>
     </div>

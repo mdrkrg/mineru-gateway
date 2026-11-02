@@ -198,6 +198,8 @@ export const en = {
   'keyTable.lastUsed': 'Last Used',
   'keyTable.expiresAt': 'Expires At',
   'keyTable.status': 'Status',
+  'keyTable.activeCount': '{{count}} active',
+  'keyTable.multipleActive': 'Multiple active keys',
   'keyTable.actions': 'Actions',
   'keyTable.valid': 'Active',
   'keyTable.revoked': 'Revoked',

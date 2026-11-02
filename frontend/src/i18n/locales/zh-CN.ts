@@ -198,6 +198,8 @@ export const zhCN: Dict = {
   'keyTable.lastUsed': '最近使用',
   'keyTable.expiresAt': '过期时间',
   'keyTable.status': '状态',
+  'keyTable.activeCount': '{{count}} 把生效',
+  'keyTable.multipleActive': '有多把生效 Key',
   'keyTable.actions': '操作',
   'keyTable.valid': '有效',
   'keyTable.revoked': '已吊销',
