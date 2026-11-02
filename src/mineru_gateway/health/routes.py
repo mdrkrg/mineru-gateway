@@ -1,4 +1,4 @@
-"""GET /v1/health: aggregate gateway + upstream status."""
+"""Unauthenticated gateway metadata: /v1/health and /v1/config."""
 
 from __future__ import annotations
 
@@ -40,3 +40,14 @@ async def health(request: Request):
             "upstream": upstream_payload,
         },
     )
+
+
+@router.get("/config")
+async def config(request: Request) -> dict:
+    """Capabilities the panel needs before it has any credential.
+
+    The web UI cannot discover ``GATEWAY_USER_AUTH_ENABLED`` from a failed
+    login, so key-only deployments get an explicit answer here instead of
+    probing routes that are intentionally absent.
+    """
+    return {"user_auth_enabled": request.app.state.settings.user_auth_enabled}

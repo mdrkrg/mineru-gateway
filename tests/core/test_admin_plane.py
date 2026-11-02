@@ -7,32 +7,15 @@ object as self-service keys.
 
 from __future__ import annotations
 
-import httpx
 import uuid
 
 import pytest
-from asgi_lifespan import LifespanManager
 
 from mineru_gateway.main import create_app
 from mineru_gateway.models import User
 from tests.conftest import ADMIN_TOKEN, create_key
 
 ADMIN_HEADERS = {"X-Admin-Token": ADMIN_TOKEN}
-
-
-@pytest.fixture
-async def key_only_client(settings, upstream_client):
-    """Gateway with the login stack disabled, as a key-only deployment runs it."""
-    application = create_app(
-        settings=settings.model_copy(update={"user_auth_enabled": False}),
-        upstream_client=upstream_client,
-    )
-    async with LifespanManager(application):
-        transport = httpx.ASGITransport(app=application)
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
-            yield client
 
 
 async def test_key_only_deployment_can_bootstrap_credentials(

@@ -23,21 +23,15 @@ OauthFlow = Callable[["AsyncClient"], Awaitable["Response"]]
 
 
 @pytest.fixture
-def settings_no_user_auth(settings) -> Settings:
-    """Section 6.3: USER_AUTH_ENABLED=false."""
-    return settings.model_copy(update={"user_auth_enabled": False})
-
-
-@pytest.fixture
 def settings_closed_registration(settings) -> Settings:
     """Section 4.2: OPEN_REGISTRATION=false."""
     return settings.model_copy(update={"open_registration": False})
 
 
 @pytest.fixture
-async def no_auth_app(settings_no_user_auth, upstream_client):
+async def no_auth_app(settings_key_only, upstream_client):
     """Section 6.3: app with user_auth_enabled=false."""
-    async with _build_app(settings_no_user_auth, upstream_client) as application:
+    async with _build_app(settings_key_only, upstream_client) as application:
         yield application
 
 

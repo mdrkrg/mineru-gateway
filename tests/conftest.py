@@ -87,6 +87,30 @@ async def client(app):
 
 
 @pytest.fixture
+def settings_key_only(settings) -> Settings:
+    """Gateway with the login stack disabled, as a key-only deployment runs it."""
+    return settings.model_copy(update={"user_auth_enabled": False})
+
+
+@pytest.fixture
+async def key_only_app(settings_key_only, upstream_client):
+    application = create_app(
+        settings=settings_key_only, upstream_client=upstream_client
+    )
+    async with LifespanManager(application):
+        yield application
+
+
+@pytest.fixture
+async def key_only_client(key_only_app):
+    transport = httpx.ASGITransport(app=key_only_app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as c:
+        yield c
+
+
+@pytest.fixture
 def admin_headers() -> dict:
     return {"X-Admin-Token": ADMIN_TOKEN}
 
