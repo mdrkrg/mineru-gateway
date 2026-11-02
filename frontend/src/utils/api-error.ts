@@ -20,6 +20,7 @@ const DETAIL_KEYS: Record<string, DictKey> = {
   'Not authenticated': 'errors.detail.notAuthenticated',
   'API key required': 'errors.detail.apiKeyRequired',
   'Invalid API key': 'errors.detail.invalidApiKey',
+  'Unknown user': 'errors.detail.unknownUser',
   'Invalid or missing admin token': 'errors.detail.invalidAdminToken',
   'Email not verified': 'errors.detail.emailNotVerified',
   'Password does not meet rules': 'errors.detail.passwordRules',

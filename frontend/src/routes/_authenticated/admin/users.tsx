@@ -57,9 +57,9 @@ function AdminUsersContent() {
         email: email(),
         password: password(),
         displayName: displayName().trim() || null,
-        isActive: null,
+        isActive: true,
         isSuperuser: isSuperuser(),
-        isVerified: null,
+        isVerified: false,
       },
       token,
     );

@@ -36,6 +36,7 @@ export const en = {
   'errors.detail.notAuthenticated': 'Not authenticated',
   'errors.detail.apiKeyRequired': 'Authentication required',
   'errors.detail.invalidApiKey': 'Invalid API key',
+  'errors.detail.unknownUser': 'No account uses that email',
   'errors.detail.invalidAdminToken': 'Invalid or missing admin token',
   'errors.detail.emailNotVerified': 'Email not verified',
   'errors.detail.passwordRules': 'Password does not meet rules',
@@ -236,6 +237,8 @@ export const en = {
 
   // Admin: keys
   'adminKeys.issueTitle': 'Issue New Key',
+  'adminKeys.ownerEmail': 'Owner email',
+  'adminKeys.ownerEmailHint': 'The owner must already exist; create it on the Users page first.',
   'adminKeys.label': 'Label (optional)',
   'adminKeys.expiresAt': 'Expires At (optional)',
   'adminKeys.issuing': 'Issuing…',

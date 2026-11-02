@@ -6,10 +6,12 @@ import { defineResponseSchema, defineRequestSchema } from '@/core/conventions';
 export const ApiKeyCreateRequestSchema = defineRequestSchema(
   {
     label: 'string | null',
+    email: 'string',
     expiresAt: 'string | null',
   },
   {} as {
     label: string | null;
+    email: string;
     expires_at: string | null;
   },
 );
@@ -19,12 +21,16 @@ export const ApiKeyCreatedResponseSchema = defineResponseSchema(
     key_id: 'string',
     api_key: 'string',
     api_key_prefix: 'string',
+    owner_id: 'string',
+    owner_email: 'string',
     message: 'string',
   },
   {} as {
     keyId: string;
     apiKey: string;
     apiKeyPrefix: string;
+    ownerId: string;
+    ownerEmail: string;
     message: string;
   },
 );
@@ -32,6 +38,8 @@ export const ApiKeyCreatedResponseSchema = defineResponseSchema(
 export const ApiKeyInfoSchema = defineResponseSchema(
   {
     id: 'string',
+    owner_id: 'string',
+    owner_email: 'string',
     api_key_prefix: 'string',
     label: 'string',
     created_at: 'string',
@@ -41,6 +49,8 @@ export const ApiKeyInfoSchema = defineResponseSchema(
   },
   {} as {
     id: string;
+    ownerId: string;
+    ownerEmail: string;
     apiKeyPrefix: string;
     label: string;
     createdAt: string;
@@ -54,6 +64,8 @@ export const ApiKeyListResponseSchema = defineResponseSchema(
   {
     keys: type({
       id: 'string',
+      owner_id: 'string',
+      owner_email: 'string',
       api_key_prefix: 'string',
       label: 'string',
       created_at: 'string',
@@ -65,6 +77,8 @@ export const ApiKeyListResponseSchema = defineResponseSchema(
   {} as {
     keys: {
       id: string;
+      ownerId: string;
+      ownerEmail: string;
       apiKeyPrefix: string;
       label: string;
       createdAt: string;

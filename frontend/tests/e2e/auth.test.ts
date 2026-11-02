@@ -18,15 +18,18 @@ import {
   listApiKeys,
   revokeApiKey,
 } from '../../src/api';
+import { createOwner } from './helpers';
 import { MockControl } from './mock-control';
 import { loadE2EUrls } from './helpers';
 
 const ADMIN_TOKEN = 'e2e-admin-token';
 
 let mock: MockControl;
+let gatewayUrl = '';
 
 beforeAll(async () => {
   const urls = loadE2EUrls();
+  gatewayUrl = urls.gatewayUrl;
   setApiBaseUrl(urls.gatewayUrl);
   mock = new MockControl(urls.mockUrl);
   await mock.reset();
@@ -38,7 +41,8 @@ afterAll(async () => {
 
 describe('POST /auth/keys (create)', () => {
   it('creates an API key and returns the raw key', async () => {
-    const body = { label: 'e2e-test', expiresAt: null } as never;
+    const email = await createOwner(gatewayUrl);
+    const body = { email, label: 'e2e-test', expiresAt: null } as never;
     const result = await createApiKey(body, ADMIN_TOKEN);
 
     expect(result.isOk()).toBe(true);
@@ -52,7 +56,8 @@ describe('POST /auth/keys (create)', () => {
   });
 
   it('rejects creation without admin token', async () => {
-    const body = { label: 'e2e-test', expiresAt: null } as never;
+    const email = await createOwner(gatewayUrl);
+    const body = { email, label: 'e2e-test', expiresAt: null } as never;
     const result = await createApiKey(body, '');
 
     expect(result.isErr()).toBe(true);
@@ -67,7 +72,8 @@ describe('POST /auth/keys (create)', () => {
 describe('GET /auth/keys (list)', () => {
   it('lists API keys for valid admin token', async () => {
     // Create a key first so the list is non-empty.
-    const body = { label: 'e2e-list', expiresAt: null } as never;
+    const email = await createOwner(gatewayUrl);
+    const body = { email, label: 'e2e-list', expiresAt: null } as never;
     await createApiKey(body, ADMIN_TOKEN);
 
     const result = await listApiKeys(ADMIN_TOKEN);
@@ -79,6 +85,7 @@ describe('GET /auth/keys (list)', () => {
     const key = result.value.keys[0];
     expect(typeof key.id).toBe('string');
     expect(typeof key.apiKeyPrefix).toBe('string');
+    expect(key.ownerEmail).toBeTruthy();
     expect(key.isActive).toBe(true);
   });
 
@@ -96,7 +103,8 @@ describe('GET /auth/keys (list)', () => {
 
 describe('DELETE /auth/keys/{keyId} (revoke)', () => {
   it('revokes an existing API key and returns 204', async () => {
-    const body = { label: 'e2e-revoke', expiresAt: null } as never;
+    const email = await createOwner(gatewayUrl);
+    const body = { email, label: 'e2e-revoke', expiresAt: null } as never;
     const createResult = await createApiKey(body, ADMIN_TOKEN);
     expect(createResult.isOk()).toBe(true);
     if (!createResult.isOk()) return;

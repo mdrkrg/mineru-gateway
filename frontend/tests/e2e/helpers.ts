@@ -16,14 +16,32 @@ export function loadE2EUrls(): {
   return JSON.parse(readFileSync(URLS_FILE, 'utf-8'));
 }
 
+export async function createOwner(gatewayUrl: string, email?: string): Promise<string> {
+  const ownerEmail =
+    email ?? `e2e-owner-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
+  const owner = await fetch(`${gatewayUrl}/auth/users`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Admin-Token': 'e2e-admin-token',
+    },
+    body: JSON.stringify({ email: ownerEmail }),
+  });
+  if (!owner.ok) {
+    throw new Error(`failed to create owner: ${owner.status} ${await owner.text()}`);
+  }
+  return ownerEmail;
+}
+
 export async function createApiKey(gatewayUrl: string): Promise<{ apiKey: string; keyId: string }> {
+  const email = await createOwner(gatewayUrl);
   const resp = await fetch(`${gatewayUrl}/auth/keys`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Admin-Token': 'e2e-admin-token',
     },
-    body: JSON.stringify({ label: 'e2e' }),
+    body: JSON.stringify({ label: 'e2e', email }),
   });
   if (!resp.ok) {
     throw new Error(`failed to create API key: ${resp.status} ${await resp.text()}`);

@@ -38,7 +38,8 @@ export const zhCN: Dict = {
   'errors.detail.invalidRefreshToken': '登录状态已失效，请重新登录',
   'errors.detail.notAuthenticated': '登录状态已失效，请重新登录',
   'errors.detail.apiKeyRequired': '请先登录，或提供 API Key',
-  'errors.detail.invalidApiKey': 'API Key 无效或已被吊销，请在 API Keys 页面重新设置',
+  'errors.detail.invalidApiKey': 'API Key 无效或已被吊销',
+  'errors.detail.unknownUser': '该邮箱没有对应的用户',
   'errors.detail.invalidAdminToken': '管理令牌无效，请重新输入',
   'errors.detail.emailNotVerified': '邮箱尚未验证，请先完成邮箱验证',
   'errors.detail.passwordRules': '密码不符合要求（至少 8 位）',
@@ -234,6 +235,8 @@ export const zhCN: Dict = {
 
   // Admin: keys
   'adminKeys.issueTitle': '签发新 Key',
+  'adminKeys.ownerEmail': '归属用户邮箱',
+  'adminKeys.ownerEmailHint': '该用户必须已存在，可先在「用户」页创建。',
   'adminKeys.label': '备注（可选）',
   'adminKeys.expiresAt': '过期时间（可选）',
   'adminKeys.issuing': '签发中…',

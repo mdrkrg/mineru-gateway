@@ -13,7 +13,10 @@ describe('errorMessage: HTTP errors', () => {
       '邮箱或密码错误',
     );
     expect(errorMessage(createHttpError(401, { detail: 'Invalid API key' }))).toBe(
-      'API Key 无效或已被吊销，请在 API Keys 页面重新设置',
+      'API Key 无效或已被吊销',
+    );
+    expect(errorMessage(createHttpError(404, { detail: 'Unknown user' }))).toBe(
+      '该邮箱没有对应的用户',
     );
     expect(errorMessage(createHttpError(403, { detail: 'Email not verified' }))).toBe(
       '邮箱尚未验证，请先完成邮箱验证',

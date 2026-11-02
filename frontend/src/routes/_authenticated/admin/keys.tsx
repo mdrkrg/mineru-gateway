@@ -47,6 +47,7 @@ function AdminKeysContent() {
   const [error, setError] = createSignal<string | null>(null);
   const [revokingId, setRevokingId] = createSignal<string | null>(null);
 
+  const [email, setEmail] = createSignal('');
   const [label, setLabel] = createSignal('');
   const [expiresAt, setExpiresAt] = createSignal('');
   const [isCreating, setIsCreating] = createSignal(false);
@@ -83,6 +84,7 @@ function AdminKeysContent() {
 
     const result = await createApiKey(
       {
+        email: email().trim(),
         label: label().trim() || null,
         expiresAt: expiresAt() ? new Date(expiresAt()).toISOString() : null,
       },
@@ -144,6 +146,17 @@ function AdminKeysContent() {
         <h2 {...stylex.attrs(typography.sectionHeading, layout.mb16)}>{t('adminKeys.issueTitle')}</h2>
         <form onSubmit={handleCreate} {...stylex.attrs(forms.row)}>
           <label {...stylex.attrs(controls.field)}>
+            <span {...stylex.attrs(controls.fieldLabel)}>{t('adminKeys.ownerEmail')}</span>
+            <input
+              type="email"
+              required
+              value={email()}
+              onInput={(e) => setEmail(e.currentTarget.value)}
+              {...stylex.attrs(controls.input, forms.inputMedium)}
+            />
+            <span {...stylex.attrs(typography.metaMuted)}>{t('adminKeys.ownerEmailHint')}</span>
+          </label>
+          <label {...stylex.attrs(controls.field)}>
             <span {...stylex.attrs(controls.fieldLabel)}>{t('adminKeys.label')}</span>
             <input
               type="text"
@@ -163,7 +176,7 @@ function AdminKeysContent() {
           </label>
           <button
             type="submit"
-            disabled={isCreating()}
+            disabled={isCreating() || email().trim().length === 0}
             {...stylex.attrs(controls.button, controls.buttonPrimary, controls.buttonLarge)}
           >
             {isCreating() ? t('adminKeys.issuing') : t('adminKeys.issue')}
