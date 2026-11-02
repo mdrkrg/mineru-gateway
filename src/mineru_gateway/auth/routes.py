@@ -1,23 +1,56 @@
-"""API Key management routes (require X-Admin-Token)."""
+"""Admin-plane routes: owner provisioning and API-key management.
+
+Every route here requires ``X-Admin-Token`` and is registered regardless of
+``GATEWAY_USER_AUTH_ENABLED``: provisioning an owner is how a key-only
+deployment bootstraps, and it does not expose the login stack.
+
+Spec: specs/task-ownership.md §3.
+"""
 
 from __future__ import annotations
 
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import Settings
 from ..models import User
 from ..schemas import ApiKeyCreate, ApiKeyCreated, ApiKeyInfo, ApiKeyList
-from . import service
-from .dependencies import get_session, require_admin_token
+from . import provisioning, service
+from .dependencies import get_session, get_settings_dep, require_admin_token
+from .manager import UserManager, get_user_manager
+from .schemas import AdminUserCreate, UserRead
 
-router = APIRouter(prefix="/auth/keys", tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+# ===== Owner provisioning =====
 
 
 @router.post(
-    "",
+    "/users",
+    response_model=UserRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin_token)],
+)
+async def create_owner(
+    body: AdminUserCreate,
+    request: Request,
+    user_manager: Annotated[UserManager, Depends(get_user_manager)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> UserRead:
+    """Provision a task owner (201), with or without login credentials."""
+    return await provisioning.provision_owner(body, request, user_manager, settings)
+
+
+# ===== API Key management =====
+
+
+@router.post(
+    "/keys",
     response_model=ApiKeyCreated,
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_admin_token)],
@@ -32,6 +65,8 @@ async def create_key(
     ).scalar_one_or_none()
     if owner is None:
         raise HTTPException(status_code=404, detail="Unknown user")
+    if not owner.is_active:
+        raise HTTPException(status_code=409, detail="Owner is inactive")
     record, raw = await service.create_key(
         session, owner.id, label=body.label, expires_at=body.expires_at
     )
@@ -39,35 +74,38 @@ async def create_key(
         key_id=record.id,
         api_key=raw,
         api_key_prefix=record.key_prefix,
+        owner_id=owner.id,
+        owner_email=owner.email,
     )
 
 
 @router.get(
-    "",
+    "/keys",
     response_model=ApiKeyList,
     dependencies=[Depends(require_admin_token)],
 )
 async def list_keys(session: AsyncSession = Depends(get_session)) -> ApiKeyList:
-    records = await service.list_keys(session)
+    records = await service.list_keys_with_owners(session)
     return ApiKeyList(
         keys=[
             ApiKeyInfo(
-                id=r.id,
-                owner_id=r.owner_id,
-                api_key_prefix=r.key_prefix,
-                label=r.label,
-                created_at=r.created_at,
-                last_used_at=r.last_used_at,
-                expires_at=r.expires_at,
-                is_active=r.is_active,
+                id=key.id,
+                owner_id=key.owner_id,
+                owner_email=email,
+                api_key_prefix=key.key_prefix,
+                label=key.label,
+                created_at=key.created_at,
+                last_used_at=key.last_used_at,
+                expires_at=key.expires_at,
+                is_active=key.is_active,
             )
-            for r in records
+            for key, email in records
         ]
     )
 
 
 @router.delete(
-    "/{key_id}",
+    "/keys/{key_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_admin_token)],
 )

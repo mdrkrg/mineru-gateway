@@ -35,14 +35,22 @@ uv run alembic upgrade head
 uv run uvicorn mineru_gateway.main:create_app --factory --port 8000 --workers 1
 ```
 
-Issue an API key (requires the admin token):
+Provision an owner, then issue it a key (both require the admin token):
 
 ```bash
+# Without a password the owner cannot sign in: it only owns keys and tasks.
+curl -X POST http://localhost:8000/auth/users \
+  -H "X-Admin-Token: $GATEWAY_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "owner@example.com", "display_name": "Team"}'
+
 curl -X POST http://localhost:8000/auth/keys \
   -H "X-Admin-Token: $GATEWAY_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"label": "production"}'
+  -d '{"email": "owner@example.com", "label": "production"}'
 ```
+
+The gateway refuses to start with the placeholder admin token.
 
 Submit an async task with the returned key:
 
@@ -54,8 +62,8 @@ curl -X POST http://localhost:8000/v1/tasks \
 ```
 
 Task endpoints accept either `X-API-Key` or `Authorization: Bearer <jwt>`; both
-resolve to one owner, so they share that owner's task history. The web UI uses
-JWT when `GATEWAY_USER_AUTH_ENABLED=true`. See `specs/task-ownership.md`.
+resolve to the same owner. The web UI uses JWT when
+`GATEWAY_USER_AUTH_ENABLED=true`. See `specs/task-ownership.md`.
 
 Interactive API docs are served at `/docs` (OpenAPI at `/openapi.json`).
 

@@ -21,7 +21,6 @@ async def test_disabled_user_auth_jwt_routes_return_404(no_auth_client):
         ("/auth/jwt/refresh", "POST", {"refresh_token": "x"}),
         ("/auth/jwt/logout", "POST", None),
         ("/auth/register", "POST", {"email": "x@example.com", "password": "x"}),
-        ("/auth/users", "POST", {"email": "x@example.com", "password": "x"}),
     ]
     for path, method, body in endpoints:
         if body:
@@ -93,6 +92,19 @@ async def test_disabled_user_auth_business_routes_work(
 # ===== Section 9.8: USER_AUTH_ENABLED=true, all routes work =====
 
 
+async def test_admin_plane_provisions_owners_without_user_auth(
+    no_auth_client, admin_headers
+):
+    """Section 6.3: the admin plane is not part of the optional login stack."""
+    resp = await no_auth_client.post(
+        "/auth/users",
+        headers=admin_headers,
+        json={"email": "key-only-owner@example.com"},
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["is_verified"] is True
+
+
 async def test_enabled_user_auth_routes_accessible(client):
     """Section 9.8: USER_AUTH_ENABLED=true -> user/auth routes are registered.
 
@@ -105,7 +117,6 @@ async def test_enabled_user_auth_routes_accessible(client):
         ("POST", "/auth/jwt/login", {"email": "x@example.com", "password": "x"}),
         ("POST", "/auth/jwt/refresh", {"refresh_token": "x"}),
         ("POST", "/auth/jwt/logout", None),
-        ("POST", "/auth/users", {"email": "x@example.com", "password": "x"}),
         ("GET", "/users/me", None),
         ("GET", "/me/api-keys", None),
     ]
@@ -117,15 +128,22 @@ async def test_enabled_user_auth_routes_accessible(client):
 # ===== Section 9.9: Existing endpoint regression =====
 
 
-async def test_auth_keys_create_unchanged(client, admin_headers):
-    """Section 9.9 / 4.6: POST /auth/keys behavior unchanged."""
-    resp = await create_key(client, label="regression")
+async def test_auth_keys_create_reports_its_owner(client, admin_headers):
+    """Spec: task-ownership.md §3 - admin issuance is delegation to an owner."""
+    owner = await client.post(
+        "/auth/users",
+        headers=admin_headers,
+        json={"email": "delegated@example.com"},
+    )
+    assert owner.status_code == 201
+
+    resp = await create_key(client, label="regression", email="delegated@example.com")
     assert resp.status_code == 201
     body = resp.json()
     assert body["api_key"].startswith("mru_")
     assert body["key_id"]
-    # Admin-created keys have owner_id = NULL (Section 4.6)
-    assert "owner_id" not in body or body.get("owner_id") is None
+    assert body["owner_id"] == owner.json()["id"]
+    assert body["owner_email"] == "delegated@example.com"
 
 
 async def test_auth_keys_list_unchanged(client, admin_headers):
@@ -138,6 +156,7 @@ async def test_auth_keys_list_unchanged(client, admin_headers):
     for k in keys:
         assert "api_key" not in k  # no plaintext
         assert k["is_active"] is True
+        assert k["owner_email"]
 
 
 async def test_auth_keys_revoke_unchanged(client, admin_headers, sample_files):

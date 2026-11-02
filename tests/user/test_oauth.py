@@ -657,6 +657,7 @@ async def test_providers_multiple_providers(upstream_client):
 
     settings_multi = Settings(
         database_url="sqlite+aiosqlite:///:memory:",
+        admin_token="test-admin-token",
         user_auth_enabled=True,
         jwt_secret="a" * 32,
         open_registration=True,
@@ -708,6 +709,7 @@ async def test_providers_empty_when_no_providers_configured(upstream_client):
 
     settings_empty = Settings(
         database_url="sqlite+aiosqlite:///:memory:",
+        admin_token="test-admin-token",
         user_auth_enabled=True,
         jwt_secret="a" * 32,
         open_registration=True,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, EmailStr
 
 
 # ===== API Key management =====
@@ -23,14 +23,16 @@ class ApiKeyCreated(BaseModel):
     key_id: uuid.UUID
     api_key: str
     api_key_prefix: str
+    # Echo the owner so an admin can confirm who received the credential.
+    owner_id: uuid.UUID
+    owner_email: EmailStr
     message: str = "Save this API key. It will not be shown again."
 
 
 class ApiKeyInfo(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: uuid.UUID
     owner_id: uuid.UUID
+    owner_email: EmailStr
     api_key_prefix: str
     label: str
     created_at: datetime

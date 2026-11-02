@@ -11,7 +11,6 @@ from asgi_lifespan import LifespanManager
 
 from mineru_gateway.config import Settings
 from mineru_gateway.main import create_app
-from mineru_gateway.models import User
 
 from .mock_upstream import create_mock_upstream, state as mock_state
 
@@ -99,25 +98,20 @@ async def create_key(
     email: str | None = None,
     expires_at: str | None = None,
 ) -> httpx.Response:
-    """Issue an admin key for a fresh (or named) verified user.
+    """Issue an admin key for a fresh (or named) owner.
 
-    Admin keys always belong to a real user, so the helper creates the owner
-    when no email is given. Returns the raw response so callers can keep
-    asserting on the API shape.
+    Admin keys always belong to a real user, so the helper provisions the
+    owner through the admin plane when no email is given. Returns the raw
+    response so callers can keep asserting on the API shape.
     """
     if email is None:
         email = f"key-owner-{uuid.uuid4().hex[:12]}@example.com"
-        async with client._transport.app.state.db.session_factory() as session:
-            session.add(
-                User(
-                    email=email,
-                    hashed_password="unusable",
-                    display_name="Key Owner",
-                    is_active=True,
-                    is_verified=True,
-                )
-            )
-            await session.commit()
+        created = await client.post(
+            "/auth/users",
+            json={"email": email, "display_name": "Key Owner"},
+            headers={"X-Admin-Token": ADMIN_TOKEN},
+        )
+        assert created.status_code == 201, created.text
     body: dict = {"label": label, "email": email}
     if expires_at is not None:
         body["expires_at"] = expires_at

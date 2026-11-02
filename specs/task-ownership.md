@@ -30,16 +30,27 @@ task.owner_id == principal.owner_id
 | 无凭证 + `GATEWAY_ALLOW_ANONYMOUS=true` | 无；纯透传，不落库 |
 | 无凭证 | `401` |
 
-同一 owner 的 JWT 与任意 Key 共享一份任务历史：列表、统计、详情、取消、
-下载都按这一条件判定。
+同一 owner 的 JWT 与任意 Key 共享一份任务历史。
 
 ## 3. 凭据签发
 
 - Key：`owner_id = key.owner_id`，`api_key_id = key.id`。
 - JWT：`owner_id = user.id`，`api_key_id = NULL`。
-- `POST /auth/keys` 用 `email` 指定已存在的用户，admin 是代该用户签发，
-  未知邮箱 → `404`。需要隔离的集成注册独立用户，隔离边界就是它本身。
-- 写入门槛：JWT 与自助 Key 都受 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS` 约束。
+
+Admin 平面用 `X-Admin-Token` 鉴权，**不随 `GATEWAY_USER_AUTH_ENABLED` 开关**：
+key-only 部署靠它完成初始化。
+
+- `POST /auth/users` 先创建 owner。`password` 可选：
+  - 不给 → **凭据型 owner**：密码随机且不可知，不能登录，只拥有 Key 与任务；
+    `is_verified` 默认 `true`（没有邮箱流程可走）。
+  - 给了 → 普通登录账号，`is_verified` 默认 `false`，需要验证邮箱。
+- `POST /auth/keys` 用 `email` 指定已存在的 owner，代其签发；未知邮箱 → `404`。
+- admin 代签与自助签发走同一个 `create_key(owner_id)`：签发来源不引入权限或作用域差异。
+- 轮换复用 owner：同一 email 再签一把 Key，历史与幂等域连续。
+- owner 被停用（`is_active=false`）后，其所有 Key 立即失效，且不能再签发。
+
+写入门槛：JWT 与自助 Key 都受 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS` 约束；
+凭据型 owner 不受该门槛影响。
 
 ## 4. 幂等与限流
 
@@ -86,9 +97,9 @@ DELETE FROM api_keys WHERE owner_id IS NULL;
 
 ## 6. 不变量
 
-1. 同一 owner 的任意凭证共享任务历史与幂等域。
-2. 任务只对 `owner_id` 相同的请求可见，跨 owner 一律 `404`。
-3. Key 吊销、过期、轮换不影响历史任务的访问。
+1. 任务只对 `owner_id` 相同的请求可见，跨 owner 一律 `404`。
+2. Key 吊销、过期、轮换不影响历史任务的访问。
+3. `users.is_active=false` 的 owner 无法用任何凭据认证，也不能再被签发 Key。
 
 行为回归见 `tests/core/test_task_ownership.py` 与
 `tests/core/test_migrations.py`。

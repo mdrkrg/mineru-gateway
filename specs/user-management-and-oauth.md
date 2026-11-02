@@ -41,7 +41,7 @@ Authorization: Bearer <JWT> ──►  current_active_user() / require_task_prin
 | 鉴权方式 | 守卫端点 | 范围 |
 |---------|---------|------|
 | `X-API-Key` | `POST /v1/tasks`, `POST /v1/file_parse`, `GET /v1/tasks/*` 等 | 业务请求（现有） |
-| `X-Admin-Token` | `POST /auth/keys`, `GET /auth/keys`, `DELETE /auth/keys/{id}`, `POST /auth/users` | 管理员管理 Key 与用户（现有 + 新增） |
+| `X-Admin-Token` | `POST /auth/keys`, `GET /auth/keys`, `DELETE /auth/keys/{id}`, `POST /auth/users` | 管理员平面：创建 owner、代签 Key |
 | `Authorization: Bearer <JWT>` | `GET /users/me`, `PATCH /users/me`, `POST /auth/jwt/logout`, `GET /me/api-keys`, `POST /me/api-keys`, `DELETE /me/api-keys/{id}`, `/v1/tasks/*` | 用户自助与任务（新增） |
 
 无鉴权的公共端点：`POST /auth/jwt/login`、`POST /auth/jwt/refresh`、`POST /auth/register`（受开关控制）、`GET /auth/oauth/providers`、`GET /auth/oauth/{provider}/authorize`、`GET /auth/oauth/{provider}/callback`。
@@ -370,7 +370,12 @@ Content-Type: application/json
 
 **失败**：400 — email 已存在、密码不符合规则。401 — Admin Token 无效。
 
-**行为**：此端点**不受 `GATEWAY_OPEN_REGISTRATION` 影响**，管理员总是可以创建用户。当注册关闭时，此端点是创建用户的唯一途径。
+**行为**：
+
+- 此端点**不受 `GATEWAY_OPEN_REGISTRATION` 与 `GATEWAY_USER_AUTH_ENABLED` 影响**，
+  始终注册。
+- `password` 可省略；不传时创建**凭据型 owner**（不能登录），默认值语义见
+  `specs/task-ownership.md` §3。
 
 ### 4.3 用户信息端点
 
@@ -642,11 +647,11 @@ src/mineru_gateway/auth/
 ├── dependencies.py         # [修改] 增加 get_user_db, get_user_manager, current_active_user
 ├── manager.py              # UserManager（用户注册/登录回调）
 ├── schemas.py              # UserRead, UserCreate, UserUpdate, 令牌响应 schemas
-├── jwt_routes.py           # /auth/jwt/login, /auth/jwt/refresh, /auth/jwt/logout, /auth/register, /auth/users
+├── jwt_routes.py           # /auth/jwt/login, /auth/jwt/refresh, /auth/jwt/logout, /auth/register
 ├── user_routes.py          # /users/me (get_users_router)
 ├── api_keys_me.py          # /me/api-keys
 ├── service.py              # [修改] 增加 owner 作用域的 API Key 方法
-├── routes.py               # /auth/keys, /auth/users (admin create user)
+├── routes.py               # admin plane: /auth/users, /auth/keys
 └── oauth/
     ├── __init__.py
     ├── base.py              # OIDC 客户端工厂
@@ -716,17 +721,16 @@ src/mineru_gateway/auth/
 
 ### 6.2 与现有任务鉴权的关系
 
-`POST /v1/tasks`、`GET /v1/tasks` 等任务端点接受 `X-API-Key` 或 JWT；
-两条创建路径得到的 Key 完全等价，任务归属其 owner。完整规则见
-`specs/task-ownership.md`。
+`POST /v1/tasks`、`GET /v1/tasks` 等任务端点接受 `X-API-Key` 或 JWT，两者都
+解析到同一个 owner；完整规则见 `specs/task-ownership.md` §2。
 
 ### 6.3 用户认证总开关
 
 `GATEWAY_USER_AUTH_ENABLED=false`（默认值）时：
 
-- 不注册任何 JWT/OAuth/用户相关路由。
-- 仅注册 `/auth/keys`（Admin Token）和业务路由。
-- `api_keys.owner_id` 始终非空：`/auth/keys` 仍需按 `email` 指定已存在的用户。
+- 不注册任何 JWT/OAuth/自助路由。
+- 始终注册 admin 平面（`POST /auth/users`、`/auth/keys*`）和业务路由。
+- `api_keys.owner_id` 始终非空：`/auth/keys` 仍需按 `email` 指定已存在的 owner。
 
 `GATEWAY_USER_AUTH_ENABLED=true` 时：注册所有新增路由，用户可登录、注册（受开关控制）、OAuth 登录、管理 Key。
 
@@ -766,7 +770,7 @@ src/mineru_gateway/auth/
 | 端点 | 保护 | 说明 |
 |------|------|------|
 | `POST /auth/register` | `GATEWAY_OPEN_REGISTRATION` 开关 | 关闭时返回 403，不暴露创建用户接口 |
-| `POST /auth/users` | `X-Admin-Token` | 管理员创建用户，不受注册开关影响 |
+| `POST /auth/users` | `X-Admin-Token` | 创建 owner，不受注册与用户认证开关影响 |
 | `POST /auth/jwt/login` | 无 | 公开，无限流（暴力破解/撞库防护不属于本规约范围） |
 | `POST /auth/jwt/refresh` | 无 | 公开，但需要有效的刷新令牌 |
 | `GET /auth/oauth/{provider}/authorize` | 无 | 公开，但需要有效的 OIDC 提供商配置 |

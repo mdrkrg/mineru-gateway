@@ -32,6 +32,7 @@ async def list_my_keys(
             ApiKeyInfo(
                 id=r.id,
                 owner_id=r.owner_id,
+                owner_email=user.email,
                 api_key_prefix=r.key_prefix,
                 label=r.label,
                 created_at=r.created_at,
@@ -67,6 +68,8 @@ async def create_my_key(
         key_id=record.id,
         api_key=raw,
         api_key_prefix=record.key_prefix,
+        owner_id=user.id,
+        owner_email=user.email,
     )
 
 

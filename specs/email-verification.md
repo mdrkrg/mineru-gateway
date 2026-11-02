@@ -48,7 +48,7 @@
 | 创建/变更途径 | `is_verified` 初始值 | 说明 |
 |--------------|----------------------|------|
 | `POST /auth/register`（开放注册） | `false` | 请求体中的 `is_verified` 字段被忽略，恒为 `false` |
-| `POST /auth/users`（管理员创建） | `false` | 同上，恒为 `false` |
+| `POST /auth/users`（管理员创建） | 传密码时 `false`，无密码时 `true` | 无密码即凭据型 owner（不能登录，无邮箱流程），见 `specs/task-ownership.md` §3 |
 | OIDC 回调创建新用户 | 按 §0 目标 3 规则 | `email_verified` 声明 + `trusted_email_domains` 例外 |
 | `POST /auth/verify` / `GET /auth/verify` | `false` → `true` | 验证 token 有效时置 `true`，单向 |
 

@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 
 from fastapi_users import schemas
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 
 # ===== User schemas (Section 4.2, 4.3) =====
@@ -36,6 +36,25 @@ class UserUpdate(schemas.BaseUserUpdate):
     """
 
     display_name: str | None = None
+
+
+class AdminUserCreate(BaseModel):
+    """Admin-plane request body for provisioning a task owner.
+
+    Omitting ``password`` creates a credential-only owner: the row owns keys
+    and tasks but cannot sign in, because the password is random and never
+    returned. Admin-issued keys stay identical to self-service keys; this
+    schema only decides whether the owner can also log in.
+    """
+
+    email: EmailStr
+    password: str | None = None
+    display_name: str | None = None
+    is_active: bool = True
+    is_superuser: bool = False
+    # Defaults to True for credential-only owners (no mailbox flow) and to
+    # False for login-capable ones, which must verify their address.
+    is_verified: bool | None = None
 
 
 # ===== Token schemas (Section 4.1) =====

@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
-from ..models import ApiKey
+from ..models import ApiKey, User
 
 _KEY_BYTES = 32
 _PREFIX_LEN = 8
@@ -59,6 +59,16 @@ async def list_keys(session: AsyncSession) -> list[ApiKey]:
     return list(result.scalars().all())
 
 
+async def list_keys_with_owners(session: AsyncSession) -> list[tuple[ApiKey, str]]:
+    """Admin view: every key together with its owner's email."""
+    result = await session.execute(
+        select(ApiKey, User.email)
+        .join(User, User.id == ApiKey.owner_id)
+        .order_by(ApiKey.created_at.desc())
+    )
+    return [(key, email) for key, email in result.all()]
+
+
 async def revoke_key(session: AsyncSession, key_id: uuid.UUID) -> bool:
     record = await session.get(ApiKey, key_id)
     if record is None:
@@ -69,9 +79,15 @@ async def revoke_key(session: AsyncSession, key_id: uuid.UUID) -> bool:
 
 
 async def verify_key(session: AsyncSession, raw_key: str) -> ApiKey | None:
-    """Return the active, non-expired ApiKey matching raw_key, else None."""
+    """Return the active, non-expired ApiKey matching raw_key, else None.
+
+    A deactivated owner invalidates every key it holds: suspending a user must
+    not leave working credentials behind. Spec: task-ownership.md §6.
+    """
     result = await session.execute(
-        select(ApiKey).where(ApiKey.key_hash == _hash_key(raw_key))
+        select(ApiKey)
+        .join(User, User.id == ApiKey.owner_id)
+        .where(ApiKey.key_hash == _hash_key(raw_key), User.is_active.is_(True))
     )
     record = result.scalar_one_or_none()
     if record is None or not record.is_active:

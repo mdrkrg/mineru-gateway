@@ -58,6 +58,15 @@ def create_app(
         )
         sys.exit(1)
 
+    # Section 3.1: the admin plane mints owners and API keys, so the default
+    # token would hand every deployment that forgot to override it a public
+    # credential-minting oracle. Refuse to start instead of warning.
+    if settings.admin_token.strip() in {"", "change-me"}:
+        raise ValueError(
+            "GATEWAY_ADMIN_TOKEN must be set to a strong value: the admin plane "
+            "provisions owners and issues API keys"
+        )
+
     # Section 3.1 / 7.1: validate jwt_secret when user_auth_enabled
     if settings.user_auth_enabled and len(settings.jwt_secret) < 32:
         raise ValueError(
