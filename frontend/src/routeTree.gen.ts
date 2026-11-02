@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
+import { Route as KeyRouteImport } from './routes/key'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
@@ -25,6 +26,11 @@ import { Route as AuthenticatedTasksIdRouteImport } from './routes/_authenticate
 
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KeyRoute = KeyRouteImport.update({
+  id: '/key',
+  path: '/key',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -90,6 +96,7 @@ const AuthenticatedTasksIdRoute = AuthenticatedTasksIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
+  '/key': typeof KeyRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/api-keys': typeof AuthenticatedApiKeysRoute
@@ -103,6 +110,7 @@ export interface FileRoutesByFullPath {
   '/tasks/': typeof AuthenticatedTasksIndexRoute
 }
 export interface FileRoutesByTo {
+  '/key': typeof KeyRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/api-keys': typeof AuthenticatedApiKeysRoute
@@ -119,6 +127,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/key': typeof KeyRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/_authenticated/api-keys': typeof AuthenticatedApiKeysRoute
@@ -136,6 +145,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/key'
     | '/login'
     | '/register'
     | '/api-keys'
@@ -149,6 +159,7 @@ export interface FileRouteTypes {
     | '/tasks/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/key'
     | '/login'
     | '/register'
     | '/api-keys'
@@ -164,6 +175,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_authenticated'
+    | '/key'
     | '/login'
     | '/register'
     | '/_authenticated/api-keys'
@@ -180,6 +192,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  KeyRoute: typeof KeyRoute
   LoginRoute: typeof LoginRoute
   RegisterRoute: typeof RegisterRoute
   OauthCallbackRoute: typeof OauthCallbackRoute
@@ -192,6 +205,13 @@ declare module '@tanstack/solid-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/key': {
+      id: '/key'
+      path: '/key'
+      fullPath: '/key'
+      preLoaderRoute: typeof KeyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -311,6 +331,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  KeyRoute: KeyRoute,
   LoginRoute: LoginRoute,
   RegisterRoute: RegisterRoute,
   OauthCallbackRoute: OauthCallbackRoute,

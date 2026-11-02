@@ -16,14 +16,15 @@ import {
   LogoutResponseSchema,
   UserReadSchema,
   UserCreateRequestSchema,
+  AdminUserCreateRequestSchema,
   UserUpdateRequestSchema,
   MyApiKeyCreateRequestSchema,
   VerifyEmailRequestSchema,
-  OAuthProvidersResponseSchema,
   type ApiKeyCreateRequest,
   type LoginRequest,
   type RefreshTokenRequest,
   type UserCreateRequest,
+  type AdminUserCreateRequest,
   type UserUpdateRequest,
   type MyApiKeyCreateRequest,
   type VerifyEmailRequest,
@@ -113,8 +114,8 @@ export function register(body: UserCreateRequest) {
 
 // ===== Admin Create User =====
 
-export function adminCreateUser(body: UserCreateRequest, adminToken: string) {
-  const validated = validateRequest(UserCreateRequestSchema)(body);
+export function adminCreateUser(body: AdminUserCreateRequest, adminToken: string) {
+  const validated = validateRequest(AdminUserCreateRequestSchema)(body);
   if (validated.isErr()) return validated;
   return fetchAndValidate('auth/users', {
     success: UserReadSchema,
@@ -173,14 +174,6 @@ export function createMyApiKey(body: MyApiKeyCreateRequest) {
 export function revokeMyApiKey(keyId: string) {
   return request(`me/api-keys/${keyId}`, {
     method: 'DELETE',
-  });
-}
-
-// ===== OAuth =====
-
-export function getOAuthProviders() {
-  return fetchAndValidate('auth/oauth/providers', {
-    success: OAuthProvidersResponseSchema,
   });
 }
 

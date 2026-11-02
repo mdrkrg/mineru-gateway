@@ -187,6 +187,25 @@ export const UserCreateRequestSchema = defineRequestSchema(
   },
 );
 
+export const AdminUserCreateRequestSchema = defineRequestSchema(
+  {
+    email: 'string',
+    password: 'string | null',
+    isActive: 'boolean',
+    isSuperuser: 'boolean',
+    isVerified: 'boolean | null',
+    displayName: 'string | null',
+  },
+  {} as {
+    email: string;
+    password: string | null;
+    is_active: boolean;
+    is_superuser: boolean;
+    is_verified: boolean | null;
+    display_name: string | null;
+  },
+);
+
 export const UserUpdateRequestSchema = defineRequestSchema(
   {
     password: 'string | null',
@@ -216,19 +235,6 @@ export const VerifyEmailRequestSchema = defineRequestSchema(
   {} as { email: string },
 );
 
-// ===== OAuth =====
-
-export const OAuthProvidersResponseSchema = defineResponseSchema(
-  {
-    providers: type({
-      name: 'string',
-    }).array(),
-  },
-  {} as {
-    providers: { name: string }[];
-  },
-);
-
 // ===== Type exports =====
 
 export type ApiKeyCreateRequest = typeof ApiKeyCreateRequestSchema.inferIn;
@@ -245,8 +251,7 @@ export type RefreshTokenRequest = typeof RefreshTokenRequestSchema.inferIn;
 
 export type UserRead = typeof UserReadSchema.infer;
 export type UserCreateRequest = typeof UserCreateRequestSchema.inferIn;
+export type AdminUserCreateRequest = typeof AdminUserCreateRequestSchema.inferIn;
 export type UserUpdateRequest = typeof UserUpdateRequestSchema.inferIn;
 
 export type VerifyEmailRequest = typeof VerifyEmailRequestSchema.inferIn;
-
-export type OAuthProvidersResponse = typeof OAuthProvidersResponseSchema.infer;

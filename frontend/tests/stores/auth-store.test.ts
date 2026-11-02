@@ -531,6 +531,38 @@ describe('AuthStore: logout', () => {
 // refresh()
 // ---------------------------------------------------------------------------
 
+describe('AuthStore: API-key mode', () => {
+  it('keeps a pasted key in memory and counts it as a credential', () => {
+    const store = createAuthStore();
+
+    expect(store.hasCredential()).toBe(false);
+    store.setApiKey('  mru_pasted  ');
+    expect(store.apiKey()).toBe('mru_pasted');
+    expect(store.hasCredential()).toBe(true);
+    expect(store.isAuthenticated()).toBe(false);
+
+    store.clearApiKey();
+    expect(store.hasCredential()).toBe(false);
+  });
+
+  it('never persists the pasted key', () => {
+    const store = createAuthStore();
+    store.setApiKey('mru_secret');
+
+    expect(localStorageMock.setItem).not.toHaveBeenCalled();
+  });
+
+  it('clears the pasted key on logout without any JWT', async () => {
+    const store = createAuthStore();
+    store.setApiKey('mru_secret');
+
+    await store.logout();
+
+    expect(store.apiKey()).toBeNull();
+    expect(store.hasCredential()).toBe(false);
+  });
+});
+
 describe('AuthStore: refresh', () => {
   /**
    * Refresh updates the accessToken in state and localStorage

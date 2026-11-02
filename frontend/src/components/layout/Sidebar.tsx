@@ -12,6 +12,7 @@ import {
   Users,
 } from 'lucide-solid';
 import { useAuth } from '@/stores/auth-context';
+import { useConfig } from '@/stores/config-context';
 import { t, type DictKey } from '@/i18n';
 import { ROUTES } from '@/utils/constants';
 import { icons } from '@/styles/icons.stylex';
@@ -127,16 +128,27 @@ function NavLink(props: { item: NavItem }) {
 
 export function SidebarNav(props: { onNavigate?: () => void; fill?: boolean }) {
   const auth = useAuth();
+  const config = useConfig();
   const isAdmin = () => auth.user()?.isSuperuser === true;
+  const showAdmin = () =>
+    config.userAuthEnabled() ? isAdmin() : auth.apiKey() !== null;
+  // A pasted API key has no user: self-service keys and the profile page
+  // belong to the login stack and would only fail there.
+  const navItems = () =>
+    auth.user()
+      ? NAV_ITEMS
+      : NAV_ITEMS.filter(
+          (item) => item.to !== ROUTES.apiKeys && item.to !== ROUTES.profile,
+        );
 
   return (
     <nav
       onClick={() => props.onNavigate?.()}
       {...stylex.attrs(styles.nav, props.fill && layout.flex1)}
     >
-      <For each={NAV_ITEMS}>{(item) => <NavLink item={item} />}</For>
+      <For each={navItems()}>{(item) => <NavLink item={item} />}</For>
 
-      <Show when={isAdmin()}>
+      <Show when={showAdmin()}>
         <div {...stylex.attrs(typography.metaFaint, styles.adminLabel)}>
           {t('nav.admin')}
         </div>

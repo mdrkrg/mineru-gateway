@@ -1,6 +1,7 @@
 import * as stylex from '@stylexjs/stylex';
 import { Show, createSignal } from 'solid-js';
 import { createFileRoute } from '@tanstack/solid-router';
+import { requireUser } from '@/stores/guard';
 import { t } from '@/i18n';
 import { updateCurrentUser } from '@/api/functions/auth';
 import { useAuth } from '@/stores/auth-context';
@@ -12,6 +13,9 @@ import { space } from '@/styles/tokens.stylex';
 import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/profile')({
+  beforeLoad: ({ context, location }) => {
+    requireUser(context.auth, context.config, location.href);
+  },
   component: ProfilePage,
 });
 

@@ -66,7 +66,8 @@ curl -X POST http://localhost:8000/v1/tasks \
 
 Task endpoints accept either `X-API-Key` or `Authorization: Bearer <jwt>`; both
 resolve to the same owner. The web UI uses JWT when
-`GATEWAY_USER_AUTH_ENABLED=true`. See `specs/task-ownership.md`.
+`GATEWAY_USER_AUTH_ENABLED=true`. With logins disabled, it asks for an API key
+instead and keeps it in memory only.
 
 Interactive API docs are served at `/docs` (OpenAPI at `/openapi.json`).
 

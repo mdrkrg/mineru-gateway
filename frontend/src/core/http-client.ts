@@ -102,8 +102,9 @@ function getApi(): typeof ky_default {
 export function registerAuthHooks(
   getToken: () => string | null,
   refresh: () => Promise<string | null>,
+  getApiKey?: () => string | null,
 ): void {
-  _beforeRequestHook = createAuthBeforeRequest(getToken);
+  _beforeRequestHook = createAuthBeforeRequest(getToken, getApiKey);
   // `ky.retry()` returns a marker that ky's own retry machinery understands:
   // it increments `retryCount` and honours `retry.limit`, so the
   // `retryCount > 0` guard in createAuthAfterResponse actually fires. Re-issuing
@@ -304,17 +305,26 @@ export function passthrough(
 
 export function createAuthBeforeRequest(
   getToken: () => string | null,
+  getApiKey?: () => string | null,
 ): (state: { request: Request }) => Request | void {
   return (state) => {
-    const token = getToken();
-    if (!token) return;
     const headers = new Headers(state.request.headers);
-    // A caller-supplied Authorization header wins: it is an explicit,
-    // per-request credential (e.g. loginWithTokens validating a freshly
-    // obtained OAuth token while a previous session's token is still in the
-    // store). Overwriting it would authenticate the request as the wrong user.
-    if (headers.has('Authorization')) return;
-    headers.set('Authorization', `Bearer ${token}`);
+    // Caller-supplied credentials win: they are explicit, per-request
+    // credentials (e.g. loginWithTokens validating a freshly obtained OAuth
+    // token while a previous session's token is still in the store, or an
+    // external client passing its own key).
+    if (headers.has('Authorization') || headers.has('X-API-Key')) return;
+
+    const token = getToken();
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+      return new Request(state.request, { headers });
+    }
+
+    // Key-only deployments have no JWT; the pasted key rides every request.
+    const apiKey = getApiKey?.();
+    if (!apiKey) return;
+    headers.set('X-API-Key', apiKey);
     return new Request(state.request, { headers });
   };
 }

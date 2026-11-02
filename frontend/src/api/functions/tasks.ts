@@ -56,8 +56,7 @@ export interface TaskSubmissionOptions {
 }
 
 export function submitTask(options: TaskSubmissionOptions) {
-  const headers: Record<string, string> = {};
-  if (options.apiKey) headers['X-API-Key'] = options.apiKey;
+  const headers: Record<string, string> = taskAuthHeaders(options.apiKey);
   if (options.idempotencyKey) headers['X-Idempotency-Key'] = options.idempotencyKey;
 
   return request('v1/tasks', {
@@ -82,8 +81,7 @@ export interface FileParseOptions {
 export function parseFile(
   options: FileParseOptions,
 ): ResultAsync<RawResponse, ApiError<HttpError<number, unknown>>> {
-  const headers: Record<string, string> = {};
-  if (options.apiKey) headers['X-API-Key'] = options.apiKey;
+  const headers = taskAuthHeaders(options.apiKey);
 
   return request('v1/file_parse', {
     method: 'POST',

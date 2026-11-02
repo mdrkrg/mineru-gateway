@@ -84,9 +84,11 @@ Build-time deployment paths are configured by `VITE_APP_BASE_PATH` and
 |------|---------|
 | `auth.tsx` | `AuthStore` - JWT tokens in localStorage, `login`/`loginWithTokens`/`logout`/`refresh`/`init`, error mapping |
 | `auth-context.tsx` | `AuthContext` + `useAuth()` hook + `AuthProvider` |
-| `guard.ts` | `requireAuth()` / `requireSuperuser()` - throw redirects for route `beforeLoad` |
+| `guard.ts` | `requireAuth()` / `requireSuperuser()` / `requireUser()` - throw redirects for route `beforeLoad` |
 | `admin-token.tsx` | `AdminTokenStore` - gateway admin token, sessionStorage-backed (tab-scoped) |
 | `admin-token-context.tsx` | `useAdminToken()` hook + `AdminTokenProvider` |
+| `config.ts` | `ConfigStore` - `GET /v1/config`; whether the gateway serves logins, plus the OAuth providers |
+| `config-context.tsx` | `useConfig()` hook + `ConfigProvider` |
 
 ### Routes & auth model
 
@@ -94,11 +96,11 @@ Build-time deployment paths are configured by `VITE_APP_BASE_PATH` and
   `requireAuth` and wraps children in `AppShell` (Sidebar + Header). All
   protected pages live under `routes/_authenticated/`.
 - Admin pages additionally run `requireSuperuser` in `beforeLoad`.
-- **One web credential**: all web endpoints (user and task) use the JWT
-  (`Authorization: Bearer`). Task ownership is by user, so task pages do not
-  need an API key. `X-API-Key` remains for external clients only (see
-  `../specs/task-ownership.md`).
-  Admin endpoints take the gateway admin token from `useAdminToken()`,
+- **Two web credentials, one owner**: JWT (`Authorization: Bearer`) when
+  logins are enabled, otherwise an API key pasted on `/key` and held in
+  memory only (`X-API-Key` attached by the request hook). Either credential
+  resolves to the same owner (see `../specs/task-ownership.md`).
+- Admin endpoints take the gateway admin token from `useAdminToken()`,
   gated by `<AdminTokenGate/>`.
 
 ### Styling

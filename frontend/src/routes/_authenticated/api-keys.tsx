@@ -1,6 +1,7 @@
 import * as stylex from '@stylexjs/stylex';
 import { Show, createSignal, onMount } from 'solid-js';
 import { createFileRoute } from '@tanstack/solid-router';
+import { requireUser } from '@/stores/guard';
 import {
   createMyApiKey,
   listMyApiKeys,
@@ -20,6 +21,9 @@ import { layout } from '@/styles/layout.stylex';
 import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/api-keys')({
+  beforeLoad: ({ context, location }) => {
+    requireUser(context.auth, context.config, location.href);
+  },
   component: ApiKeysPage,
 });
 

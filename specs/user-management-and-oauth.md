@@ -734,6 +734,8 @@ src/mineru_gateway/auth/
 - 不注册任何 JWT/OAuth/自助路由。
 - 始终注册 admin 平面（`POST /auth/users`、`/auth/keys*`）和业务路由。
 - `api_keys.owner_id` 始终非空：`/auth/keys` 仍需按 `email` 指定已存在的 owner。
+- 登录关闭时，面板改为接受直接粘贴的 API Key（仅保存在内存），任务页用
+  `X-API-Key` 工作；自助 Key 与个人资料页在该模式下不可用。
 
 `GATEWAY_USER_AUTH_ENABLED=true` 时：注册所有新增路由，用户可登录、注册（受开关控制）、OAuth 登录、管理 Key。
 

@@ -8,8 +8,15 @@ export interface AuthStore {
   user: () => UserRead | null;
   accessToken: () => string | null;
   refreshToken: () => string | null;
+  /** In-memory API key for key-only deployments; never persisted. */
+  apiKey: () => string | null;
   isLoading: () => boolean;
+  /** True when a JWT session exists (the API-key mode has no user). */
   isAuthenticated: () => boolean;
+  /** True when either a JWT session or a pasted API key can sign requests. */
+  hasCredential: () => boolean;
+  setApiKey: (key: string) => void;
+  clearApiKey: () => void;
   error: () => string | null;
   init: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
@@ -25,7 +32,7 @@ const ACCESS_TOKEN_KEY = 'auth_access_token';
 const REFRESH_TOKEN_KEY = 'auth_refresh_token';
 
 /** HTTP statuses that mean the JWT session is no longer usable. */
-const DEAD_SESSION_STATUSES = new Set([401, 403]);
+const DEAD_SESSION_STATUSES = new Set([401, 403, 404]);
 
 function readTokens(): { accessToken: string | null; refreshToken: string | null } {
   return {
@@ -52,16 +59,27 @@ export function createAuthStore(): AuthStore {
   const [user, setUser] = createSignal<UserRead | null>(null);
   const [accessToken, setAccessToken] = createSignal<string | null>(null);
   const [refreshToken, setRefreshToken] = createSignal<string | null>(null);
+  const [apiKey, setApiKeySignal] = createSignal<string | null>(null);
   const [isLoading, setIsLoading] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const isAuthenticated = createMemo(() => accessToken() !== null);
+  const hasCredential = createMemo(() => accessToken() !== null || apiKey() !== null);
 
   /** Terminates the client-side session: clears user + tokens. */
   function clearSession() {
     setUser(null);
     setAccessToken(null);
     setRefreshToken(null);
+    setApiKeySignal(null);
     clearTokens();
+  }
+
+  function setApiKey(key: string) {
+    setApiKeySignal(key.trim() || null);
+  }
+
+  function clearApiKey() {
+    setApiKeySignal(null);
   }
 
   async function init() {
@@ -79,7 +97,9 @@ export function createAuthStore(): AuthStore {
 
     const result = await getCurrentUser();
     if (result.isErr()) {
-      if (isHttpError(result.error) && result.error.status === 401) {
+      // 404 means the login stack is not mounted (key-only deployment), so a
+      // persisted token from a previous mode is dead, not merely rejected.
+      if (isHttpError(result.error) && DEAD_SESSION_STATUSES.has(result.error.status)) {
         clearSession();
       }
       setError(errorMessage(result.error));
@@ -125,7 +145,10 @@ export function createAuthStore(): AuthStore {
   }
 
   async function logout() {
-    if (!accessToken()) return;
+    if (!accessToken()) {
+      clearApiKey();
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
@@ -176,7 +199,9 @@ export function createAuthStore(): AuthStore {
 
     const result = await getCurrentUser();
     if (result.isErr()) {
-      if (isHttpError(result.error) && result.error.status === 401) {
+      // 404 means the login stack is not mounted (key-only deployment), so a
+      // persisted token from a previous mode is dead, not merely rejected.
+      if (isHttpError(result.error) && DEAD_SESSION_STATUSES.has(result.error.status)) {
         clearSession();
       }
       setError(errorMessage(result.error));
@@ -189,8 +214,12 @@ export function createAuthStore(): AuthStore {
     user,
     accessToken,
     refreshToken,
+    apiKey,
     isLoading,
     isAuthenticated,
+    hasCredential,
+    setApiKey,
+    clearApiKey,
     error,
     init,
     login,

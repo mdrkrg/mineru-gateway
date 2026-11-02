@@ -5,7 +5,6 @@ import { adminCreateUser } from '@/api/functions/auth';
 import type { UserRead } from '@/api/schemas/auth';
 import AdminTokenGate from '@/components/AdminTokenGate';
 import { t } from '@/i18n';
-import type { AuthStore } from '@/stores/auth';
 import { useAdminToken } from '@/stores/admin-token-context';
 import { useToast } from '@/stores/toast-context';
 import { requireSuperuser } from '@/stores/guard';
@@ -18,7 +17,7 @@ import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/admin/users')({
   beforeLoad: ({ context, location }) => {
-    requireSuperuser((context as { auth: AuthStore }).auth, location.href);
+    requireSuperuser(context.auth, context.config, location.href);
   },
   component: AdminUsersPage,
 });
@@ -52,14 +51,17 @@ function AdminUsersContent() {
     setError(null);
     setCreated(null);
 
+    const initialPassword = password().trim();
     const result = await adminCreateUser(
       {
         email: email(),
-        password: password(),
+        password: initialPassword || null,
         displayName: displayName().trim() || null,
         isActive: true,
         isSuperuser: isSuperuser(),
-        isVerified: false,
+        // A credential-only owner has no mailbox flow; the gateway marks it
+        // verified so it does not look broken in the admin list.
+        isVerified: initialPassword ? false : null,
       },
       token,
     );
@@ -114,12 +116,14 @@ function AdminUsersContent() {
             <span {...stylex.attrs(controls.fieldLabel)}>{t('adminUsers.initialPassword')}</span>
             <input
               type="password"
-              required
               autocomplete="new-password"
               value={password()}
               onInput={(e) => setPassword(e.currentTarget.value)}
               {...stylex.attrs(controls.input)}
             />
+            <span {...stylex.attrs(typography.metaMuted)}>
+              {t('adminUsers.passwordHint')}
+            </span>
           </label>
           <label {...stylex.attrs(controls.field)}>
             <span {...stylex.attrs(controls.fieldLabel)}>{t('adminUsers.displayName')}</span>

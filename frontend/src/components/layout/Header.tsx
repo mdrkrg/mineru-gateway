@@ -1,7 +1,7 @@
 import * as stylex from '@stylexjs/stylex';
 import { For, Show } from 'solid-js';
 import { useLocation, useNavigate } from '@tanstack/solid-router';
-import { LogOut } from 'lucide-solid';
+import { KeyRound, LogOut } from 'lucide-solid';
 import { LOCALES, locale, setLocale, t } from '@/i18n';
 import type { DictKey, Locale } from '@/i18n';
 import { useAuth } from '@/stores/auth-context';
@@ -19,6 +19,7 @@ const EXACT_TITLES: Record<string, DictKey> = {
   [ROUTES.tasks]: 'nav.tasks',
   [ROUTES.upload]: 'nav.upload',
   [ROUTES.download]: 'nav.download',
+  [ROUTES.keyEntry]: 'keyEntry.title',
   [ROUTES.apiKeys]: 'nav.apiKeys',
   [ROUTES.profile]: 'nav.profile',
   [ROUTES.adminKeys]: 'nav.adminKeys',
@@ -121,9 +122,16 @@ export default function Header() {
   const title = () => pageTitle(location().pathname);
   const displayName = () => auth.user()?.displayName || auth.user()?.email || '';
 
+  const keyMode = () => auth.apiKey() !== null && auth.user() === null;
+
   async function handleLogout() {
     await auth.logout();
     navigate({ to: ROUTES.login });
+  }
+
+  function handleForgetKey() {
+    auth.clearApiKey();
+    navigate({ to: ROUTES.keyEntry });
   }
 
   return (
@@ -138,6 +146,11 @@ export default function Header() {
             {displayName()}
           </span>
         </Show>
+        <Show when={keyMode()}>
+          <span {...stylex.attrs(typography.bodySecondary, styles.displayName)}>
+            {t('header.keyMode')}
+          </span>
+        </Show>
         <select
           value={locale()}
           onChange={(e) => setLocale(e.currentTarget.value as Locale)}
@@ -148,16 +161,31 @@ export default function Header() {
             {(code) => <option value={code}>{LOCALE_LABELS[code]}</option>}
           </For>
         </select>
-        <button
-          type="button"
-          onClick={handleLogout}
-          disabled={auth.isLoading()}
-          aria-label={t('nav.logout')}
-          {...stylex.attrs(typography.body, styles.logout)}
+        <Show
+          when={!keyMode()}
+          fallback={
+            <button
+              type="button"
+              onClick={handleForgetKey}
+              aria-label={t('header.changeKey')}
+              {...stylex.attrs(typography.body, styles.logout)}
+            >
+              <KeyRound class={stylex.attrs(icons.sm).class} />
+              <span {...stylex.attrs(styles.logoutLabel)}>{t('header.changeKey')}</span>
+            </button>
+          }
         >
-          <LogOut class={stylex.attrs(icons.sm).class} />
-          <span {...stylex.attrs(styles.logoutLabel)}>{t('nav.logout')}</span>
-        </button>
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={auth.isLoading()}
+            aria-label={t('nav.logout')}
+            {...stylex.attrs(typography.body, styles.logout)}
+          >
+            <LogOut class={stylex.attrs(icons.sm).class} />
+            <span {...stylex.attrs(styles.logoutLabel)}>{t('nav.logout')}</span>
+          </button>
+        </Show>
       </div>
     </header>
   );

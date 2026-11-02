@@ -729,6 +729,47 @@ describe('http-client: registerAuthHooks', () => {
 
       expect(result).toBeUndefined();
     });
+
+    it('falls back to the pasted API key when there is no JWT', () => {
+      getToken.mockReturnValue(null);
+      registerAuthHooks(getToken, refresh, () => 'mru_pasted');
+
+      const hook = getLatestExtendHooks()!.beforeRequest![0];
+      const req = new Request('http://test/api/tasks');
+      const result = invokeBeforeRequest(hook, req);
+
+      expect(result).toBeInstanceOf(Request);
+      if (result instanceof Request) {
+        expect(result.headers.get('X-API-Key')).toBe('mru_pasted');
+        expect(result.headers.get('Authorization')).toBeNull();
+      }
+    });
+
+    it('prefers the JWT when both credentials exist', () => {
+      getToken.mockReturnValue('at-abc');
+      registerAuthHooks(getToken, refresh, () => 'mru_pasted');
+
+      const hook = getLatestExtendHooks()!.beforeRequest![0];
+      const result = invokeBeforeRequest(hook, new Request('http://test/api/tasks'));
+
+      expect(result).toBeInstanceOf(Request);
+      if (result instanceof Request) {
+        expect(result.headers.get('Authorization')).toBe('Bearer at-abc');
+        expect(result.headers.get('X-API-Key')).toBeNull();
+      }
+    });
+
+    it('never overrides an explicit per-request API key', () => {
+      getToken.mockReturnValue(null);
+      registerAuthHooks(getToken, refresh, () => 'mru_pasted');
+
+      const hook = getLatestExtendHooks()!.beforeRequest![0];
+      const req = new Request('http://test/api/tasks', {
+        headers: { 'X-API-Key': 'mru_explicit' },
+      });
+
+      expect(invokeBeforeRequest(hook, req)).toBeUndefined();
+    });
   });
 
   describe('afterResponse hook', () => {

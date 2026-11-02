@@ -3,6 +3,10 @@ export {
 } from '@/api/functions/health';
 
 export {
+  getGatewayConfig,
+} from '@/api/functions/config';
+
+export {
   createApiKey,
   listApiKeys,
   revokeApiKey,
@@ -16,7 +20,6 @@ export {
   listMyApiKeys,
   createMyApiKey,
   revokeMyApiKey,
-  getOAuthProviders,
   requestVerifyToken,
 } from '@/api/functions/auth';
 

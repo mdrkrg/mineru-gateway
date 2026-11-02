@@ -11,7 +11,6 @@ import AdminTokenGate from '@/components/AdminTokenGate';
 import ApiKeyReveal from '@/components/ApiKeyReveal';
 import ApiKeyTable from '@/components/ApiKeyTable';
 import { t } from '@/i18n';
-import type { AuthStore } from '@/stores/auth';
 import { useAdminToken } from '@/stores/admin-token-context';
 import { useConfirm } from '@/stores/confirm-context';
 import { useToast } from '@/stores/toast-context';
@@ -24,7 +23,7 @@ import { typography } from '@/styles/typography.stylex';
 
 export const Route = createFileRoute('/_authenticated/admin/keys')({
   beforeLoad: ({ context, location }) => {
-    requireSuperuser((context as { auth: AuthStore }).auth, location.href);
+    requireSuperuser(context.auth, context.config, location.href);
   },
   component: AdminKeysPage,
 });

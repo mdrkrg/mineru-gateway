@@ -3,7 +3,7 @@ import { Show, createSignal, onMount, For } from 'solid-js';
 import { Link, createFileRoute, useNavigate } from '@tanstack/solid-router';
 import { t } from '@/i18n';
 import { useAuth } from '@/stores/auth-context';
-import { getOAuthProviders } from '@/api/functions/auth';
+import { useConfig } from '@/stores/config-context';
 import { ROUTES } from '@/utils/constants';
 import { clearOAuthRedirect, rememberOAuthRedirect, safeRedirectPath } from '@/utils/redirect';
 import { env } from '@/env';
@@ -27,22 +27,18 @@ function buildOAuthRedirectUrl(provider: string): string {
 
 function LoginPage() {
   const auth = useAuth();
+  const config = useConfig();
   const navigate = useNavigate();
   const search = Route.useSearch();
   const destination = () => search().redirect ?? ROUTES.home;
   const [email, setEmail] = createSignal('');
   const [password, setPassword] = createSignal('');
-  const [providers, setProviders] = createSignal<{ name: string }[]>([]);
+  const providers = () => config.providers();
 
-  onMount(async () => {
-    if (auth.isAuthenticated()) {
+  onMount(() => {
+    if (auth.hasCredential()) {
       clearOAuthRedirect();
       navigate({ href: destination() });
-      return;
-    }
-    const result = await getOAuthProviders();
-    if (result.isOk()) {
-      setProviders(result.value.providers);
     }
   });
 
@@ -68,6 +64,27 @@ function LoginPage() {
           MinerU Gateway
         </p>
 
+        <Show
+          when={config.userAuthEnabled()}
+          fallback={
+            <div {...stylex.attrs(layout.stack16)}>
+              <p {...stylex.attrs(typography.bodyMuted)}>
+                {t('keyEntry.loginsDisabled')}
+              </p>
+              <Link
+                to={ROUTES.keyEntry}
+                class={stylex.attrs(
+                  controls.button,
+                  controls.buttonPrimary,
+                  controls.buttonLarge,
+                  typography.body,
+                ).class}
+              >
+                {t('keyEntry.submit')}
+              </Link>
+            </div>
+          }
+        >
         <form onSubmit={handleSubmit} {...stylex.attrs(layout.stack16)}>
           <label {...stylex.attrs(controls.field)}>
             <span {...stylex.attrs(controls.fieldLabel)}>{t('login.email')}</span>
@@ -139,6 +156,7 @@ function LoginPage() {
             {t('login.toRegister')}
           </Link>
         </p>
+        </Show>
       </div>
     </div>
   );

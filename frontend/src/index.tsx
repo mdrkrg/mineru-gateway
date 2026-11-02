@@ -6,6 +6,8 @@ import { locale } from '@/i18n';
 import { RouterProvider, createRouter } from '@tanstack/solid-router';
 import { routeTree } from '@/routeTree.gen';
 import { createAuthStore } from '@/stores/auth';
+import { createConfigStore } from '@/stores/config';
+import { ConfigProvider } from '@/stores/config-context';
 import { AuthProvider } from '@/stores/auth-context';
 import { registerAuthHooks } from '@/core/http-client';
 import { createAdminTokenStore } from '@/stores/admin-token';
@@ -17,6 +19,7 @@ import { ConfirmProvider } from '@/stores/confirm-context';
 import { env } from '@/env';
 
 const authStore = createAuthStore();
+const configStore = createConfigStore();
 const adminTokenStore = createAdminTokenStore();
 const toastStore = createToastStore();
 const confirmStore = createConfirmStore();
@@ -26,12 +29,13 @@ registerAuthHooks(
   // Returns the fresh access token, or null when the refresh failed for any
   // reason, so the retry hook never re-issues a request with a stale token.
   () => authStore.refresh(),
+  () => authStore.apiKey(),
 );
 
 const router = createRouter({
   routeTree,
   basepath: env.appBasePath,
-  context: { auth: authStore },
+  context: { auth: authStore, config: configStore },
   defaultPreload: 'intent',
   defaultStaleTime: 5000,
   scrollRestoration: true,
@@ -58,13 +62,15 @@ if (!rootElement.innerHTML) {
   render(
     () => (
       <AuthProvider store={authStore}>
-        <AdminTokenProvider store={adminTokenStore}>
-          <ToastProvider store={toastStore}>
-            <ConfirmProvider store={confirmStore}>
-              <RouterProvider router={router} />
-            </ConfirmProvider>
-          </ToastProvider>
-        </AdminTokenProvider>
+        <ConfigProvider store={configStore}>
+          <AdminTokenProvider store={adminTokenStore}>
+            <ToastProvider store={toastStore}>
+              <ConfirmProvider store={confirmStore}>
+                <RouterProvider router={router} />
+              </ConfirmProvider>
+            </ToastProvider>
+          </AdminTokenProvider>
+        </ConfigProvider>
       </AuthProvider>
     ),
     rootElement,

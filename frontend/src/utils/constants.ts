@@ -7,6 +7,7 @@ import type { TaskStatus } from '@/api/schemas/tasks';
 export const ROUTES = {
   home: '/',
   login: '/login',
+  keyEntry: '/key',
   register: '/register',
   oauthCallback: '/oauth/callback',
   tasks: '/tasks',
