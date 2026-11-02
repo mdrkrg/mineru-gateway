@@ -48,6 +48,8 @@ key-only 部署靠它完成初始化。
 - admin 代签与自助签发走同一个 `create_key(owner_id)`：签发来源不引入权限或作用域差异。
 - 轮换复用 owner：同一 email 再签一把 Key，历史与幂等域连续。
 - owner 被停用（`is_active=false`）后，其所有 Key 立即失效，且不能再签发。
+- `GATEWAY_BOOTSTRAP_OWNER_EMAIL` 可选：启动时若该邮箱不存在，按上面的凭据型
+  owner 创建；已存在则完全跳过（不重置密码、不改验证状态）。
 
 写入门槛：JWT 与自助 Key 都受 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS` 约束；
 凭据型 owner 不受该门槛影响。

@@ -10,6 +10,7 @@ import secrets
 
 from fastapi import HTTPException, Request
 from fastapi_users import exceptions
+from pydantic import EmailStr
 
 from ..config import Settings
 from .manager import UserManager
@@ -61,6 +62,33 @@ async def create_user(
     return UserRead.model_validate(user)
 
 
+def owner_user_create(
+    email: EmailStr,
+    *,
+    password: str | None,
+    display_name: str | None = None,
+    is_active: bool = True,
+    is_superuser: bool = False,
+    is_verified: bool | None = None,
+) -> UserCreate:
+    """Section 3: a missing password means a credential-only owner.
+
+    The generated password is hashed and discarded, so the row can own keys and
+    tasks but cannot sign in. ``is_verified`` defaults to true for that shape
+    (there is no mailbox flow to complete) and to false for login-capable
+    owners, which must verify their address.
+    """
+    login_capable = password is not None
+    return UserCreate(
+        email=email,
+        password=password or secrets.token_urlsafe(32),
+        display_name=display_name,
+        is_active=is_active,
+        is_superuser=is_superuser,
+        is_verified=(is_verified if is_verified is not None else not login_capable),
+    )
+
+
 async def provision_owner(
     body: AdminUserCreate,
     request: Request,
@@ -73,15 +101,17 @@ async def provision_owner(
     hashed and discarded, so the row can own keys and tasks but cannot sign in.
     Supplying a password creates a normal login account instead.
     """
-    login_capable = body.password is not None
-    user_create = UserCreate(
-        email=body.email,
-        password=body.password or secrets.token_urlsafe(32),
-        display_name=body.display_name,
-        is_active=body.is_active,
-        is_superuser=body.is_superuser,
-        is_verified=(
-            body.is_verified if body.is_verified is not None else not login_capable
+    return await create_user(
+        owner_user_create(
+            body.email,
+            password=body.password,
+            display_name=body.display_name,
+            is_active=body.is_active,
+            is_superuser=body.is_superuser,
+            is_verified=body.is_verified,
         ),
+        request,
+        user_manager,
+        settings,
+        safe=False,
     )
-    return await create_user(user_create, request, user_manager, settings, safe=False)

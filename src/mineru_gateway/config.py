@@ -122,6 +122,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./gateway.db"
     admin_token: str = "change-me"
     allow_anonymous: bool = False
+    # Optional seed: create this credential-only owner at startup if absent.
+    bootstrap_owner_email: EmailStr | None = None
 
     gateway_url: str = "http://127.0.0.1:8000"
     # Public reverse-proxy prefix for ASGI-generated URLs (for example,
@@ -187,6 +189,15 @@ class Settings(BaseSettings):
     cors_allow_headers: list[str] = ["*"]
     cors_allow_credentials: bool = False
     cors_max_age: int = 600
+
+    @field_validator("bootstrap_owner_email", mode="before")
+    @classmethod
+    def _empty_bootstrap_owner_email_is_unset(cls, value: object) -> object:
+        # Copied .env files carry the key with an empty value; treat that as
+        # "unset" instead of failing EmailStr validation and refusing to boot.
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @field_validator("root_path")
     @classmethod

@@ -14,6 +14,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from .auth.api_keys_me import router as api_keys_me_router
+from .auth.bootstrap import ensure_bootstrap_owner
 from .auth.jwt_routes import router as jwt_router
 from .auth.oauth.routes import router as oauth_router
 from .auth.routes import router as auth_router
@@ -93,6 +94,16 @@ def create_app(
         db = Database(settings.database_url)
         if create_tables:
             await db.create_all()
+
+        if settings.bootstrap_owner_email:
+            async with db.session_factory() as session:
+                owner_id = await ensure_bootstrap_owner(
+                    session, settings.bootstrap_owner_email
+                )
+            if owner_id is not None:
+                logger.info(
+                    "Bootstrap owner created", extra={"owner_id": str(owner_id)}
+                )
 
         client = upstream_client or build_http_client(settings)
 
