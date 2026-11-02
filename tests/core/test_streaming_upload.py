@@ -976,6 +976,8 @@ async def test_t11_idempotency_conflict_releases_cache(client, api_key, caplog):
 
     assert not isinstance(r1, Exception), f"r1 raised {r1}"
     assert not isinstance(r2, Exception), f"r2 raised {r2}"
+    assert r1.status_code == 202
+    assert r2.status_code == 202
     assert mock_release.call_count == 1
 
     conflicts = [

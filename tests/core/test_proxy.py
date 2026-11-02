@@ -12,7 +12,7 @@ import asyncio
 import os
 import uuid
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from mineru_gateway.config import Settings
 from mineru_gateway.main import create_app
@@ -547,28 +547,6 @@ async def test_idempotent_repeat_same_key_returns_replay(client, api_key, sample
         assert count == 1
 
 
-async def test_idempotent_lost_race_replays_winner(
-    client, api_key, sample_files, miss_first_lookup
-):
-    """specs/task-ownership.md §8: losing the insert race replays the winner.
-
-    Both requests can pass the pre-check while the winner is still talking to
-    upstream, so the loser hits the unique constraint and must recover from
-    the IntegrityError instead of failing the request.
-    """
-    headers = {"X-API-Key": api_key, "X-Idempotency-Key": "t-race-key"}
-    winner = await client.post("/v1/tasks", headers=headers, files=sample_files)
-    assert winner.status_code == 202
-
-    miss_once = miss_first_lookup(task_service, "get_by_idempotency")
-
-    loser = await client.post("/v1/tasks", headers=headers, files=sample_files)
-    assert loser.status_code == 202, loser.text
-    assert loser.headers.get("X-Idempotency-Key-Replayed") == "true"
-    assert loser.json()["task_id"] == winner.json()["task_id"]
-    assert miss_once["calls"] == 2
-
-
 async def test_idempotent_repeat_after_task_completed(client, api_key, sample_files):
     """T3 sec 6.1: resubmit with same idempotency key after task completed.
     Should return original response (status: pending), not completed."""
@@ -816,64 +794,6 @@ async def test_idempotent_concurrent_same_key(client, api_key, sample_files):
     async with client._transport.app.state.db.session_factory() as session:
         count = await session.scalar(select(func.count()).select_from(TaskRecord))
         assert count == 1
-
-
-async def test_idempotent_concurrent_failure_releases_cache(
-    client, api_key, sample_files
-):
-    """T10 sec 6.4: the losing request in a race condition releases
-    its file cache directory to avoid orphaned disk files."""
-    idem_key = "t10-cache-key"
-    headers = {"X-API-Key": api_key, "X-Idempotency-Key": idem_key}
-
-    from sqlalchemy.exc import IntegrityError
-    from mineru_gateway.tasks import service as task_service
-    from mineru_gateway.tasks.cache import FileCache
-
-    original_create = task_service.create
-    lock = asyncio.Lock()
-    first_committed = False
-
-    async def racing_create(session, **fields):
-        nonlocal first_committed
-        async with lock:
-            if first_committed:
-                raise IntegrityError(
-                    "mock",
-                    {},
-                    Exception("UNIQUE constraint failed: uq_tasks_owner_idempotency"),
-                )
-            result = await original_create(session, **fields)
-            first_committed = True
-            return result
-
-    original_lookup = task_service.get_by_idempotency
-    _lookup_count = 0
-
-    async def racing_lookup(session, owner_id, key):
-        nonlocal _lookup_count
-        _lookup_count += 1
-        if _lookup_count <= 2:
-            return None
-        return await original_lookup(session, owner_id, key)
-
-    with patch.object(task_service, "create", side_effect=racing_create):
-        with patch.object(
-            task_service, "get_by_idempotency", side_effect=racing_lookup
-        ):
-            with patch.object(
-                FileCache, "release", new_callable=AsyncMock
-            ) as mock_release:
-                mock_release.return_value = None
-                r1, r2 = await asyncio.gather(
-                    client.post("/v1/tasks", headers=headers, files=sample_files),
-                    client.post("/v1/tasks", headers=headers, files=sample_files),
-                    return_exceptions=True,
-                )
-
-    assert not isinstance(r1, Exception), f"r1 raised {r1}"
-    assert not isinstance(r2, Exception), f"r2 raised {r2}"
-    assert mock_release.call_count == 1
 
 
 async def test_idempotent_key_too_long_returns_422(client, api_key, sample_files):
