@@ -353,7 +353,8 @@ export const en = {
     'Not verified yet. Click the verification link in the email and try again.',
 
   // Dashboard
-  'dashboard.welcome': 'Welcome, {{name}}',
+  'dashboard.welcome': 'Welcome',
+  'dashboard.welcomeNamed': 'Welcome, {{name}}',
   'dashboard.statusSection': 'Task Status',
   'dashboard.resultsAvailable': 'Results Available',
   'dashboard.allStatuses': 'All Statuses',

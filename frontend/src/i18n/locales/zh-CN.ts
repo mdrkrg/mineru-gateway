@@ -347,7 +347,8 @@ export const zhCN: Dict = {
   'emailVerification.errNotVerified': '尚未完成验证，请点击邮件中的验证链接后重试',
 
   // Dashboard
-  'dashboard.welcome': '欢迎，{{name}}',
+  'dashboard.welcome': '欢迎',
+  'dashboard.welcomeNamed': '欢迎，{{name}}',
   'dashboard.statusSection': '任务状态',
   'dashboard.resultsAvailable': '结果可用',
   'dashboard.allStatuses': '全部状态',

@@ -189,14 +189,19 @@ function DashboardPage() {
     ];
   };
 
+  const welcome = () => {
+    const user = auth.user();
+    return user
+      ? t('dashboard.welcomeNamed', {
+          name: user.displayName || user.email || '',
+        })
+      : t('dashboard.welcome');
+  };
+
   return (
     <div {...stylex.attrs(layout.stack24, layout.pageWidth1024)}>
       <div {...stylex.attrs(styles.titleRow)}>
-        <h2 {...stylex.attrs(typography.pageTitle, styles.welcome)}>
-          {t('dashboard.welcome', {
-            name: auth.user()?.displayName || auth.user()?.email || '',
-          })}
-        </h2>
+        <h2 {...stylex.attrs(typography.pageTitle, styles.welcome)}>{welcome()}</h2>
         <Link
           to={ROUTES.upload}
           class={
