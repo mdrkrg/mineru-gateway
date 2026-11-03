@@ -44,7 +44,7 @@ Authorization: Bearer <JWT> ──►  current_active_user() / require_task_prin
 | `X-Admin-Token` | `POST /auth/keys`, `GET /auth/keys`, `DELETE /auth/keys/{id}`, `POST /auth/users` | 管理员平面：创建 owner、代签 Key |
 | `Authorization: Bearer <JWT>` | `GET /users/me`, `PATCH /users/me`, `POST /auth/jwt/logout`, `GET /me/api-keys`, `POST /me/api-keys`, `DELETE /me/api-keys/{id}`, `/v1/tasks/*` | 用户自助与任务（新增） |
 
-无鉴权的公共端点：`POST /auth/jwt/login`、`POST /auth/jwt/refresh`、`POST /auth/register`（受开关控制）、`GET /auth/oauth/providers`、`GET /auth/oauth/{provider}/authorize`、`GET /auth/oauth/{provider}/callback`。
+无鉴权的公共端点：`GET /v1/config`（能力发现）、`POST /auth/jwt/login`、`POST /auth/jwt/refresh`、`POST /auth/register`（受开关控制）、`GET /auth/oauth/{provider}/authorize`、`GET /auth/oauth/{provider}/callback`。
 
 ### 1.2 OAuth 流程
 
@@ -527,10 +527,10 @@ GET /auth/oauth/{provider}/authorize
 - 生成 state 参数（防 CSRF），存入签名 cookie。
 - 重定向到 OIDC 提供商授权页面。
 
-#### 列出 OAuth 提供商
+#### 能力发现
 
 ```
-GET /auth/oauth/providers
+GET /v1/config
 ```
 
 **认证**：无
@@ -539,6 +539,7 @@ GET /auth/oauth/providers
 
 ```json
 {
+  "user_auth_enabled": true,
   "providers": [
     { "name": "keycloak" }
   ]
@@ -547,10 +548,12 @@ GET /auth/oauth/providers
 
 **行为**：
 
-- 返回 `GATEWAY_OIDC_PROVIDERS` 中所有已配置提供商的 `name` 列表。
-- 不返回 `client_id`、`client_secret`、`openid_configuration_endpoint` 等敏感配置。
-- 未配置任何 OIDC 提供商时返回 `{"providers": []}`。
-- 前端通过此端点发现可用提供商，为每个提供商渲染登录按钮。
+- 端点始终注册。
+- `providers` 来自 `GATEWAY_OIDC_PROVIDERS`，每个条目只有 `name`，不含
+  `client_id`、`client_secret`、`openid_configuration_endpoint`。
+- 未配置任何提供商时 `providers` 为 `[]`。
+- `user_auth_enabled=false` 时 `providers` 恒为 `[]`（登录路由不注册，下发的
+  提供商均不可用）。
 
 #### OAuth 回调
 
@@ -932,9 +935,10 @@ curl -X POST http://localhost:8000/auth/keys \
 - 回调端点：userinfo 端点请求失败（网络错误或 HTTP ≥ 400）→ 400，而非 500。
 - 配置校验：端点字段为非 `https://` URL（非 loopback）→ Gateway 拒绝启动。
 - 配置校验：loopback（`localhost`、`127.0.0.1`、`[::1]`）的 `http://` 端点允许。
-- 提供商列表端点：`GET /auth/oauth/providers` → 200 + `{"providers": [{"name": "..."}]}`，每个条目仅包含 `name` 字段。
-- 提供商列表端点：响应不包含 `client_id`、`client_secret`、`openid_configuration_endpoint`。
-- 提供商列表端点：无 OIDC 提供商配置时 → 200 + `{"providers": []}`。
+- 能力发现端点：`GET /v1/config` → 200 + `user_auth_enabled` 与 `providers` 列表。
+- 能力发现端点：`user_auth_enabled=false` 且已配置 OIDC 提供商 → `providers` 为 `[]`。
+- 能力发现端点：`providers` 响应不包含 `client_id`、`client_secret`、`openid_configuration_endpoint`。
+- 能力发现端点：无 OIDC 提供商配置时 → `providers: []`。
 
 ### 9.8 总开关
 

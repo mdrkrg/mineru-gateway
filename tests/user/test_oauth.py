@@ -640,18 +640,10 @@ async def test_callback_frontend_redirect_returns_302_with_fragment(
     assert "token_type=bearer" in location
 
 
-# ===== Section 4.5 / 9.7: Providers listing endpoint =====
+# ===== Section 4.5 / 9.7: provider discovery via /v1/config =====
 
 
-async def test_providers_lists_configured_providers(oauth_client):
-    """Section 9.7: GET /auth/oauth/providers -> 200 + provider names."""
-    resp = await oauth_client.get("/auth/oauth/providers")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body == {"providers": [{"name": "keycloak"}]}
-
-
-async def test_providers_multiple_providers(upstream_client):
+async def test_config_lists_multiple_providers(upstream_client):
     """Section 9.7: multiple configured providers -> all returned, each
     entry only contains name."""
 
@@ -687,16 +679,15 @@ async def test_providers_multiple_providers(upstream_client):
         async with httpx.AsyncClient(
             transport=transport, base_url="http://testserver"
         ) as c:
-            resp = await c.get("/auth/oauth/providers")
+            resp = await c.get("/v1/config")
             assert resp.status_code == 200
             body = resp.json()
-            assert body == {"providers": [{"name": "keycloak"}, {"name": "github"}]}
+            assert body["providers"] == [{"name": "keycloak"}, {"name": "github"}]
 
 
-async def test_providers_does_not_expose_secrets(oauth_client):
-    """Section 9.7: response must not contain client_id, client_secret, or
-    openid_configuration_endpoint."""
-    resp = await oauth_client.get("/auth/oauth/providers")
+async def test_config_does_not_expose_provider_secrets(oauth_client):
+    """Section 9.7: the capabilities payload must not leak OIDC config."""
+    resp = await oauth_client.get("/v1/config")
     assert resp.status_code == 200
     body_str = resp.text.lower()
     assert "client_id" not in body_str
@@ -704,30 +695,34 @@ async def test_providers_does_not_expose_secrets(oauth_client):
     assert "openid_configuration" not in body_str
 
 
-async def test_providers_empty_when_no_providers_configured(upstream_client):
-    """Section 9.7: no providers configured -> 200 + empty list."""
+async def test_config_advertises_providers(oauth_client):
+    """The panel reads provider names from the boot-time capabilities payload."""
+    resp = await oauth_client.get("/v1/config")
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "user_auth_enabled": True,
+        "providers": [{"name": "keycloak"}],
+    }
 
-    settings_empty = Settings(
+
+async def test_config_hides_providers_when_logins_are_disabled(upstream_client):
+    """Configured providers must not be advertised while /authorize is unmounted."""
+    settings_off = Settings(
         database_url="sqlite+aiosqlite:///:memory:",
         admin_token="test-admin-token",
-        user_auth_enabled=True,
-        jwt_secret="a" * 32,
-        open_registration=True,
-        oidc_providers=[],
+        user_auth_enabled=False,
+        oidc_providers=[TEST_OIDC_PROVIDER],
         create_tables=True,
-        # Gate open: no SMTP configured, so no verification path exists
-        # (spec: email-verification.md Section 3.1 startup validation).
-        allow_unverified_accounts=True,
     )
-    app = create_app(settings=settings_empty, upstream_client=upstream_client)
+    app = create_app(settings=settings_off, upstream_client=upstream_client)
     async with LifespanManager(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(
             transport=transport, base_url="http://testserver"
         ) as c:
-            resp = await c.get("/auth/oauth/providers")
-            assert resp.status_code == 200
-            assert resp.json() == {"providers": []}
+            resp = await c.get("/v1/config")
+    assert resp.status_code == 200
+    assert resp.json() == {"user_auth_enabled": False, "providers": []}
 
 
 # ===== Section 4.5: redirect_uri construction =====

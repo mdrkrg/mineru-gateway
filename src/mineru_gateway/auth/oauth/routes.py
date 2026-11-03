@@ -15,7 +15,6 @@ from urllib.parse import urlencode
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi_users import exceptions as fu_exceptions
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse, RedirectResponse
@@ -34,18 +33,6 @@ logger = logging.getLogger(__name__)
 _STATE_TTL_SECONDS = 600
 
 router = APIRouter(prefix="/auth/oauth", tags=["oauth"])
-
-
-class OAuthProviderInfo(BaseModel):
-    """Section 4.5: minimal OAuth provider info for frontend discovery."""
-
-    name: str
-
-
-class OAuthProvidersResponse(BaseModel):
-    """Section 4.5: list of configured OIDC provider names (secrets excluded)."""
-
-    providers: list[OAuthProviderInfo]
 
 
 def _cookie_name(provider: str) -> str:
@@ -144,16 +131,6 @@ def _extract_state_from_cookie(
     if hmac.compare_digest(expected, cookie_value):
         return state
     return None
-
-
-@router.get("/providers", response_model=OAuthProvidersResponse)
-async def providers(
-    settings: Settings = Depends(get_settings_dep),
-) -> OAuthProvidersResponse:
-    """Section 4.5: list configured OIDC provider names (secrets excluded)."""
-    return OAuthProvidersResponse(
-        providers=[OAuthProviderInfo(name=p.name) for p in settings.oidc_providers]
-    )
 
 
 @router.get("/{provider}/authorize")

@@ -43,3 +43,23 @@ class ApiKeyInfo(BaseModel):
 
 class ApiKeyList(BaseModel):
     keys: list[ApiKeyInfo]
+
+
+# ===== Gateway capabilities =====
+
+
+class OAuthProviderInfo(BaseModel):
+    """Name-only OIDC provider entry: enough to build the authorize link."""
+
+    name: str
+
+
+class GatewayConfig(BaseModel):
+    """Unauthenticated capabilities served by ``GET /v1/config``.
+
+    ``providers`` is empty while the login stack is off, so clients never
+    receive an entry they cannot use.
+    """
+
+    user_auth_enabled: bool
+    providers: list[OAuthProviderInfo]
