@@ -34,6 +34,7 @@ function LoginPage() {
   const [email, setEmail] = createSignal('');
   const [password, setPassword] = createSignal('');
   const providers = () => config.providers();
+  const title = () => config.userAuthEnabled() ? t('login.title') : t('keyEntry.title');
 
   onMount(() => {
     if (auth.hasCredential()) {
@@ -59,7 +60,7 @@ function LoginPage() {
   return (
     <div {...stylex.attrs(layout.centeredPage)}>
       <div {...stylex.attrs(layout.panel)}>
-        <h1 {...stylex.attrs(typography.heroTitle)}>{t('login.title')}</h1>
+        <h1 {...stylex.attrs(typography.heroTitle)}>{title()}</h1>
         <p {...stylex.attrs(typography.bodyMuted, layout.textCenter, layout.mb24)}>
           MinerU Gateway
         </p>

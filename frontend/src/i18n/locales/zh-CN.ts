@@ -88,7 +88,7 @@ export const zhCN: Dict = {
   'header.keyMode': 'API Key 模式',
   'header.changeKey': '更换 Key',
   'keyEntry.title': '使用 API Key',
-  'keyEntry.description': '该网关未启用账号登录。粘贴管理员签发的 API Key 即可使用面板。',
+  'keyEntry.description': '粘贴管理员签发的 API Key 即可使用面板。',
   'keyEntry.label': 'API Key',
   'keyEntry.placeholder': 'mru_...',
   'keyEntry.submit': '进入面板',

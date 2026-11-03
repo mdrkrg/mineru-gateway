@@ -85,7 +85,7 @@ export const en = {
   'header.keyMode': 'API key mode',
   'header.changeKey': 'Change key',
   'keyEntry.title': 'Use an API key',
-  'keyEntry.description': 'This gateway runs without accounts. Paste an API key issued by an administrator to open the panel.',
+  'keyEntry.description': 'Paste an API key issued by an administrator to open the panel.',
   'keyEntry.label': 'API key',
   'keyEntry.placeholder': 'mru_...',
   'keyEntry.submit': 'Open panel',
