@@ -23,7 +23,6 @@ import { tmpdir } from 'os';
 import * as net from 'net';
 import { setApiBaseUrl, isHttpError } from '../../src/core';
 import {
-  createApiKey,
   submitTask,
   getTaskDetail,
   listTasks,
@@ -31,7 +30,7 @@ import {
   downloadResultZip,
 } from '../../src/api';
 import { MockControl } from './mock-control';
-import { loadE2EUrls, samplePdfFormData } from './helpers';
+import { createApiKey, loadE2EUrls, samplePdfFormData } from './helpers';
 
 const ROOT = resolve(__dirname, '..', '..', '..');
 
@@ -117,12 +116,7 @@ beforeAll(async () => {
   await waitReady(gatewayUrl);
 
   setApiBaseUrl(gatewayUrl);
-  const keyResult = await createApiKey(
-    { label: 'e2e-result', expiresAt: null } as never,
-    'e2e-admin-token',
-  );
-  if (!keyResult.isOk()) throw new Error('failed to create API key');
-  apiKey = keyResult.value.apiKey;
+  apiKey = (await createApiKey(gatewayUrl)).apiKey;
 
   await mock.reset();
   await mock.setTaskStatus('running');

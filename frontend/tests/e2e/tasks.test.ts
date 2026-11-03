@@ -30,8 +30,7 @@ import {
   batchCancelTasks,
 } from '../../src/api';
 import { MockControl } from './mock-control';
-import { loadE2EUrls, samplePdfFormData } from './helpers';
-import { createApiKey } from '../../src/api';
+import { createApiKey, loadE2EUrls, samplePdfFormData } from './helpers';
 
 let apiKey: string;
 let mock: MockControl;
@@ -43,15 +42,7 @@ beforeAll(async () => {
   await mock.reset();
 
   // Create a key for task operations.
-  const keyResult = await createApiKey(
-    { label: 'e2e-tasks', expiresAt: null } as never,
-    'e2e-admin-token',
-  );
-  if (keyResult.isOk()) {
-    apiKey = keyResult.value.apiKey;
-  } else {
-    throw new Error('Failed to create API key for task e2e tests');
-  }
+  apiKey = (await createApiKey(urls.gatewayUrl)).apiKey;
 });
 
 afterAll(async () => {
