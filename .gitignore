@@ -12,6 +12,7 @@ wheels/
 # Local databases / caches
 *.db
 .pytest_cache/
+frontend/.tanstack/
 gateway-cache/
 
 # Credentials
