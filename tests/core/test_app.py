@@ -16,6 +16,15 @@ from pydantic import ValidationError
 from mineru_gateway.config import Settings
 from mineru_gateway.main import create_app
 
+OIDC_PROVIDER = {
+    "name": "keycloak",
+    "openid_configuration_endpoint": (
+        "https://keycloak.example.com/.well-known/openid-configuration"
+    ),
+    "client_id": "cid",
+    "client_secret": "secret",
+}
+
 
 def test_create_app_rejects_multiple_workers(settings, capsys):
     """§7.1: GATEWAY_WORKERS>1 must abort startup with a logged error.
@@ -40,6 +49,46 @@ def test_create_app_rejects_multiple_workers(settings, capsys):
     payload = json.loads(lines[-1])
     assert payload["level"] == "ERROR"
     assert "GATEWAY_WORKERS=2 is not supported" in payload["message"]
+
+
+@pytest.mark.parametrize("smtp_host", [None, "", "   "])
+def test_create_app_rejects_open_registration_without_smtp_when_oidc_is_on(
+    settings, smtp_host
+):
+    """OAuth linking needs a verified local row, which needs SMTP to exist."""
+    configured = Settings.model_validate(
+        {
+            **settings.model_dump(),
+            "open_registration": True,
+            "smtp_host": smtp_host,
+            "oidc_providers": [OIDC_PROVIDER],
+        }
+    )
+    assert configured.smtp_host is None
+    with pytest.raises(ValueError, match="GATEWAY_OPEN_REGISTRATION=true"):
+        create_app(settings=configured)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        # SMTP configured: verification exists, so registration may stay open.
+        {"smtp_host": "smtp.example.com", "smtp_from": "gw@example.com"},
+        # No OAuth provider: nothing to attach an unverifiable identity to.
+        {"oidc_providers": []},
+        # Registration closed: nobody can reserve an address at all.
+        {"open_registration": False},
+    ],
+)
+def test_create_app_allows_open_registration_outside_the_oauth_hole(
+    settings, overrides
+):
+    base = {
+        "open_registration": True,
+        "smtp_host": None,
+        "oidc_providers": [OIDC_PROVIDER],
+    }
+    create_app(settings=settings.model_copy(update={**base, **overrides}))
 
 
 @pytest.mark.parametrize(

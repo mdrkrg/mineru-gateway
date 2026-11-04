@@ -201,6 +201,15 @@ class Settings(BaseSettings):
             return None
         return value
 
+    @field_validator("smtp_host", mode="before")
+    @classmethod
+    def _blank_smtp_host_is_unset(cls, value: object) -> object:
+        # Copied .env files often carry the key with an empty value; normalize
+        # it so every `is None` check agrees that SMTP is off.
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @field_validator("root_path")
     @classmethod
     def _normalize_root_path(cls, value: str) -> str:

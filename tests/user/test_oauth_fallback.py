@@ -11,7 +11,6 @@ from __future__ import annotations
 import base64
 import json
 from unittest.mock import AsyncMock
-from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
@@ -19,6 +18,7 @@ from asgi_lifespan import LifespanManager
 
 from mineru_gateway.config import OIDCProviderConfig
 from mineru_gateway.main import create_app
+from tests.user.helpers import oauth_flow, oidc_settings
 from tests.user.oauth_patch import patch_oauth
 
 
@@ -62,12 +62,7 @@ _NO_DOMAIN_PROVIDER = OIDCProviderConfig(
 def fallback_settings(settings):
     """Base settings for fallback tests with user_info_mapping and
     email_fallback_domain configured."""
-    return settings.model_copy(
-        update={
-            "oidc_providers": [_FALLBACK_PROVIDER],
-            "oauth_redirect_base_url": "http://testserver",
-        }
-    )
+    return oidc_settings(settings, _FALLBACK_PROVIDER)
 
 
 @pytest.fixture
@@ -94,12 +89,7 @@ async def fallback_client(fallback_app):
 @pytest.fixture
 def no_fallback_domain_settings(settings):
     """Settings without email_fallback_domain."""
-    return settings.model_copy(
-        update={
-            "oidc_providers": [_NO_DOMAIN_PROVIDER],
-            "oauth_redirect_base_url": "http://testserver",
-        }
-    )
+    return oidc_settings(settings, _NO_DOMAIN_PROVIDER)
 
 
 @pytest.fixture
@@ -121,27 +111,6 @@ async def no_fallback_client(no_fallback_app):
         transport=transport, base_url="http://testserver"
     ) as c:
         yield c
-
-
-# ===== Helpers =====
-
-
-async def _oauth_flow(client):
-    """Helper: call authorize, extract state, call callback.
-
-    Returns the callback response. Section 4.5 flow.
-    """
-    auth_resp = await client.get("/auth/oauth/keycloak/authorize")
-    assert auth_resp.status_code == 302, auth_resp.text
-
-    location = auth_resp.headers.get("location", "")
-    params = parse_qs(urlparse(location).query)
-    state = params.get("state", [""])[0]
-
-    cb_resp = await client.get(
-        f"/auth/oauth/keycloak/callback?code=test-code&state={state}"
-    )
-    return cb_resp
 
 
 # ===== Section 4.5 step 3a: id_token fallback =====
@@ -169,7 +138,7 @@ async def test_callback_id_token_claims_used_when_no_userinfo(
     )
     mock_oauth_client.get_profile = AsyncMock(return_value={})
 
-    resp = await _oauth_flow(fallback_client)
+    resp = await oauth_flow(fallback_client)
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["access_token"]
@@ -213,7 +182,7 @@ async def test_callback_userinfo_overrides_id_token(fallback_client, mock_oauth_
         }
     )
 
-    resp = await _oauth_flow(fallback_client)
+    resp = await oauth_flow(fallback_client)
     assert resp.status_code == 200, resp.text
 
     token = resp.json()["access_token"]
@@ -245,7 +214,7 @@ async def test_callback_user_info_mapping_custom_fields(
         }
     )
 
-    resp = await _oauth_flow(fallback_client)
+    resp = await oauth_flow(fallback_client)
     assert resp.status_code == 200, resp.text
 
     token = resp.json()["access_token"]
@@ -272,7 +241,7 @@ async def test_callback_email_fallback_domain_synthetic_email(
         }
     )
 
-    resp = await _oauth_flow(fallback_client)
+    resp = await oauth_flow(fallback_client)
     assert resp.status_code == 200, resp.text
 
     token = resp.json()["access_token"]
@@ -281,6 +250,21 @@ async def test_callback_email_fallback_domain_synthetic_email(
     )
     assert me.json()["email"] == "user-without-email@idp.example.com"
     assert me.json()["display_name"] == "NoEmailUser"
+
+
+async def test_callback_synthetic_email_must_be_valid(
+    fallback_client, mock_oauth_client
+):
+    """The synthetic <sub>@<domain> address gets the same validation."""
+    mock_oauth_client.get_profile.return_value = {
+        "sub": "user:123",
+        "nickname": "BadSub",
+        "email_verified": True,
+    }
+
+    resp = await oauth_flow(fallback_client)
+    assert resp.status_code == 400, resp.text
+    assert "not a usable address" in resp.text
 
 
 async def test_callback_missing_email_no_fallback_returns_400(
@@ -296,7 +280,7 @@ async def test_callback_missing_email_no_fallback_returns_400(
         }
     )
 
-    resp = await _oauth_flow(no_fallback_client)
+    resp = await oauth_flow(no_fallback_client)
     assert resp.status_code == 400
 
 
@@ -318,7 +302,7 @@ async def test_callback_display_name_from_mapping_field(
         }
     )
 
-    resp = await _oauth_flow(fallback_client)
+    resp = await oauth_flow(fallback_client)
     assert resp.status_code == 200, resp.text
 
     token = resp.json()["access_token"]
@@ -337,7 +321,7 @@ async def test_callback_userinfo_failure_returns_400(
         side_effect=Exception("userinfo endpoint unreachable")
     )
 
-    resp = await _oauth_flow(fallback_client)
+    resp = await oauth_flow(fallback_client)
     assert resp.status_code == 400
 
 
@@ -356,7 +340,7 @@ async def test_callback_display_name_mapped_field_empty_falls_to_literal_name(
         }
     )
 
-    resp = await _oauth_flow(fallback_client)
+    resp = await oauth_flow(fallback_client)
     assert resp.status_code == 200, resp.text
 
     token = resp.json()["access_token"]
@@ -379,7 +363,7 @@ async def test_callback_display_name_email_local_part_with_custom_mapping(
         }
     )
 
-    resp = await _oauth_flow(fallback_client)
+    resp = await oauth_flow(fallback_client)
     assert resp.status_code == 200, resp.text
 
     token = resp.json()["access_token"]
@@ -404,7 +388,7 @@ async def test_callback_display_name_falls_back_to_sub_when_email_fallback_used(
         }
     )
 
-    resp = await _oauth_flow(fallback_client)
+    resp = await oauth_flow(fallback_client)
     assert resp.status_code == 200, resp.text
 
     token = resp.json()["access_token"]
@@ -438,7 +422,7 @@ async def test_callback_email_fallback_sub_priority(fallback_client, mock_oauth_
         }
     )
 
-    resp = await _oauth_flow(fallback_client)
+    resp = await oauth_flow(fallback_client)
     assert resp.status_code == 200, resp.text
 
     token = resp.json()["access_token"]
@@ -466,7 +450,7 @@ async def test_callback_email_verified_not_affected_by_user_info_mapping(
         }
     )
 
-    resp = await _oauth_flow(fallback_client)
+    resp = await oauth_flow(fallback_client)
     assert resp.status_code == 200, resp.text
 
     token = resp.json()["access_token"]
@@ -490,7 +474,7 @@ async def test_callback_email_verified_false_when_claim_false(
         }
     )
 
-    resp = await _oauth_flow(fallback_client)
+    resp = await oauth_flow(fallback_client)
     assert resp.status_code == 200, resp.text
 
     token = resp.json()["access_token"]

@@ -89,6 +89,24 @@ def create_app(
             "configure SMTP or set GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=true"
         )
 
+    # Open registration plus a provider identity is only safe with a mailbox
+    # flow: whoever registers an address first holds the local row, provider
+    # logins refuse to link it (unverified), and the real owner has no way to
+    # prove the address. That is a permanent sign-in block, not a dead row.
+    if (
+        settings.user_auth_enabled
+        and settings.oidc_providers
+        and settings.open_registration
+        and settings.smtp_host is None
+    ):
+        raise ValueError(
+            "GATEWAY_OPEN_REGISTRATION=true with GATEWAY_OIDC_PROVIDERS requires "
+            "GATEWAY_SMTP_HOST: without a mailbox flow a registered address can "
+            "never be verified, so whoever registers it first can permanently "
+            "block the real owner's provider login. Configure SMTP or disable "
+            "GATEWAY_OPEN_REGISTRATION"
+        )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         db = Database(settings.database_url)
