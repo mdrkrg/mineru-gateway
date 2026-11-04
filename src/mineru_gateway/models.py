@@ -20,6 +20,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -147,6 +148,15 @@ class User(SQLAlchemyBaseUserTable, Base):
     oauth_accounts: Mapped[list["OAuthAccount"]] = relationship(
         "OAuthAccount", back_populates="user", cascade="all, delete-orphan"
     )
+
+    # Email identity is ``lower(email)``:
+    # fastapi-users' SQLAlchemyUserDatabase.get_by_email compares ``func.lower`` on both sides,
+    # so this index makes that predicate unique and index-backed. The stored value keeps its
+    # original case for display and delivery only.
+    #
+    # Note: expression indexes are invisible to alembic autogenerate, so any
+    # future batch rebuild of this table must re-create it by hand.
+    __table_args__ = (Index("uq_users_email_lower", text("lower(email)"), unique=True),)
 
 
 class OAuthAccount(SQLAlchemyBaseOAuthAccountTable, Base):

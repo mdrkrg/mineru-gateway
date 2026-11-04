@@ -117,6 +117,14 @@ def test_upgrade_head_creates_v4_schema_matching_models(tmp_path):
         assert "ix_tasks_key_status_created" not in indexes
         assert "ix_tasks_api_key_id" not in indexes
 
+        # Email identity is the expression index, alembic check cannot see it.
+        assert "uq_users_email_lower" in indexes
+        email_index_sql = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='index' "
+            "AND name='uq_users_email_lower'"
+        ).fetchone()[0]
+        assert "lower(email)" in email_index_sql.lower()
+
         table_sql = conn.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name='tasks'"
         ).fetchone()[0]
@@ -239,6 +247,41 @@ def test_upgrade_collapses_idempotency_domains(tmp_path):
         conn.close()
 
 
+def test_upgrade_refuses_case_variant_duplicate_emails(tmp_path):
+    """The unique-lower index fails closed instead of dropping an account."""
+    db_file = tmp_path / "email-duplicates.db"
+    env = _migration_env(db_file)
+
+    result = _alembic_cmd("upgrade d269a836066a", env, tmp_path)
+    assert result.returncode == 0, result.stderr
+
+    conn = sqlite3.connect(db_file)
+    try:
+        _seed_user(conn, "Owner@example.com")
+        _seed_user(conn, "owner@example.com")
+        conn.commit()
+    finally:
+        conn.close()
+
+    result = _alembic_cmd("upgrade head", env, tmp_path)
+    assert result.returncode != 0
+    assert "case-variant duplicates" in result.stderr
+
+    conn = sqlite3.connect(db_file)
+    try:
+        revision = conn.execute("SELECT version_num FROM alembic_version").fetchone()
+        assert revision[0] == "d269a836066a"
+        indexes = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='users'"
+            )
+        }
+        assert "uq_users_email_lower" not in indexes
+    finally:
+        conn.close()
+
+
 def test_downgrade_refuses_when_data_exists(tmp_path):
     """The forward migration deletes rows, so it cannot be rolled back."""
     db_file = tmp_path / "downgrade-guard.db"
@@ -259,7 +302,9 @@ def test_downgrade_refuses_when_data_exists(tmp_path):
     result = _alembic_cmd("upgrade head", env, tmp_path)
     assert result.returncode == 0, result.stderr
 
-    result = _alembic_cmd("downgrade -1", env, tmp_path)
+    # Pin the target instead of using "-1": the guard under test lives in the
+    # task-ownership migration, and newer head revisions must stay downgradable.
+    result = _alembic_cmd("downgrade e6ce36543398", env, tmp_path)
     assert result.returncode != 0
     assert "Cannot downgrade" in result.stderr
 
