@@ -8,9 +8,6 @@ Spec: user-management-and-oauth.md
 
 from __future__ import annotations
 
-import pytest
-
-
 # ===== Section 4.2 / 9.1: POST /auth/register (public registration) =====
 
 
@@ -121,7 +118,8 @@ async def test_admin_create_user_success(client, admin_headers):
     assert body["display_name"] == "Bob"
     assert body["is_active"] is True
     assert body["is_superuser"] is False
-    assert body["is_verified"] is False
+    # No SMTP in this fixture: the admin vouches for the address.
+    assert body["is_verified"] is True
     assert "id" in body
     assert "created_at" in body
     assert "updated_at" in body
@@ -219,18 +217,80 @@ async def test_admin_create_user_password_contains_email_returns_400(
 # ===== Section 4.2: admin create honours privileged flags =====
 
 
-@pytest.mark.parametrize("flag", ["is_superuser", "is_verified"])
-async def test_admin_create_user_honours_privileged_flag(client, admin_headers, flag):
-    """Section 4.2: POST /auth/users honours privileged flags (admin-token gated)."""
+async def test_admin_create_user_honours_superuser_flag(client, admin_headers):
+    """Section 4.2: POST /auth/users honours privileged flags (admin-token gated).
+
+    ``is_verified`` is covered separately: without SMTP it defaults to true.
+    """
     resp = await client.post(
         "/auth/users",
         headers=admin_headers,
         json={
-            "email": f"{flag}@example.com",
+            "email": "is_superuser@example.com",
             "password": "secret123",
-            "display_name": flag,
-            flag: True,
+            "display_name": "is_superuser",
+            "is_superuser": True,
         },
     )
     assert resp.status_code == 201
-    assert resp.json()[flag] is True
+    assert resp.json()["is_superuser"] is True
+
+
+async def test_admin_create_login_owner_stays_unverified_with_smtp(
+    smtp_client, admin_headers
+):
+    """With SMTP the owner can prove the address, so the row starts unverified."""
+    created = await smtp_client.post(
+        "/auth/users",
+        headers=admin_headers,
+        json={"email": "smtp-owner@example.com", "password": "secret123"},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["is_verified"] is False
+
+
+async def test_admin_cannot_mark_an_owner_unverified_without_smtp(
+    client, admin_headers
+):
+    """No mailbox flow means the row could never be verified, or linked later."""
+    resp = await client.post(
+        "/auth/users",
+        headers=admin_headers,
+        json={
+            "email": "dead-end@example.com",
+            "password": "secret123",
+            "is_verified": False,
+        },
+    )
+    assert resp.status_code == 400, resp.text
+    assert "GATEWAY_SMTP_HOST" in resp.text
+
+
+async def test_admin_can_mark_an_owner_unverified_with_smtp(smtp_client, admin_headers):
+    """With a mailbox flow the owner can prove the address themselves."""
+    resp = await smtp_client.post(
+        "/auth/users",
+        headers=admin_headers,
+        json={
+            "email": "pending-owner@example.com",
+            "password": "secret123",
+            "is_verified": False,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["is_verified"] is False
+
+
+async def test_admin_can_pre_verify_an_owner_with_smtp(smtp_client, admin_headers):
+    """Explicit is_verified=true overrides the SMTP default of false."""
+    created = await smtp_client.post(
+        "/auth/users",
+        headers=admin_headers,
+        json={
+            "email": "verified-owner@example.com",
+            "password": "secret123",
+            "is_verified": True,
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["is_verified"] is True

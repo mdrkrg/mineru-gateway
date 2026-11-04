@@ -25,12 +25,16 @@ async def send_verification_email_after_create(
 ) -> None:
     """Auto-send the verification email after register / admin create.
 
-    Spec: email-verification.md Section 4.4. Deliberately not hooked into
-    on_after_register: the OIDC callback also fires that hook and must never
-    auto-send. Send failures are swallowed by on_after_request_verify, so the
-    create result is unaffected.
+    Spec: email-verification.md Section 4.4.
+
+    - Not hooked into ``on_after_register``: the OIDC callback fires that hook
+      and must never auto-send.
+    - No mailbox flow, no send: without SMTP or with the login stack off the
+      verify routes are not registered, so the link would 404.
+    - Send failures are swallowed by ``on_after_request_verify``, so the
+      create result is unaffected.
     """
-    if settings.smtp_host is None:
+    if not settings.user_auth_enabled or settings.smtp_host is None:
         return
     try:
         await user_manager.request_verify(user, request)
@@ -100,7 +104,40 @@ async def provision_owner(
     A missing password means "credential-only owner": the generated password is
     hashed and discarded, so the row can own keys and tasks but cannot sign in.
     Supplying a password creates a normal login account instead.
+
+    Without SMTP there is no mailbox flow, so the admin's assertion is the only
+    proof of ownership: the row is verified by default, and
+    ``is_verified=false`` is refused because nothing could ever verify it.
+
+    The same holds with the login stack off (``GATEWAY_USER_AUTH_ENABLED=false``):
+    the row can only own keys and tasks, and the verify routes are not
+    registered, so verification has no consumer either.
     """
+    is_verified = body.is_verified
+    if not settings.user_auth_enabled:
+        if is_verified is False:
+            # No login stack means no verify route either, so nothing could
+            # ever flip the flag.
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "is_verified=false requires GATEWAY_USER_AUTH_ENABLED: "
+                    "without the login stack no verification flow exists"
+                ),
+            )
+        is_verified = True
+    elif settings.smtp_host is None:
+        if is_verified is False:
+            # Such a row could never be verified or linked to a provider login.
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "is_verified=false requires GATEWAY_SMTP_HOST: without a "
+                    "mailbox flow the owner could never verify the address"
+                ),
+            )
+        is_verified = True
+
     return await create_user(
         owner_user_create(
             body.email,
@@ -108,7 +145,7 @@ async def provision_owner(
             display_name=body.display_name,
             is_active=body.is_active,
             is_superuser=body.is_superuser,
-            is_verified=body.is_verified,
+            is_verified=is_verified,
         ),
         request,
         user_manager,

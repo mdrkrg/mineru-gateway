@@ -84,6 +84,46 @@ async def test_admin_create_sends_verification_email(
     assert email_sender.sent[0]["token"]
 
 
+# ===== Section 4.4: no login stack means nothing to verify or send =====
+
+
+async def test_admin_create_without_user_auth_is_verified_and_sends_nothing(
+    smtp_key_only_client, admin_headers, email_sender
+):
+    """With the login stack off the verify routes are not registered, so the
+    admin's assertion is the only proof: the row is verified and no email is
+    sent to a link that would 404."""
+    resp = await smtp_key_only_client.post(
+        "/auth/users",
+        headers=admin_headers,
+        json={"email": "key-only@example.com", "password": "secret123"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["is_verified"] is True
+    assert email_sender.sent == []
+
+    verify = await smtp_key_only_client.get("/auth/verify", params={"token": "x"})
+    assert verify.status_code == 404
+
+
+async def test_admin_create_without_user_auth_rejects_unverified(
+    smtp_key_only_client, admin_headers, email_sender
+):
+    """is_verified=false is refused: no flow could ever flip it."""
+    resp = await smtp_key_only_client.post(
+        "/auth/users",
+        headers=admin_headers,
+        json={
+            "email": "key-only-unverified@example.com",
+            "password": "secret123",
+            "is_verified": False,
+        },
+    )
+    assert resp.status_code == 400
+    assert "GATEWAY_USER_AUTH_ENABLED" in resp.text
+    assert email_sender.sent == []
+
+
 async def test_register_without_smtp_sends_nothing(client, email_sender):
     """Section 8.2 / 4.4: SMTP not configured -> still 201, no email sent."""
     resp = await client.post(

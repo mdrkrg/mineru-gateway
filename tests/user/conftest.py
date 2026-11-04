@@ -313,6 +313,24 @@ async def smtp_client(smtp_app):
 
 
 @pytest.fixture
+def smtp_key_only_settings(smtp_settings) -> Settings:
+    """SMTP configured but the login stack off (a key-only deployment)."""
+    return smtp_settings.model_copy(update={"user_auth_enabled": False})
+
+
+@pytest.fixture
+async def smtp_key_only_app(smtp_key_only_settings, upstream_client, email_sender):
+    async with _build_app(smtp_key_only_settings, upstream_client) as app:
+        yield app
+
+
+@pytest.fixture
+async def smtp_key_only_client(smtp_key_only_app):
+    async with _client_for(smtp_key_only_app) as c:
+        yield c
+
+
+@pytest.fixture
 async def redirect_app(redirect_settings, upstream_client, email_sender):
     async with _build_app(redirect_settings, upstream_client) as app:
         yield app

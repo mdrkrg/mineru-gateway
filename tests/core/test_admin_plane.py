@@ -107,14 +107,17 @@ async def test_owner_without_password_cannot_sign_in(client, admin_headers):
 
 
 async def test_owner_with_password_can_sign_in(client, admin_headers):
-    """Supplying a password provisions a normal login account instead."""
+    """Supplying a password provisions a normal login account instead.
+
+    Without SMTP the admin vouches for the address, so the row is verified.
+    """
     created = await client.post(
         "/auth/users",
         headers=admin_headers,
         json={"email": "login-owner@example.com", "password": "secret123"},
     )
     assert created.status_code == 201
-    assert created.json()["is_verified"] is False
+    assert created.json()["is_verified"] is True
 
     login = await client.post(
         "/auth/jwt/login",

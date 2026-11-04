@@ -55,8 +55,9 @@ class AdminUserCreate(BaseModel):
     display_name: str | None = None
     is_active: bool = True
     is_superuser: bool = False
-    # Defaults to True for credential-only owners (no mailbox flow) and to
-    # False for login-capable ones, which must verify their address.
+    # True without a mailbox flow (credential-only owners, and per
+    # provision_owner any owner in a deployment without SMTP: the admin's
+    # assertion is then the only proof of ownership).
     is_verified: bool | None = None
 
 
