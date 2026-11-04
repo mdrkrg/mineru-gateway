@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
+from tests.user.helpers import oauth_flow
+
 
 async def test_e2e_register_auto_verify_then_create_key(
     gated_smtp_client, email_sender
@@ -80,7 +82,7 @@ async def test_e2e_403_then_request_verify_then_create_key(
 
 
 async def test_e2e_oidc_unverified_verify_then_create_key(
-    gated_smtp_oidc_client, mock_oauth_client, email_sender, oauth_flow
+    gated_smtp_oidc_client, mock_oauth_client, email_sender
 ):
     """Section 8.7: OIDC email_verified=false -> unverified user -> 403 ->
     request-verify-token -> verify -> key create succeeds."""

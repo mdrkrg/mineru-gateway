@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from tests.user.helpers import oauth_flow
+
 
 # ===== Section 8.2: register / admin create keep is_verified=false =====
 
@@ -194,7 +196,6 @@ async def test_oidc_callback_never_sends_verification_email(
     smtp_oidc_client,
     mock_oauth_client,
     email_sender,
-    oauth_flow,
     profile,
     expected_verified,
 ):

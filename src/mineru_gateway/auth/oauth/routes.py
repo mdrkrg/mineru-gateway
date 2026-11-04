@@ -14,8 +14,8 @@ from urllib.parse import urlencode
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi_users import exceptions as fu_exceptions
 from pydantic import TypeAdapter, ValidationError
+from fastapi_users import exceptions as fu_exceptions
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse, RedirectResponse
@@ -57,6 +57,24 @@ def _get_provider_config(
         if p.name == provider:
             return p
     return None
+
+
+def _unverified_local_detail(*, has_smtp: bool) -> str:
+    """409 body for linking a provider login to an unverified local row.
+
+    Spec: user-management-and-oauth.md Section 4.5. The advice has to match the
+    deployment: without SMTP the verify routes are not registered, so telling
+    the user to verify the address would point at a 404.
+    """
+    if has_smtp:
+        return (
+            "Email is registered but not verified; verify it, then retry the "
+            "provider login"
+        )
+    return (
+        "Email is registered but not verified, and this gateway has no email "
+        "verification flow; ask an administrator to verify or remove the account"
+    )
 
 
 def _decode_id_token(id_token: str) -> dict:
@@ -324,6 +342,26 @@ async def callback(
             if email_verified is True:
                 if not existing_user.is_active:
                     raise HTTPException(status_code=400, detail="User is inactive")
+                # An unverified local row proves nothing about mailbox ownership:
+                # whoever registered it chose the password. Require verification
+                # (which needs SMTP) before linking.
+                if not existing_user.is_verified:
+                    # The 409 alone looks like a misconfigured account; log the
+                    # refusal so operators can see address squatting.
+                    logger.warning(
+                        "OAuth linking refused: local account is not verified",
+                        extra={
+                            "provider": provider,
+                            "user_id": str(existing_user.id),
+                            "email": existing_user.email,
+                        },
+                    )
+                    raise HTTPException(
+                        status_code=409,
+                        detail=_unverified_local_detail(
+                            has_smtp=settings.smtp_host is not None
+                        ),
+                    )
                 user = existing_user
             elif email_verified is False:
                 raise HTTPException(

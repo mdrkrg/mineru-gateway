@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
-from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
@@ -15,11 +13,6 @@ from asgi_lifespan import LifespanManager
 from mineru_gateway.config import OIDCProviderConfig, Settings
 from mineru_gateway.main import create_app
 from tests.user.oauth_patch import patch_oauth
-
-if TYPE_CHECKING:
-    from httpx import AsyncClient, Response
-
-OauthFlow = Callable[["AsyncClient"], Awaitable["Response"]]
 
 
 @pytest.fixture
@@ -122,26 +115,6 @@ def mock_oauth_client():
         }
     )
     return client
-
-
-@pytest.fixture
-def oauth_flow() -> OauthFlow:
-    """Run the mock keycloak authorize + callback dance against a client.
-
-    Returns a coroutine ``oauth_flow(client)`` that drives
-    ``/auth/oauth/keycloak/authorize`` and returns the callback response.
-    """
-
-    async def _flow(client: AsyncClient) -> Response:
-        auth_resp = await client.get("/auth/oauth/keycloak/authorize")
-        assert auth_resp.status_code == 302, auth_resp.text
-        location = auth_resp.headers.get("location", "")
-        state = parse_qs(urlparse(location).query).get("state", [""])[0]
-        return await client.get(
-            f"/auth/oauth/keycloak/callback?code=test-code&state={state}"
-        )
-
-    return _flow
 
 
 # ===== Email verification fixtures (spec: email-verification.md) =====

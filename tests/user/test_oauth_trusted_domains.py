@@ -10,7 +10,6 @@ Spec: user-management-and-oauth.md
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
-from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
@@ -18,6 +17,8 @@ from asgi_lifespan import LifespanManager
 
 from mineru_gateway.config import OIDCProviderConfig
 from mineru_gateway.main import create_app
+from mineru_gateway.models import User
+from tests.user.helpers import oauth_flow, oidc_settings, provision_owner
 from tests.user.oauth_patch import patch_oauth
 
 
@@ -47,22 +48,12 @@ _TRUSTED_WITH_FALLBACK_PROVIDER = _make_provider(
 
 @pytest.fixture
 def trusted_settings(settings):
-    return settings.model_copy(
-        update={
-            "oidc_providers": [_TRUSTED_PROVIDER],
-            "oauth_redirect_base_url": "http://testserver",
-        }
-    )
+    return oidc_settings(settings, _TRUSTED_PROVIDER)
 
 
 @pytest.fixture
 def trusted_fallback_settings(settings):
-    return settings.model_copy(
-        update={
-            "oidc_providers": [_TRUSTED_WITH_FALLBACK_PROVIDER],
-            "oauth_redirect_base_url": "http://testserver",
-        }
-    )
+    return oidc_settings(settings, _TRUSTED_WITH_FALLBACK_PROVIDER)
 
 
 @pytest.fixture
@@ -105,35 +96,6 @@ async def trusted_fallback_client(trusted_fallback_app):
         yield c
 
 
-# ===== Helper =====
-
-
-async def _oauth_flow(client, code="test-code"):
-    """Helper: call authorize, extract state, call callback.
-
-    Returns the callback response. Section 4.5 flow.
-    """
-    auth_resp = await client.get("/auth/oauth/keycloak/authorize")
-    assert auth_resp.status_code == 302, auth_resp.text
-
-    location = auth_resp.headers.get("location", "")
-    params = parse_qs(urlparse(location).query)
-    state = params.get("state", [""])[0]
-
-    cb_resp = await client.get(
-        f"/auth/oauth/keycloak/callback?code={code}&state={state}"
-    )
-    return cb_resp
-
-
-async def _register_user(client, email: str) -> None:
-    resp = await client.post(
-        "/auth/register",
-        json={"email": email, "password": "secret123", "display_name": "User"},
-    )
-    assert resp.status_code == 201, resp.text
-
-
 # ===== Section 3.2: trusted_email_domains config field =====
 
 
@@ -165,7 +127,7 @@ async def test_callback_claim_missing_trusted_domain_new_user_verified(
         }
     )
 
-    resp = await _oauth_flow(trusted_client)
+    resp = await oauth_flow(trusted_client)
     assert resp.status_code == 200, resp.text
 
     token = resp.json()["access_token"]
@@ -181,7 +143,7 @@ async def test_callback_claim_missing_trusted_domain_existing_user_linked(
 ):
     """Section 9.7: email_verified claim missing + domain in
     trusted_email_domains -> existing User is linked (no 400)."""
-    await _register_user(trusted_client, "trusted-user@example.com")
+    await provision_owner(trusted_client, "trusted-user@example.com")
 
     mock_oauth_client.get_profile = AsyncMock(
         return_value={
@@ -191,7 +153,7 @@ async def test_callback_claim_missing_trusted_domain_existing_user_linked(
         }
     )
 
-    resp = await _oauth_flow(trusted_client)
+    resp = await oauth_flow(trusted_client)
     assert resp.status_code == 200, resp.text
 
 
@@ -200,7 +162,7 @@ async def test_callback_claim_false_trusted_domain_existing_user_linked(
 ):
     """Section 9.7: email_verified=false + domain in trusted_email_domains
     -> existing User is linked (no 409)."""
-    await _register_user(trusted_client, "trusted-user@example.com")
+    await provision_owner(trusted_client, "trusted-user@example.com")
 
     mock_oauth_client.get_profile = AsyncMock(
         return_value={
@@ -211,8 +173,39 @@ async def test_callback_claim_false_trusted_domain_existing_user_linked(
         }
     )
 
-    resp = await _oauth_flow(trusted_client)
+    resp = await oauth_flow(trusted_client)
     assert resp.status_code == 200, resp.text
+
+
+async def test_callback_trusted_domain_does_not_bypass_local_verification(
+    trusted_client, mock_oauth_client
+):
+    """Trusting the provider's domain does not prove who set the local password."""
+    app = trusted_client._transport.app
+    async with app.state.db.session_factory() as session:
+        session.add(
+            User(
+                email="trusted-user@example.com",
+                hashed_password="x",
+                is_active=True,
+                is_verified=False,
+                is_superuser=False,
+            )
+        )
+        await session.commit()
+
+    mock_oauth_client.get_profile = AsyncMock(
+        return_value={
+            "sub": "trusted-sub-unverified",
+            "email": "trusted-user@example.com",
+            "name": "Trusted User",
+            "email_verified": False,
+        }
+    )
+
+    resp = await oauth_flow(trusted_client)
+    assert resp.status_code == 409, resp.text
+    assert "not verified" in resp.text
 
 
 async def test_callback_claim_false_untrusted_domain_still_409(
@@ -220,7 +213,7 @@ async def test_callback_claim_false_untrusted_domain_still_409(
 ):
     """Section 9.7: email_verified=false + domain NOT in trusted list ->
     still 409 (trust exception does not apply)."""
-    await _register_user(trusted_client, "untrusted@other.com")
+    await provision_owner(trusted_client, "untrusted@other.com")
 
     mock_oauth_client.get_profile = AsyncMock(
         return_value={
@@ -231,7 +224,7 @@ async def test_callback_claim_false_untrusted_domain_still_409(
         }
     )
 
-    resp = await _oauth_flow(trusted_client)
+    resp = await oauth_flow(trusted_client)
     assert resp.status_code == 409, resp.text
 
 
@@ -249,7 +242,7 @@ async def test_callback_claim_false_trusted_domain_new_user_verified(
         }
     )
 
-    resp = await _oauth_flow(trusted_client)
+    resp = await oauth_flow(trusted_client)
     assert resp.status_code == 200, resp.text
 
     token = resp.json()["access_token"]
@@ -274,7 +267,7 @@ async def test_callback_trusted_domain_match_case_insensitive(
         }
     )
 
-    resp = await _oauth_flow(trusted_client)
+    resp = await oauth_flow(trusted_client)
     assert resp.status_code == 200, resp.text
 
     token = resp.json()["access_token"]
@@ -297,7 +290,7 @@ async def test_callback_fallback_synthetic_email_trusted_domain_verified(
         }
     )
 
-    resp = await _oauth_flow(trusted_fallback_client)
+    resp = await oauth_flow(trusted_fallback_client)
     assert resp.status_code == 200, resp.text
 
     token = resp.json()["access_token"]

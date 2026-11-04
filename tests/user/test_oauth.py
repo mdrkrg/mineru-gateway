@@ -20,6 +20,7 @@ from sqlalchemy import func, select
 from mineru_gateway.config import OIDCProviderConfig, Settings
 from mineru_gateway.models import OAuthAccount, User
 from mineru_gateway.main import create_app
+from tests.user.helpers import oidc_settings, oauth_flow, provision_owner
 from tests.user.oauth_patch import patch_oauth
 
 TEST_OIDC_PROVIDER = OIDCProviderConfig(
@@ -44,12 +45,7 @@ OTHER_OIDC_PROVIDER = OIDCProviderConfig(
 
 @pytest.fixture
 def oauth_settings(settings):
-    return settings.model_copy(
-        update={
-            "oidc_providers": [TEST_OIDC_PROVIDER],
-            "oauth_redirect_base_url": "http://testserver",
-        }
-    )
+    return oidc_settings(settings, TEST_OIDC_PROVIDER)
 
 
 @pytest.fixture
@@ -134,24 +130,6 @@ async def _stored_oauth_account(client, **updates):
         return oauth_acc
 
 
-async def _oauth_flow(client, code="test-code"):
-    """Helper: call authorize, extract state, call callback.
-
-    Returns the callback response. Section 4.5 flow.
-    """
-    auth_resp = await client.get("/auth/oauth/keycloak/authorize")
-    assert auth_resp.status_code == 302, auth_resp.text
-
-    location = auth_resp.headers.get("location", "")
-    params = parse_qs(urlparse(location).query)
-    state = params.get("state", [""])[0]
-
-    cb_resp = await client.get(
-        f"/auth/oauth/keycloak/callback?code={code}&state={state}"
-    )
-    return cb_resp
-
-
 # ===== Section 4.5 / 9.7: Authorize endpoint =====
 
 
@@ -192,7 +170,7 @@ async def test_callback_first_login_creates_user_and_oauth_account(
     oauth_client, mock_oauth_client
 ):
     """Section 9.7: first login -> creates new User + OAuthAccount -> token pair."""
-    resp = await _oauth_flow(oauth_client)
+    resp = await oauth_flow(oauth_client)
     assert resp.status_code == 200
     body = resp.json()
     assert body["access_token"]
@@ -204,7 +182,7 @@ async def test_callback_existing_oauth_account_updates_tokens(
     oauth_client, mock_oauth_client
 ):
     """Section 9.7: existing OAuthAccount -> updates tokens -> token pair."""
-    first = await _oauth_flow(oauth_client)
+    first = await oauth_flow(oauth_client)
     assert first.status_code == 200
 
     # Change the OIDC provider tokens so we can verify the OAuthAccount is updated,
@@ -218,7 +196,7 @@ async def test_callback_existing_oauth_account_updates_tokens(
         }
     )
 
-    second = await _oauth_flow(oauth_client)
+    second = await oauth_flow(oauth_client)
     assert second.status_code == 200
     assert second.json()["access_token"]
 
@@ -235,14 +213,14 @@ async def test_callback_existing_oauth_account_keeps_unreported_tokens(oauth_cli
     Many providers only return an access_token on re-consent; overwriting the
     stored values with "" / None would silently lose the refresh token.
     """
-    first = await _oauth_flow(oauth_client)
+    first = await oauth_flow(oauth_client)
     assert first.status_code == 200
 
     await _stored_oauth_account(
         oauth_client, refresh_token="stored-refresh", expires_at=4711
     )
 
-    second = await _oauth_flow(oauth_client)
+    second = await oauth_flow(oauth_client)
     assert second.status_code == 200
 
     oauth_acc = await _stored_oauth_account(oauth_client)
@@ -258,7 +236,7 @@ async def test_callback_existing_oauth_account_ignores_email_verified_false(
     The email_verified check (409/400) only applies when linking by email
     (no existing OAuthAccount). Step 4 takes precedence over the email sub-check.
     """
-    first = await _oauth_flow(oauth_client)
+    first = await oauth_flow(oauth_client)
     assert first.status_code == 200
 
     # Second login with email_verified=false - should still work
@@ -270,7 +248,7 @@ async def test_callback_existing_oauth_account_ignores_email_verified_false(
         "email_verified": False,
     }
 
-    second = await _oauth_flow(oauth_client)
+    second = await oauth_flow(oauth_client)
     assert second.status_code == 200
     assert second.json()["access_token"]
 
@@ -286,19 +264,11 @@ async def test_callback_existing_oauth_account_ignores_email_verified_false(
 async def test_callback_email_exists_email_verified_true_links_to_existing_user(
     oauth_client, mock_oauth_client
 ):
-    """Section 9.7: email exists & email_verified=true -> links to existing User."""
-    reg = await oauth_client.post(
-        "/auth/register",
-        json={
-            "email": "oauth-user@example.com",
-            "password": "secret123",
-            "display_name": "PreRegistered",
-        },
-    )
-    assert reg.status_code == 201
-    existing_id = reg.json()["id"]
+    """Section 9.7: verified local email + email_verified=true -> links."""
+    existing = await provision_owner(oauth_client, "oauth-user@example.com")
+    assert existing["is_verified"] is True
 
-    resp = await _oauth_flow(oauth_client)
+    resp = await oauth_flow(oauth_client)
     assert resp.status_code == 200
     assert resp.json()["access_token"]
 
@@ -310,7 +280,7 @@ async def test_callback_email_exists_email_verified_true_links_to_existing_user(
         "/users/me", headers={"Authorization": f"Bearer {token}"}
     )
     assert me.status_code == 200
-    assert me.json()["id"] == existing_id
+    assert me.json()["id"] == existing["id"]
 
     app = oauth_client._transport.app
     async with app.state.db.session_factory() as session:
@@ -366,7 +336,7 @@ async def test_callback_code_exchange_failure_returns_400(
         side_effect=Exception("OIDC provider rejected code")
     )
 
-    resp = await _oauth_flow(oauth_client)
+    resp = await oauth_flow(oauth_client)
     assert resp.status_code == 400
 
 
@@ -374,14 +344,7 @@ async def test_callback_email_exists_email_verified_false_returns_409(
     oauth_client, mock_oauth_client
 ):
     """Section 9.7: email exists & email_verified=false -> 409."""
-    reg = await oauth_client.post(
-        "/auth/register",
-        json={
-            "email": "oauth-user@example.com",
-            "password": "secret123",
-        },
-    )
-    assert reg.status_code == 201
+    await provision_owner(oauth_client, "oauth-user@example.com")
 
     mock_oauth_client.get_profile.return_value = {
         "sub": "oidc-sub-123",
@@ -390,7 +353,7 @@ async def test_callback_email_exists_email_verified_false_returns_409(
         "email_verified": False,
     }
 
-    resp = await _oauth_flow(oauth_client)
+    resp = await oauth_flow(oauth_client)
     assert resp.status_code == 409
 
 
@@ -398,14 +361,7 @@ async def test_callback_email_exists_email_verified_missing_returns_400(
     oauth_client, mock_oauth_client
 ):
     """Section 9.7: email exists & email_verified missing -> 400."""
-    reg = await oauth_client.post(
-        "/auth/register",
-        json={
-            "email": "oauth-user@example.com",
-            "password": "secret123",
-        },
-    )
-    assert reg.status_code == 201
+    await provision_owner(oauth_client, "oauth-user@example.com")
 
     mock_oauth_client.get_profile.return_value = {
         "sub": "oidc-sub-123",
@@ -413,7 +369,7 @@ async def test_callback_email_exists_email_verified_missing_returns_400(
         "name": "OAuth User",
     }
 
-    resp = await _oauth_flow(oauth_client)
+    resp = await oauth_flow(oauth_client)
     assert resp.status_code == 400
 
 
@@ -431,7 +387,7 @@ async def test_callback_display_name_from_name(oauth_client, mock_oauth_client):
         "email_verified": True,
     }
 
-    resp = await _oauth_flow(oauth_client)
+    resp = await oauth_flow(oauth_client)
     assert resp.status_code == 200
 
     token = resp.json()["access_token"]
@@ -457,7 +413,7 @@ async def test_callback_display_name_empty_name_falls_back(
         "email_verified": True,
     }
 
-    resp = await _oauth_flow(oauth_client)
+    resp = await oauth_flow(oauth_client)
     assert resp.status_code == 200
 
     token = resp.json()["access_token"]
@@ -479,7 +435,7 @@ async def test_callback_display_name_fallback_to_preferred_username(
         "email_verified": True,
     }
 
-    resp = await _oauth_flow(oauth_client)
+    resp = await oauth_flow(oauth_client)
     assert resp.status_code == 200
 
     token = resp.json()["access_token"]
@@ -504,7 +460,7 @@ async def test_callback_display_name_skips_given_name_falls_to_email_local_part(
         "email_verified": True,
     }
 
-    resp = await _oauth_flow(oauth_client)
+    resp = await oauth_flow(oauth_client)
     assert resp.status_code == 200
 
     token = resp.json()["access_token"]
@@ -530,7 +486,20 @@ async def test_callback_rejects_unusable_email_claims(
         "email_verified": True,
     }
 
-    resp = await _oauth_flow(oauth_client)
+    resp = await oauth_flow(oauth_client)
+    assert resp.status_code == 400, resp.text
+    assert "not a usable address" in resp.text
+
+
+async def test_callback_rejects_non_string_email_claim(oauth_client, mock_oauth_client):
+    """Pydantic validates the claim before the display-name fallback splits it."""
+    mock_oauth_client.get_profile.return_value = {
+        "sub": "oidc-non-string-email",
+        "email": 123,
+        "email_verified": True,
+    }
+
+    resp = await oauth_flow(oauth_client)
     assert resp.status_code == 400, resp.text
     assert "not a usable address" in resp.text
 
@@ -546,7 +515,7 @@ async def test_callback_accepts_an_idn_domain_claim(
         "email_verified": True,
     }
 
-    resp = await _oauth_flow(oauth_client)
+    resp = await oauth_flow(oauth_client)
     assert resp.status_code == 200, resp.text
 
     async with oauth_app.state.db.session_factory() as session:
@@ -564,7 +533,7 @@ async def test_callback_display_name_fallback_to_email_local_part(
         "email_verified": True,
     }
 
-    resp = await _oauth_flow(oauth_client)
+    resp = await oauth_flow(oauth_client)
     assert resp.status_code == 200
 
     token = resp.json()["access_token"]
@@ -586,7 +555,7 @@ async def test_callback_new_user_is_verified_true(oauth_client, mock_oauth_clien
         "email_verified": True,
     }
 
-    resp = await _oauth_flow(oauth_client)
+    resp = await oauth_flow(oauth_client)
     assert resp.status_code == 200
 
     token = resp.json()["access_token"]
@@ -596,18 +565,15 @@ async def test_callback_new_user_is_verified_true(oauth_client, mock_oauth_clien
     assert me.json()["is_verified"] is True
 
 
-async def test_callback_existing_user_is_verified_not_upgraded(
-    oauth_client, mock_oauth_client
+async def test_callback_unverified_local_user_is_not_auto_linked(
+    smtp_oidc_client, mock_oauth_client, caplog
 ):
-    """Section 9.7: existing User is_verified not upgraded by OAuth login."""
-    reg = await oauth_client.post(
-        "/auth/register",
-        json={
-            "email": "oauth-user@example.com",
-            "password": "secret123",
-        },
-    )
-    assert reg.status_code == 201
+    """A verified provider mailbox does not prove who set the local password.
+
+    Whoever registered the address picked that password, so linking would hand
+    them the account; the logged refusal is the only signal of address squatting.
+    """
+    await provision_owner(smtp_oidc_client, "oauth-user@example.com", is_verified=False)
 
     mock_oauth_client.get_profile.return_value = {
         "sub": "oidc-sub-123",
@@ -616,14 +582,100 @@ async def test_callback_existing_user_is_verified_not_upgraded(
         "email_verified": True,
     }
 
-    resp = await _oauth_flow(oauth_client)
-    assert resp.status_code == 200
+    with caplog.at_level(logging.WARNING, logger="mineru_gateway.auth.oauth.routes"):
+        resp = await oauth_flow(smtp_oidc_client)
 
-    token = resp.json()["access_token"]
-    me = await oauth_client.get(
-        "/users/me", headers={"Authorization": f"Bearer {token}"}
+    assert resp.status_code == 409, resp.text
+    assert "not verified" in resp.text
+
+    refusals = [
+        record
+        for record in caplog.records
+        if "OAuth linking refused" in record.getMessage()
+    ]
+    assert refusals, [record.getMessage() for record in caplog.records]
+    assert refusals[0].provider == "keycloak"
+    assert refusals[0].email == "oauth-user@example.com"
+
+    app = smtp_oidc_client._transport.app
+    async with app.state.db.session_factory() as session:
+        assert (await session.scalar(select(func.count()).select_from(User))) == 1
+        assert (
+            await session.scalar(select(func.count()).select_from(OAuthAccount))
+        ) == 0
+
+
+async def test_unverified_local_user_refusal_without_smtp_points_at_admin(
+    oauth_client, oauth_app, mock_oauth_client
+):
+    """Without SMTP the verify routes are not registered, so the 409 must not
+    send the user to a verification flow that returns 404."""
+    async with oauth_app.state.db.session_factory() as session:
+        session.add(
+            User(
+                email="oauth-user@example.com",
+                hashed_password="x",
+                is_active=True,
+                is_verified=False,
+                is_superuser=False,
+            )
+        )
+        await session.commit()
+
+    resp = await oauth_flow(oauth_client)
+    assert resp.status_code == 409, resp.text
+    assert "administrator" in resp.text
+
+
+async def test_verify_then_link_round_trip(
+    smtp_oidc_client, mock_oauth_client, email_sender
+):
+    """The 409 says "verify, then retry"; prove that path works.
+
+    Also pins the accepted residual: linking does not revoke the password the
+    first registrant chose.
+    """
+    created = await provision_owner(
+        smtp_oidc_client,
+        "verify-link@example.com",
+        password="registrant-pw",
+        is_verified=False,
     )
-    assert me.json()["is_verified"] is False
+    owner_id = created["id"]
+
+    mock_oauth_client.get_profile.return_value = {
+        "sub": "oidc-verify-link",
+        "email": "verify-link@example.com",
+        "name": "Verify Link",
+        "email_verified": True,
+    }
+
+    refused = await oauth_flow(smtp_oidc_client)
+    assert refused.status_code == 409, refused.text
+
+    requested = await smtp_oidc_client.post(
+        "/auth/request-verify-token", json={"email": "verify-link@example.com"}
+    )
+    assert requested.status_code == 202, requested.text
+    verified = await smtp_oidc_client.post(
+        "/auth/verify", json={"token": email_sender.last()["token"]}
+    )
+    assert verified.status_code == 200, verified.text
+
+    linked = await oauth_flow(smtp_oidc_client)
+    assert linked.status_code == 200, linked.text
+    me = await smtp_oidc_client.get(
+        "/users/me",
+        headers={"Authorization": f"Bearer {linked.json()['access_token']}"},
+    )
+    assert me.json()["id"] == owner_id
+
+    app = smtp_oidc_client._transport.app
+    async with app.state.db.session_factory() as session:
+        assert (await session.scalar(select(func.count()).select_from(User))) == 1
+        assert (
+            await session.scalar(select(func.count()).select_from(OAuthAccount))
+        ) == 1
 
 
 # ===== Section 4.5 / 9.7: Callback token works =====
@@ -633,7 +685,7 @@ async def test_callback_access_token_works_for_users_me(
     oauth_client, mock_oauth_client
 ):
     """Section 9.7: access_token from callback can call /users/me."""
-    resp = await _oauth_flow(oauth_client)
+    resp = await oauth_flow(oauth_client)
     assert resp.status_code == 200
 
     token = resp.json()["access_token"]
@@ -650,7 +702,7 @@ async def test_oauth_user_cannot_login_with_password(oauth_client, mock_oauth_cl
     A login attempt with any password must return 401 (not 500 from
     a bcrypt UnknownHashError on an empty/invalid hash).
     """
-    resp = await _oauth_flow(oauth_client)
+    resp = await oauth_flow(oauth_client)
     assert resp.status_code == 200
 
     login_resp = await oauth_client.post(
@@ -670,7 +722,7 @@ async def test_callback_frontend_redirect_returns_302_with_fragment(
     frontend_redirect_client, mock_oauth_client
 ):
     """Section 4.5: oauth_frontend_redirect_url set -> 302 with URI fragment."""
-    resp = await _oauth_flow(frontend_redirect_client)
+    resp = await oauth_flow(frontend_redirect_client)
     assert resp.status_code == 302
 
     location = resp.headers.get("location", "")
@@ -692,7 +744,7 @@ async def test_config_lists_multiple_providers(upstream_client):
         admin_token="test-admin-token",
         user_auth_enabled=True,
         jwt_secret="a" * 32,
-        open_registration=True,
+        open_registration=False,
         create_tables=True,
         # Gate open: no SMTP configured, so no verification path exists
         # (spec: email-verification.md Section 3.1 startup validation).
@@ -840,7 +892,7 @@ async def test_concurrent_provider_authorize_keeps_both_state_cookies(
 async def test_on_after_register_logs_persisted_user_id(oauth_client, caplog):
     """Section 4.5: on_after_register runs after flush, so it logs the id."""
     with caplog.at_level(logging.INFO, logger="mineru_gateway.auth.manager"):
-        resp = await _oauth_flow(oauth_client)
+        resp = await oauth_flow(oauth_client)
     assert resp.status_code == 200
 
     app = oauth_client._transport.app
