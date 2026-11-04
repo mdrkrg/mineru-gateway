@@ -7,6 +7,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr
 
+from .utils.email import AsciiEmail
+
 
 # ===== API Key management =====
 
@@ -15,8 +17,9 @@ class ApiKeyCreate(BaseModel):
     label: str | None = None
     expires_at: datetime | None = None
     # Every key belongs to a real user, so the admin must name the owner. There
-    # is no ownerless/service key variant.
-    email: EmailStr
+    # is no ownerless/service key variant. The lookup folds the address, so this
+    # takes the same rule as the user schemas.
+    email: AsciiEmail
 
 
 class ApiKeyCreated(BaseModel):

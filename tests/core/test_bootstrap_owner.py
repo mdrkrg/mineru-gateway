@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from mineru_gateway.auth import bootstrap
@@ -161,6 +162,12 @@ async def test_bootstrap_owner_treats_a_concurrent_seed_as_already_done(
             monkeypatch.setattr(bootstrap, "find_user_by_email", _miss_once)
             assert await ensure_bootstrap_owner(session, BOOTSTRAP_EMAIL) is None
             assert (await session.execute(select(User))).scalars().one().id == owner_id
+
+
+def test_bootstrap_owner_email_rejects_a_smtputf8_address():
+    """The boot seed uses the same email identity rule as the API schemas."""
+    with pytest.raises(ValidationError, match="ASCII"):
+        Settings(bootstrap_owner_email="Ärger@example.com")
 
 
 def test_bootstrap_owner_email_is_optional(monkeypatch):

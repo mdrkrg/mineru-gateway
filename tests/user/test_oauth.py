@@ -514,6 +514,46 @@ async def test_callback_display_name_skips_given_name_falls_to_email_local_part(
     assert me.json()["display_name"] == "given-user"
 
 
+@pytest.mark.parametrize("claim", ["Ärger@example.com", "not-an-address"])
+async def test_callback_rejects_unusable_email_claims(
+    oauth_client, mock_oauth_client, claim
+):
+    """The callback builds users without the schemas, so it validates the claim.
+
+    A non-ASCII local part folds differently per backend, and a non-address
+    could never be looked up at all.
+    """
+    mock_oauth_client.get_profile.return_value = {
+        "sub": "oidc-unusable-email",
+        "email": claim,
+        "name": "Unusable",
+        "email_verified": True,
+    }
+
+    resp = await _oauth_flow(oauth_client)
+    assert resp.status_code == 400, resp.text
+    assert "not a usable address" in resp.text
+
+
+async def test_callback_accepts_an_idn_domain_claim(
+    oauth_client, oauth_app, mock_oauth_client
+):
+    """A provider may return an IDN domain; the row keeps the punycode form."""
+    mock_oauth_client.get_profile.return_value = {
+        "sub": "oidc-idn-email",
+        "email": "user@münchen.de",
+        "name": "IDN User",
+        "email_verified": True,
+    }
+
+    resp = await _oauth_flow(oauth_client)
+    assert resp.status_code == 200, resp.text
+
+    async with oauth_app.state.db.session_factory() as session:
+        stored = (await session.execute(select(User.email))).scalars().one()
+    assert stored == "user@xn--mnchen-3ya.de"
+
+
 async def test_callback_display_name_fallback_to_email_local_part(
     oauth_client, mock_oauth_client
 ):

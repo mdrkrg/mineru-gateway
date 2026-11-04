@@ -15,12 +15,14 @@ from urllib.parse import urlencode
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi_users import exceptions as fu_exceptions
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse, RedirectResponse
 
 from ...config import OIDCProviderConfig, Settings
 from ...models import OAuthAccount, User
+from ...utils.email import AsciiEmail
 from ..backend import issue_token_pair
 from ..dependencies import get_session, get_settings_dep
 from ..manager import UserManager, get_user_manager
@@ -33,6 +35,8 @@ logger = logging.getLogger(__name__)
 _STATE_TTL_SECONDS = 600
 
 router = APIRouter(prefix="/auth/oauth", tags=["oauth"])
+
+_EMAIL_CLAIM = TypeAdapter(AsciiEmail)
 
 
 def _cookie_name(provider: str) -> str:
@@ -228,7 +232,7 @@ async def callback(
     raw_display_name = claims.get(display_name_claim, "")
     raw_email = claims.get(email_claim, "")
 
-    # 3e: display_name fallback chain
+    # 3e: display_name fallback chain (email local part is added below)
     display_name = raw_display_name
     if not display_name:
         for key in ("preferred_username", "name"):
@@ -236,8 +240,6 @@ async def callback(
             if val:
                 display_name = val
                 break
-    if not display_name:
-        display_name = raw_email.split("@")[0] if raw_email else ""
 
     # 3f: email fallback chain
     email = raw_email
@@ -245,10 +247,22 @@ async def callback(
     if not email:
         if email_fallback_domain:
             email = f"{sub}@{email_fallback_domain}"
-            if not display_name:
-                display_name = sub
         else:
             raise HTTPException(status_code=400, detail="OIDC profile missing email")
+
+    # Validate the claim (or synthetic address) like the API schemas do: the
+    # stored identity must fold the same way on every host.
+    try:
+        email = _EMAIL_CLAIM.validate_python(email)
+    except ValidationError:
+        raise HTTPException(
+            status_code=400, detail="OIDC profile email is not a usable address"
+        )
+
+    if not display_name:
+        # The email local part; a synthesized ``<sub>@<domain>`` address makes
+        # that the sub itself.
+        display_name = email.partition("@")[0]
 
     # 3g: email_verified (fixed mapping, not affected by user_info_mapping)
     email_verified = _coerce_email_verified(claims.get("email_verified"))
@@ -259,6 +273,7 @@ async def callback(
     # verified even when the claim is missing or false.
     if email_verified is not True and prov_cfg is not None:
         trusted_domains = {d.lower() for d in prov_cfg.trusted_email_domains}
+        # ``email`` is canonicalized to punycode, so IDN entries must be too.
         if trusted_domains and email.rsplit("@", 1)[-1].lower() in trusted_domains:
             email_verified = True
 

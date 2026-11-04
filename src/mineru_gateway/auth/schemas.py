@@ -9,7 +9,9 @@ import uuid
 from datetime import datetime
 
 from fastapi_users import schemas
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
+
+from ..utils.email import AsciiEmail
 
 
 # ===== User schemas (Section 4.2, 4.3) =====
@@ -26,6 +28,7 @@ class UserRead(schemas.BaseUser[uuid.UUID]):
 class UserCreate(schemas.BaseUserCreate):
     """Section 4.2: registration / admin-create request body."""
 
+    email: AsciiEmail
     display_name: str | None = None
 
 
@@ -47,7 +50,7 @@ class AdminUserCreate(BaseModel):
     schema only decides whether the owner can also log in.
     """
 
-    email: EmailStr
+    email: AsciiEmail
     password: str | None = None
     display_name: str | None = None
     is_active: bool = True
@@ -61,9 +64,13 @@ class AdminUserCreate(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    """Section 4.1: login request body (email + password only)."""
+    """Section 4.1: login request body (email + password only).
 
-    email: str
+    The address is canonicalized like every write path, so the lookup folds the
+    same string the register / admin / OIDC paths stored.
+    """
+
+    email: AsciiEmail
     password: str
 
 

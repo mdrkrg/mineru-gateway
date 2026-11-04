@@ -10,9 +10,9 @@ import secrets
 
 from fastapi import HTTPException, Request
 from fastapi_users import exceptions
-from pydantic import EmailStr
 
 from ..config import Settings
+from ..utils.email import AsciiEmail
 from .manager import UserManager
 from .schemas import AdminUserCreate, UserCreate, UserRead
 
@@ -63,7 +63,7 @@ async def create_user(
 
 
 def owner_user_create(
-    email: EmailStr,
+    email: AsciiEmail,
     *,
     password: str | None,
     display_name: str | None = None,

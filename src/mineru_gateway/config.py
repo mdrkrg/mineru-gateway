@@ -18,6 +18,8 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .utils.email import AsciiEmail
+
 
 _NAME_PATTERN = re.compile(r"^[a-zA-Z0-9\-]+$")
 
@@ -123,7 +125,7 @@ class Settings(BaseSettings):
     admin_token: str = "change-me"
     allow_anonymous: bool = False
     # Optional seed: create this credential-only owner at startup if absent.
-    bootstrap_owner_email: EmailStr | None = None
+    bootstrap_owner_email: AsciiEmail | None = None
 
     gateway_url: str = "http://127.0.0.1:8000"
     # Public reverse-proxy prefix for ASGI-generated URLs (for example,
