@@ -7,9 +7,6 @@
 ## 前提条件
 
 - **数据库**：SQLite → PostgreSQL。多写者场景下 SQLite 的 WAL 锁争用无法支撑。
-- **启动种子**：`GATEWAY_BOOTSTRAP_OWNER_EMAIL` 同样假定单写者——两个进程在空库上
-  首次启动会撞唯一邮箱，输的一方启动失败并在重启后自愈；扩到多实例前需改为
-  `ON CONFLICT DO NOTHING` 或数据库锁。
 - **部署**：引入 Redis（至少用于限流）。
 
 ## 问题 1：限流 — 进程内令牌桶 → Redis 原子令牌桶

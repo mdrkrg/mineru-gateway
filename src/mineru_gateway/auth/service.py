@@ -11,11 +11,11 @@ import secrets
 import uuid
 from datetime import datetime, timezone
 
+from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
-from ..models import ApiKey, User
+from ..models import ApiKey, OAuthAccount, User
 
 _KEY_BYTES = 32
 _PREFIX_LEN = 8
@@ -27,6 +27,21 @@ def _hash_key(raw_key: str) -> str:
 
 def generate_raw_key() -> str:
     return f"mru_{secrets.token_urlsafe(_KEY_BYTES)}"
+
+
+def user_db(session: AsyncSession) -> SQLAlchemyUserDatabase:
+    """Build the fastapi-users DB adapter, with the OAuth side table attached."""
+    return SQLAlchemyUserDatabase(session, User, OAuthAccount)
+
+
+async def find_user_by_email(session: AsyncSession, email: str) -> User | None:
+    """Resolve an owner by email the way login does.
+
+    Delegates to fastapi-users' ``get_by_email`` (``lower(email)``, backed by
+    ``uq_users_email_lower``); never hand-write ``User.email == ...``, which
+    would disagree with login for a differently cased address.
+    """
+    return await user_db(session).get_by_email(email)
 
 
 async def create_key(

@@ -12,7 +12,7 @@ from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Settings
-from ..models import OAuthAccount, User
+from ..models import User
 from . import service
 from .principals import AuthType, TaskPrincipal, ensure_verified
 
@@ -83,7 +83,7 @@ async def get_user_db(
     session: AsyncSession = Depends(get_session),
 ) -> AsyncIterator[SQLAlchemyUserDatabase]:
     """Section 5.3: yields SQLAlchemyUserDatabase for User + OAuthAccount."""
-    yield SQLAlchemyUserDatabase(session, User, OAuthAccount)
+    yield service.user_db(session)
 
 
 async def user_from_bearer(
@@ -104,8 +104,7 @@ async def user_from_bearer(
         return None
     token = credentials.credentials
 
-    user_db = SQLAlchemyUserDatabase(session, User, OAuthAccount)
-    user_manager = UserManager(user_db, settings)
+    user_manager = UserManager(service.user_db(session), settings)
     strategy = get_jwt_strategy(settings)
     user = await strategy.read_token(token, user_manager)
     if user is None or not user.is_active:

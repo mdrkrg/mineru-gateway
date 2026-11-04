@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Settings
 from ..models import User
+from . import service
 from .dependencies import current_active_user, get_session, get_settings_dep
 from .manager import UserManager
 from .schemas import UserRead, UserUpdate
@@ -24,12 +25,7 @@ async def _get_user_manager(
     session: AsyncSession,
     settings: Settings,
 ) -> UserManager:
-    from fastapi_users.db import SQLAlchemyUserDatabase
-
-    from ..models import OAuthAccount
-
-    user_db = SQLAlchemyUserDatabase(session, User, OAuthAccount)
-    return UserManager(user_db, settings)
+    return UserManager(service.user_db(session), settings)
 
 
 @router.get("/me", response_model=UserRead)

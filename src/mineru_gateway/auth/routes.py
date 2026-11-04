@@ -13,11 +13,9 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Settings
-from ..models import User
 from ..schemas import ApiKeyCreate, ApiKeyCreated, ApiKeyInfo, ApiKeyList
 from . import provisioning, service
 from .dependencies import get_session, get_settings_dep, require_admin_token
@@ -60,9 +58,7 @@ async def create_key(
     session: AsyncSession = Depends(get_session),
 ) -> ApiKeyCreated:
     """Issue a key for an existing user (admin acts on the owner's behalf)."""
-    owner = (
-        await session.execute(select(User).where(User.email == body.email))
-    ).scalar_one_or_none()
+    owner = await service.find_user_by_email(session, body.email)
     if owner is None:
         raise HTTPException(status_code=404, detail="Unknown user")
     if not owner.is_active:

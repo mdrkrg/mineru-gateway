@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Settings
 from ..models import User
+from . import service
 
 
 def get_jwt_strategy(settings: Settings) -> JWTStrategy:
@@ -53,13 +54,9 @@ async def verify_refresh_token(
 
     Returns the active User, or None if invalid/expired/wrong-audience.
     """
-    from fastapi_users.db import SQLAlchemyUserDatabase
-
-    from ..models import OAuthAccount
     from .manager import UserManager
 
-    user_db = SQLAlchemyUserDatabase(session, User, OAuthAccount)
-    user_manager = UserManager(user_db, settings)
+    user_manager = UserManager(service.user_db(session), settings)
     strategy = get_refresh_jwt_strategy(settings)
     user = await strategy.read_token(token, user_manager)
     if user is None or not user.is_active:

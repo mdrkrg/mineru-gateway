@@ -14,6 +14,8 @@ import pytest
 from asgi_lifespan import LifespanManager
 from sqlalchemy import select
 
+from mineru_gateway.auth import bootstrap
+from mineru_gateway.auth.bootstrap import ensure_bootstrap_owner
 from mineru_gateway.config import Settings
 from mineru_gateway.main import create_app
 from mineru_gateway.models import User
@@ -104,6 +106,61 @@ async def test_bootstrap_owner_leaves_an_existing_account_untouched(
     assert after.hashed_password == before
     assert after.is_verified is False
     assert after.is_active is True
+
+
+async def test_bootstrap_owner_recognises_a_case_variant_of_an_existing_account(
+    settings, upstream_client
+):
+    """A case variant of an existing account is recognised, not duplicated.
+
+    Regression: the exact-match guard inserted a second row, after which every
+    email lookup raised ``MultipleResultsFound``.
+    """
+    async with _client_for(settings, upstream_client) as (app, client):
+        registered = await client.post(
+            "/auth/register",
+            json={"email": "Bootstrap-Owner@example.com", "password": "secret123"},
+        )
+        assert registered.status_code == 201, registered.text
+        owner_id = uuid.UUID(registered.json()["id"])
+
+    seeded = settings.model_copy(
+        update={"bootstrap_owner_email": "bootstrap-owner@example.com"}
+    )
+    async with _client_for(seeded, upstream_client) as (app, client):
+        async with app.state.db.session_factory() as session:
+            owners = (await session.execute(select(User))).scalars().all()
+        login = await client.post(
+            "/auth/jwt/login",
+            json={"email": "bootstrap-owner@example.com", "password": "secret123"},
+        )
+
+    assert [owner.id for owner in owners] == [owner_id]
+    assert login.status_code == 200, login.text
+
+
+async def test_bootstrap_owner_treats_a_concurrent_seed_as_already_done(
+    settings, upstream_client, monkeypatch
+):
+    """A racing boot hits the unique index; the loser must not fail startup."""
+    seeded = settings.model_copy(update={"bootstrap_owner_email": BOOTSTRAP_EMAIL})
+    async with _client_for(seeded, upstream_client) as (app, _):
+        async with app.state.db.session_factory() as session:
+            owner_id = (await session.execute(select(User))).scalars().one().id
+            real_lookup = bootstrap.find_user_by_email
+            calls = {"n": 0}
+
+            async def _miss_once(session, email):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    return None
+                return await real_lookup(session, email)
+
+            # The race: the pre-check sees nothing, the insert then conflicts,
+            # and the post-rollback check must find the winner's row.
+            monkeypatch.setattr(bootstrap, "find_user_by_email", _miss_once)
+            assert await ensure_bootstrap_owner(session, BOOTSTRAP_EMAIL) is None
+            assert (await session.execute(select(User))).scalars().one().id == owner_id
 
 
 def test_bootstrap_owner_email_is_optional(monkeypatch):
