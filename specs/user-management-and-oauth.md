@@ -587,9 +587,10 @@ Location: {frontend_redirect_url}#access_token=eyJ...&refresh_token=eyJ...&token
 - 400 — userinfo 端点请求失败（网络错误或 HTTP ≥ 400）。
 - 400 — email 已存在且 OIDC 提供商未返回 `email_verified` 声明（无法确认邮箱所有权，返回 400 防止账户接管）。
 - 409 — email 已存在且 OIDC 提供商返回 `email_verified=false`（明确声明的未验证邮箱，拒绝关联）。
+- 409 — email 已存在且本地账号 `is_verified=false`（本地凭据未经邮箱主人证明；本地账号验证邮箱后重试）。
 - 400 — OIDC profile 缺少 email 且未配置 `email_fallback_domain`（无法获取用户邮箱）。
 
-> 上述 400/409 拒绝在邮箱域名命中 provider 的 `trusted_email_domains` 时不适用（见步骤 3h）。
+> 与 provider `email_verified` 声明相关的 400/409 在域名命中 `trusted_email_domains` 时不适用（步骤 3h）；本地 `is_verified=false` 的 409 不受此例外影响。
 
 **行为**（按顺序）：
 
@@ -618,14 +619,18 @@ Location: {frontend_redirect_url}#access_token=eyJ...&refresh_token=eyJ...&token
 4. 按 `(oauth_name, account_id)` 查找已有 `OAuthAccount`：
    - 存在 → 更新 `access_token`/`refresh_token`/`expires_at`，使用已有 User。`is_verified` **不升级**（仅在新创建 User 时设置）。
    - 不存在 → 按 `email` 查找 User：
-     - 存在 → 根据 `email_verified` 决定：
-       - `email_verified=true` → 关联到已有 User（提供商已验证邮箱所有权）。`is_verified` **不升级**。
+     - 存在 → 根据 `email_verified` 与本地 `is_verified` 决定：
+       - `email_verified=true` 且本地 User 已 `is_verified=true` → 关联到已有 User。`is_verified` **不升级**。
+       - `email_verified=true` 但本地 User 未验证 → 返回 409，并记 `OAuth linking refused` 警告日志（`provider` / `user_id` / `email`）；本地账号验证邮箱后重试即可关联。
        - `email_verified=false` → 返回 409，拒绝关联（提供商明确声明未验证邮箱）。
        - `email_verified` 缺失 → 返回 400，拒绝关联（保守安全，无法确认邮箱所有权）。
      - 不存在 → 创建新 User（`display_name` 填充，`is_verified` 从 `email_verified` 设置）。
+
 5. 创建 `OAuthAccount` 记录（关联到 User）。
 6. 签发令牌对（access + refresh）。
 7. 返回 JSON 或重定向到前端。
+
+> **已知残余**：`email_verified` 只证明邮箱归属，不证明本地行归属——地址若先被他人注册并设了密码，邮箱主人验证后可完成关联，但注册者仍持有可用密码。彻底关闭需要「登录态显式关联」或管理员删除/重置账号的能力，当前均未提供。
 
 ### 4.6 既有端点鉴权
 
@@ -917,7 +922,7 @@ curl -X POST http://localhost:8000/auth/keys \
 - 回调端点：code 交换失败 → 400。
 - 回调端点：首次登录 → 创建新 User + OAuthAccount → 返回令牌对。
 - 回调端点：已有 OAuthAccount → 更新令牌 → 返回令牌对。
-- 回调端点：email 已存在且 `email_verified=true` → 关联到已有 User（提供商确认邮箱所有权）。
+- 回调端点：email 已存在且 `email_verified=true` 且本地已验证 → 关联到已有 User；本地未验证 → 409，且不创建 `OAuthAccount`。
 - 回调端点：email 已存在且 `email_verified=false` → 409（提供商明确声明未验证邮箱）。
 - 回调端点：email 已存在且 `email_verified` 缺失 → 400（保守安全，无法确认邮箱所有权）。
 - OAuth 创建的用户，`display_name` 从 userinfo 的 `name` 声明填充（userinfo 模拟应返回 `name`、`preferred_username`、`given_name` 等字段以验证回退链）。

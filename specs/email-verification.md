@@ -48,7 +48,7 @@
 | 创建/变更途径 | `is_verified` 初始值 | 说明 |
 |--------------|----------------------|------|
 | `POST /auth/register`（开放注册） | `false` | 请求体中的 `is_verified` 字段被忽略，恒为 `false` |
-| `POST /auth/users`（管理员创建） | 传密码时 `false`，无密码时 `true` | 无密码即凭据型 owner（不能登录，无邮箱流程），见 `specs/task-ownership.md` §3 |
+| `POST /auth/users`（管理员创建） | 未配置 SMTP 时恒为 `true`（显式传 `false` → 400）；已配置 SMTP 时传密码 `false`、无密码 `true` | 无 SMTP 时管理员的断言是唯一所有权证明，`false` 的行永远无法验证、也无法被 OAuth 关联。无密码即凭据型 owner（不能登录），见 `specs/task-ownership.md` §3 |
 | OIDC 回调创建新用户 | 按 §0 目标 3 规则 | `email_verified` 声明 + `trusted_email_domains` 例外 |
 | `POST /auth/verify` / `GET /auth/verify` | `false` → `true` | 验证 token 有效时置 `true`，单向 |
 
@@ -78,8 +78,9 @@
 - `GATEWAY_SMTP_FROM` 若配置，必须是合法邮箱地址。
 - `GATEWAY_SMTP_HOST` 已配置但发件地址不可确定（`GATEWAY_SMTP_FROM` 与 `GATEWAY_SMTP_USERNAME` 均未配置）→ 拒绝启动，提示配置 `GATEWAY_SMTP_FROM` 或 `GATEWAY_SMTP_USERNAME`（否则验证邮件将静默无法发送，未验证用户将永久无法使用受保护功能）。该校验与 `GATEWAY_USER_AUTH_ENABLED` 无关，只要 `GATEWAY_SMTP_HOST` 已配置即生效。
 - `GATEWAY_USER_AUTH_ENABLED=true` 且 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false`（默认，定义见 `specs/user-management-and-oauth.md` §3.1）且 `GATEWAY_SMTP_HOST` 未配置 → 拒绝启动，提示配置 SMTP 或设置 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=true`（否则未验证用户无验证路径，将永久无法使用受保护功能）。
+- `GATEWAY_USER_AUTH_ENABLED=true` 且已配置 `GATEWAY_OIDC_PROVIDERS` 且 `GATEWAY_OPEN_REGISTRATION=true` 且 `GATEWAY_SMTP_HOST` 未配置 → 拒绝启动（无 SMTP 时注册出的地址永远无法验证；provider 登录只关联已验证的本地账号，因此抢占者可用任意地址占位并**永久阻断真实主人的 OIDC 登录**——这是登录阻断而非“无用行”问题）。
 
-> **升级影响**：`GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false` 是默认值。既有部署若已开启用户认证（`user_auth_enabled=true`）但未配置 `GATEWAY_SMTP_HOST`，升级后启动校验将拒绝启动——须在升级时配置 SMTP 或显式设置 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=true`。已配置 `GATEWAY_SMTP_HOST` 但未配置任何发件地址（`GATEWAY_SMTP_FROM`、`GATEWAY_SMTP_USERNAME` 均无）的部署同样会被拒绝——须补配其一。
+> **升级影响**：`GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false` 是默认值。既有部署若已开启用户认证（`user_auth_enabled=true`）但未配置 `GATEWAY_SMTP_HOST`，升级后启动校验将拒绝启动——须在升级时配置 SMTP 或显式设置 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=true`。同理，同时开启开放注册与 OIDC provider 但未配置 `GATEWAY_SMTP_HOST` 的部署也不再启动，须二选一：配置 SMTP，或关闭 `GATEWAY_OPEN_REGISTRATION`。已配置 `GATEWAY_SMTP_HOST` 但未配置任何发件地址（`GATEWAY_SMTP_FROM`、`GATEWAY_SMTP_USERNAME` 均无）的部署同样会被拒绝——须补配其一。
 
 **新增依赖**：`pyproject.toml` 增加 [`fastapi-mail>=1.6.5`](https://pypi.org/project/fastapi-mail/)（异步 SMTP 发送）与 [`jinja2`](https://pypi.org/project/Jinja2/)（邮件模板渲染）。
 
