@@ -9,6 +9,7 @@ dependencies = [
     "aiofiles>=24.1.0",
     "aiosqlite>=0.22.1",
     "alembic>=1.18.5",
+    "email-validator>=2.3.0",
     "fastapi>=0.139.0",
     "fastapi-mail>=1.6.5",
     "fastapi-users[oauth,sqlalchemy]>=15.0.5",
