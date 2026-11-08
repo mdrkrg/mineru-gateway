@@ -16,7 +16,7 @@ from mineru_gateway.auth.policy import (
     LocalAccount,
     link_error,
     oidc_link_decision,
-    startup_violation,
+    startup_violations,
 )
 from mineru_gateway.config import OIDCProviderConfig
 
@@ -34,9 +34,9 @@ _ACTIVE_UNVERIFIED = LocalAccount(is_active=True, is_verified=False)
 _INACTIVE = LocalAccount(is_active=False, is_verified=True)
 
 
-def test_startup_refusal_without_mailbox_flow_wins_over_the_oauth_rule(settings):
-    """Both rules match once registration is open; the operator needs the
-    superset message (no SMTP) first, or the OIDC hint reads as the only bug."""
+def test_startup_reports_every_violation_in_spec_order(settings):
+    """Fixing the first message must not merely uncover the second: a config
+    that breaks both the mailbox and the OIDC rule gets both messages."""
     configured = settings.model_copy(
         update={
             "smtp_host": None,
@@ -45,10 +45,10 @@ def test_startup_refusal_without_mailbox_flow_wins_over_the_oauth_rule(settings)
             "oidc_providers": [_PROVIDER],
         }
     )
-    violation = startup_violation(configured)
-    assert violation is not None
-    assert "GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false" in violation
-    assert "GATEWAY_OPEN_REGISTRATION" not in violation
+    violations = startup_violations(configured)
+    assert len(violations) == 2
+    assert "GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false" in violations[0]
+    assert "GATEWAY_OPEN_REGISTRATION" in violations[1]
 
 
 def test_startup_refusals_require_the_login_stack(settings):
@@ -63,7 +63,7 @@ def test_startup_refusals_require_the_login_stack(settings):
             "oidc_providers": [_PROVIDER],
         }
     )
-    assert startup_violation(configured) is None
+    assert startup_violations(configured) == []
 
 
 @pytest.mark.parametrize(
@@ -74,9 +74,9 @@ def test_startup_refusals_require_the_login_stack(settings):
     ],
 )
 def test_startup_refuses_weak_credentials(settings, overrides, needle):
-    violation = startup_violation(settings.model_copy(update=overrides))
-    assert violation is not None
-    assert needle in violation
+    violations = startup_violations(settings.model_copy(update=overrides))
+    assert violations
+    assert needle in violations[0]
 
 
 @pytest.mark.parametrize(

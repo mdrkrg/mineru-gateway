@@ -17,7 +17,7 @@ from .auth.api_keys_me import router as api_keys_me_router
 from .auth.bootstrap import ensure_bootstrap_owner
 from .auth.jwt_routes import router as jwt_router
 from .auth.oauth.routes import router as oauth_router
-from .auth.policy import startup_violation
+from .auth.policy import startup_violations
 from .auth.routes import router as auth_router
 from .auth.user_routes import router as user_router
 from .background import cleanup, retry, status_sync
@@ -62,9 +62,9 @@ def create_app(
 
     # Section 3.1 / 7.1: every boot refusal lives in auth/policy.py so the
     # spec tables have one executable source of truth.
-    violation = startup_violation(settings)
-    if violation is not None:
-        raise ValueError(violation)
+    violations = startup_violations(settings)
+    if violations:
+        raise ValueError("\n".join(violations))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

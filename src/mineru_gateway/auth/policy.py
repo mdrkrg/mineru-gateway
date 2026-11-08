@@ -66,12 +66,13 @@ _STARTUP_RULES: tuple[_StartupRule, ...] = (
 )
 
 
-def startup_violation(settings: Settings) -> str | None:
-    """Return the first refusal reason, or None when the app may start."""
-    for rule in _STARTUP_RULES:
-        if rule.violated(settings):
-            return rule.message
-    return None
+def startup_violations(settings: Settings) -> list[str]:
+    """Every refusal this configuration triggers, in spec order.
+
+    Returning all of them avoids a restart loop; the no-mailbox rule and the
+    OIDC rule commonly fire together.
+    """
+    return [rule.message for rule in _STARTUP_RULES if rule.violated(settings)]
 
 
 class LocalAccount(NamedTuple):
