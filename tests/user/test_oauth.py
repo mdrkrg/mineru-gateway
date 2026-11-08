@@ -605,11 +605,12 @@ async def test_callback_unverified_local_user_is_not_auto_linked(
         ) == 0
 
 
-async def test_unverified_local_user_refusal_without_smtp_points_at_admin(
+async def test_unverified_local_user_refusal_without_smtp_points_at_operator(
     oauth_client, oauth_app, mock_oauth_client
 ):
     """Without SMTP the verify routes are not registered, so the 409 must not
-    send the user to a verification flow that returns 404."""
+    send the user to a verification flow that returns 404, nor promise an
+    admin endpoint that does not exist."""
     async with oauth_app.state.db.session_factory() as session:
         session.add(
             User(
@@ -624,7 +625,7 @@ async def test_unverified_local_user_refusal_without_smtp_points_at_admin(
 
     resp = await oauth_flow(oauth_client)
     assert resp.status_code == 409, resp.text
-    assert "administrator" in resp.text
+    assert "operator" in resp.text
 
 
 async def test_verify_then_link_round_trip(

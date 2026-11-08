@@ -153,7 +153,8 @@ def link_error(decision: LinkDecision, *, has_smtp: bool) -> tuple[int, str]:
             )
         return 409, (
             "Email is registered but not verified, and this gateway has no "
-            "email verification flow; ask an administrator to verify or remove "
-            "the account"
+            "email verification flow; ask the operator to enable "
+            "GATEWAY_SMTP_HOST or to remove the account from the gateway "
+            "database"
         )
     return _LINK_ERRORS[decision]

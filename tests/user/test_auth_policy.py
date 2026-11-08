@@ -116,4 +116,4 @@ def test_link_error_tailors_the_unverified_remedy():
 
     assert with_smtp[0] == without_smtp[0] == 409
     assert "verify it" in with_smtp[1]
-    assert "administrator" in without_smtp[1]
+    assert "operator" in without_smtp[1]
