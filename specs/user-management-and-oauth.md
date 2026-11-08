@@ -181,7 +181,7 @@ User ──1:N──► ApiKey（通过 owner_id）
 | `userinfo_endpoint` | string | 否 | 模式 B | OIDC UserInfo 端点 URL。未设置时跳过 userinfo 调用，仅从 `id_token` 提取声明 |
 | `scopes` | array[string] | 否 | 全部 | 授权请求的作用域列表。默认 `["openid", "email"]` |
 | `user_info_mapping` | object | 否 | 全部 | 声明名到内部字段的映射，key 可选 `display_name`、`email`。默认 `{"display_name": "name", "email": "email"}` |
-| `email_fallback_domain` | string | 否 | 全部 | 当 OIDC 未返回 email 时，用 `<sub>@<domain>` 合成占位邮箱。未设置时不启用此回退，缺失 email 时报错。**仅限可信 Provider 使用**（见 [7.2](#72-oauth-csrf-保护与邮箱关联)） |
+| `email_fallback_domain` | string | 否 | 全部 | 当 OIDC 未返回 email 时，用 `<sub>@<domain>` 合成占位邮箱。未设置时不启用此回退，缺失 email 时报错。**必须同时列入同 provider 的 `trusted_email_domains`，否则拒绝启动**：合成地址收不到邮件，永远无法通过邮箱验证（见 [7.2](#72-oauth-csrf-保护与邮箱关联)） |
 | `trusted_email_domains` | array[string] | 否 | 全部 | 信任域名列表。邮箱域名（`@` 后部分）须**精确匹配**列表条目（大小写不敏感，子域名不命中，如 `sub.example.com` 不命中 `example.com`）时，即使 OIDC 未返回 `email_verified` 声明或返回 `false`，也视为已验证（`email_verified=true`）。**仅限可信 Provider 使用**（见 [7.2](#72-oauth-csrf-保护与邮箱关联)） |
 
 > \* 模式 B 中 `authorization_endpoint`、`token_endpoint` 为必需；`userinfo_endpoint` 为可选。
@@ -194,7 +194,7 @@ User ──1:N──► ApiKey（通过 owner_id）
 - **模式 B（手动）**：不设置 `openid_configuration_endpoint`，**必须**设置 `authorization_endpoint`、`token_endpoint` 两个字段。令牌刷新复用 `token_endpoint`。`userinfo_endpoint` 可选，未设置时仅从 `id_token` 提取用户声明。
 - **`scopes`** 两种模式均可选配，未设置时默认 `["openid", "email"]`。
 - **`user_info_mapping`** 两种模式均可选配，未设置时默认 `{"display_name": "name", "email": "email"}`。
-- **`email_fallback_domain`** 两种模式均可选配，未设置时不启用邮箱回退。**仅限可信 Provider**：此回退会合成从未被验证的占位邮箱（`<sub>@<domain>`），账户关联完全依赖对 Provider 的信任。仅当运营者完全信任该 Provider 时才应配置。
+- **`email_fallback_domain`** 两种模式均可选配，未设置时不启用邮箱回退。**仅限可信 Provider**：此回退会合成从未被验证的占位邮箱（`<sub>@<domain>`），账户关联完全依赖对 Provider 的信任。因此该域**必须**同时出现在同 provider 的 `trusted_email_domains` 中，否则拒绝启动（合成地址收不到邮件，无法完成验证）。
 - **`trusted_email_domains`** 两种模式均可选配，默认空列表。域名匹配（大小写不敏感）即视为已验证，用于信任 IdP 未返回或错误声明 `email_verified` 的场景。与 `email_fallback_domain` 配合时，将 fallback domain 列入信任列表即可让合成的 `<sub>@<domain>` 占位邮箱自动视为已验证。
 - **端点必须 HTTPS**：所有端点字段（`openid_configuration_endpoint`、`authorization_endpoint`、`token_endpoint`、`userinfo_endpoint`）必须是 `https://` URL，防止 client_secret 与 access_token 明文传输。仅 loopback（`localhost`、`127.0.0.1`、`[::1]`）允许 `http://`，用于本地开发。
 - **无效配置**：`openid_configuration_endpoint` 未设置，且 `authorization_endpoint` 或 `token_endpoint` 未提供 → Gateway 拒绝启动并提示错误。
@@ -761,6 +761,7 @@ src/mineru_gateway/auth/
   - Provider 不会返回可被用户任意控制的 `email`（否则合成路径根本不会触发）；
   - 多个使用同一 fallback domain 的 Provider 之间 `sub` 命名空间互不冲突（否则相同 `sub` 会合成相同邮箱并相互关联）。
 - 对不可信或半可信的 Provider，应**不配置** `email_fallback_domain`，缺失 email 时拒绝登录（400）。
+- **配置强制**：`email_fallback_domain` 必须同时列入同 provider 的 `trusted_email_domains`，否则拒绝加载配置（启动失败）——合成地址收不到邮件，无此约束时该行会永远停留在 `is_verified=false`（因而永远无法关联其他 provider）。
 - **`trusted_email_domains` 是信任决策，而非验证机制**：域名命中即放行账户关联，等同于信任 Provider 对该域名下邮箱所有权的声明。仅当运营者完全信任 Provider（如自建 IdP，`sub` 稳定且 email 不可被用户任意控制）时才应配置。信任决策在用户创建时固化：`is_verified=true` 一经写入不会降级，之后移除信任域名不影响已创建用户。
 
 ### 7.3 令牌安全
@@ -937,6 +938,7 @@ curl -X POST http://localhost:8000/auth/keys \
 - 回调端点：`email_verified=false` + 邮箱域名命中 `trusted_email_domains` → 视为已验证：新创建 User 的 `is_verified=true`；已有 User 正常关联（不返回 409）。
 - 回调端点：`email_verified=false` + 域名不命中 → 仍返回 409（信任例外不生效）。
 - 回调端点：`email_fallback_domain` 合成邮箱且 fallback domain 列入 `trusted_email_domains` → 新创建 User 的 `is_verified=true`（即使声明缺失或为 false）。
+- 配置校验：`email_fallback_domain` 未同时列入 `trusted_email_domains`（大小写不敏感）→ 拒绝加载该 provider 配置（启动失败），避免生成永不可验证的合成地址。
 - 配置校验：`trusted_email_domains` 为可选的 string 数组，默认空列表。
 - 回调端点：`user_info_mapping` 自定义映射生效（如 `{"email": "mail"}` 从 `mail` 声明取值）。
 - 回调端点：userinfo 端点请求失败（网络错误或 HTTP ≥ 400）→ 400，而非 500。

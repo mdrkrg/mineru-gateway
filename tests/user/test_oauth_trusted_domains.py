@@ -14,11 +14,17 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
+from sqlalchemy import select
 
 from mineru_gateway.config import OIDCProviderConfig
 from mineru_gateway.main import create_app
 from mineru_gateway.models import User
-from tests.user.helpers import oauth_flow, oidc_settings, provision_owner
+from tests.user.helpers import (
+    KEYCLOAK_PROVIDER,
+    oauth_flow,
+    oidc_settings,
+    provision_owner,
+)
 from tests.user.oauth_patch import patch_oauth
 
 
@@ -26,19 +32,10 @@ from tests.user.oauth_patch import patch_oauth
 
 
 def _make_provider(**overrides) -> OIDCProviderConfig:
-    base = {
-        "name": "keycloak",
-        "openid_configuration_endpoint": (
-            "https://keycloak.example.com/.well-known/openid-configuration"
-        ),
-        "client_id": "test-client-id",
-        "client_secret": "test-client-secret",
-    }
-    base.update(overrides)
-    return OIDCProviderConfig(**base)
+    return OIDCProviderConfig(**{**KEYCLOAK_PROVIDER.model_dump(), **overrides})
 
 
-_TRUSTED_PROVIDER = _make_provider(trusted_email_domains=["Example.COM"])
+_TRUSTED_PROVIDER = _make_provider(trusted_email_domains=["Example.COM", "münchen.de"])
 
 _TRUSTED_WITH_FALLBACK_PROVIDER = _make_provider(
     email_fallback_domain="idp.example.com",
@@ -275,6 +272,32 @@ async def test_callback_trusted_domain_match_case_insensitive(
         "/users/me", headers={"Authorization": f"Bearer {token}"}
     )
     assert me.json()["is_verified"] is True
+
+
+async def test_callback_trusted_domain_folds_idn_to_punycode(
+    trusted_client, trusted_app, mock_oauth_client
+):
+    """A unicode trusted domain matches the punycode form the row stores."""
+    mock_oauth_client.get_profile = AsyncMock(
+        return_value={
+            "sub": "trusted-idn-sub",
+            "email": "TrustedUser@münchen.de",
+            "name": "IDN User",
+        }
+    )
+
+    resp = await oauth_flow(trusted_client)
+    assert resp.status_code == 200, resp.text
+
+    token = resp.json()["access_token"]
+    me = await trusted_client.get(
+        "/users/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert me.json()["is_verified"] is True
+
+    async with trusted_app.state.db.session_factory() as session:
+        stored = (await session.execute(select(User.email))).scalars().one()
+    assert stored == "TrustedUser@xn--mnchen-3ya.de"
 
 
 async def test_callback_fallback_synthetic_email_trusted_domain_verified(

@@ -198,8 +198,12 @@ async def callback(
         raise HTTPException(status_code=404, detail="Unknown OAuth provider")
 
     prov_cfg = _get_provider_config(provider, settings)
-    mapping = prov_cfg.user_info_mapping if prov_cfg else {}
-    email_fallback_domain = prov_cfg.email_fallback_domain if prov_cfg else None
+    if prov_cfg is None:
+        # get_oauth_client resolved the same provider list, so a client without
+        # a config is a server-side inconsistency, not an unknown provider.
+        raise HTTPException(status_code=404, detail="Unknown OAuth provider")
+    mapping = prov_cfg.user_info_mapping
+    email_fallback_domain = prov_cfg.email_fallback_domain
 
     # Step 1: Verify CSRF state (cookie is HMAC-signed and provider-bound)
     cookie_payload = _extract_state_from_cookie(
@@ -289,9 +293,8 @@ async def callback(
     # Section 4.5 step 3h): an email whose domain (case-insensitive) is
     # listed in the provider's trusted_email_domains is treated as
     # verified even when the claim is missing or false.
-    if email_verified is not True and prov_cfg is not None:
-        trusted_domains = {d.lower() for d in prov_cfg.trusted_email_domains}
-        # ``email`` is canonicalized to punycode, so IDN entries must be too.
+    if email_verified is not True:
+        trusted_domains = prov_cfg.trusted_domain_set()
         if trusted_domains and email.rsplit("@", 1)[-1].lower() in trusted_domains:
             email_verified = True
 

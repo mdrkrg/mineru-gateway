@@ -33,3 +33,16 @@ def _canonicalize(value: str) -> str:
 
 # Canonical ASCII address, on top of EmailStr's syntax check.
 AsciiEmail = Annotated[EmailStr, AfterValidator(_canonicalize)]
+
+
+def ascii_domain(domain: str) -> str:
+    """Fold a mail domain the way stored addresses are folded.
+
+    IDN labels become punycode and the result is lowercased, so a configured
+    domain compares equal to the domain of a canonicalized address. Raises
+    ``EmailNotValidError`` (a ``ValueError``) for unusable values, which is how
+    provider config rejects a domain that could never match.
+    """
+    # Reuse the address canonicalizer: the local part is fixed to "x", so the
+    # SMTPUTF8 refusal can never trigger here.
+    return _canonicalize(f"x@{domain.strip()}").rsplit("@", 1)[1]

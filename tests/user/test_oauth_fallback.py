@@ -47,6 +47,7 @@ _FALLBACK_PROVIDER = OIDCProviderConfig(
     client_secret="test-client-secret",
     user_info_mapping={"display_name": "nickname", "email": "mail"},
     email_fallback_domain="idp.example.com",
+    trusted_email_domains=["idp.example.com"],
 )
 
 _NO_DOMAIN_PROVIDER = OIDCProviderConfig(

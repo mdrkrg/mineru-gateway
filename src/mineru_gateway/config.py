@@ -7,7 +7,6 @@ import re
 from functools import lru_cache
 from urllib.parse import urlparse
 
-
 from pydantic import (
     BaseModel,
     EmailStr,
@@ -17,6 +16,8 @@ from pydantic import (
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from .utils.email import ascii_domain
 
 from .utils.email import AsciiEmail
 
@@ -104,6 +105,58 @@ class OIDCProviderConfig(BaseModel):
                     f"token_endpoint; missing: {', '.join(missing)}"
                 )
 
+        return self
+
+    @field_validator("email_fallback_domain", mode="before")
+    @classmethod
+    def _blank_fallback_domain_is_unset(cls, value: object) -> object:
+        # A JSON template spells "off" as ""; treat it like an absent key
+        # instead of refusing to boot over an empty domain.
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    def trusted_domain_set(self) -> set[str]:
+        """Trusted domains in the form stored addresses use (punycode, lower)."""
+        return {ascii_domain(d) for d in self.trusted_email_domains if d.strip()}
+
+    @model_validator(mode="after")
+    def _trusted_domains_must_be_usable(self) -> "OIDCProviderConfig":
+        """An entry that cannot match any address would be a silent no-op."""
+        try:
+            self.trusted_domain_set()
+        except ValueError:
+            raise ValueError(
+                f"OIDC provider {self.name!r}: trusted_email_domains must "
+                f"contain domains only, got {self.trusted_email_domains!r}"
+            ) from None
+        return self
+
+    @model_validator(mode="after")
+    def _fallback_domain_must_be_trusted(self) -> "OIDCProviderConfig":
+        """A synthesized ``<sub>@<domain>`` address can never receive mail.
+
+        Spec: user-management-and-oauth.md Section 7.2 - the fallback address is
+        never verified by mail, so its only proof is the operator's trust. If the
+        domain is not in the trust list the row is born unverified, can never
+        complete an SMTP flow, and can never link a second provider.
+        """
+        if self.email_fallback_domain is None:
+            return self
+        try:
+            fallback = ascii_domain(self.email_fallback_domain)
+        except ValueError:
+            raise ValueError(
+                f"OIDC provider {self.name!r}: email_fallback_domain "
+                f"{self.email_fallback_domain!r} is not a usable domain"
+            ) from None
+        if fallback not in self.trusted_domain_set():
+            raise ValueError(
+                f"OIDC provider {self.name!r}: email_fallback_domain "
+                f"{self.email_fallback_domain!r} must also be listed in "
+                f"trusted_email_domains; the synthesized <sub>@<domain> address "
+                f"cannot receive mail and would stay unverified forever"
+            )
         return self
 
 

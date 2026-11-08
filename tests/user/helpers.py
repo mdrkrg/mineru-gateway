@@ -15,6 +15,16 @@ from httpx import AsyncClient, Response
 from mineru_gateway.config import OIDCProviderConfig, Settings
 from tests.conftest import ADMIN_TOKEN
 
+# The provider every OAuth suite drives; suites override fields as needed.
+KEYCLOAK_PROVIDER = OIDCProviderConfig(
+    name="keycloak",
+    openid_configuration_endpoint=(
+        "https://keycloak.example.com/.well-known/openid-configuration"
+    ),
+    client_id="test-client-id",
+    client_secret="test-client-secret",
+)
+
 
 async def oauth_flow(client: AsyncClient, code: str = "test-code") -> Response:
     """Drive authorize -> callback against the ``keycloak`` provider."""

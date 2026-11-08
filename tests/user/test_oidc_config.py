@@ -11,6 +11,12 @@ import pytest
 from pydantic import ValidationError
 
 from mineru_gateway.config import OIDCProviderConfig
+from tests.user.helpers import KEYCLOAK_PROVIDER
+
+
+def _provider(**overrides) -> OIDCProviderConfig:
+    """Build a provider through validation, applying field overrides."""
+    return OIDCProviderConfig(**{**KEYCLOAK_PROVIDER.model_dump(), **overrides})
 
 
 # ===== Section 3.2: Mode A (Discovery) =====
@@ -185,15 +191,54 @@ def test_email_fallback_domain_default():
 
 
 def test_email_fallback_domain_set():
-    """Section 3.2: email_fallback_domain can be configured."""
-    cfg = OIDCProviderConfig(
-        name="keycloak",
-        openid_configuration_endpoint="https://idp.example.com/.well-known/openid-configuration",
-        client_id="cid",
-        client_secret="secret",
+    """Section 3.2: email_fallback_domain can be configured when trusted."""
+    cfg = _provider(
         email_fallback_domain="idp.example.com",
+        trusted_email_domains=["idp.example.com"],
     )
     assert cfg.email_fallback_domain == "idp.example.com"
+
+
+def test_email_fallback_domain_blank_is_unset():
+    """A copied config file spells "off" as ""; it must not refuse to boot."""
+    assert _provider(email_fallback_domain="  ").email_fallback_domain is None
+
+
+def test_email_fallback_domain_must_be_trusted():
+    """Section 7.2: the synthesized address can never receive mail, so the
+    fallback domain must also be trusted; otherwise the provider config is
+    refused."""
+    with pytest.raises((ValueError, ValidationError)):
+        _provider(
+            email_fallback_domain="idp.example.com",
+            trusted_email_domains=["other.example.com"],
+        )
+
+
+def test_email_fallback_domain_trust_match_case_insensitive():
+    """Section 7.2: the trust check ignores case, like the callback match."""
+    cfg = _provider(
+        email_fallback_domain="IDP.Example.COM",
+        trusted_email_domains=["idp.example.com"],
+    )
+    assert cfg.email_fallback_domain == "IDP.Example.COM"
+
+
+def test_trusted_domains_are_folded_to_ascii():
+    """IDN entries fold to punycode, the form stored addresses use."""
+    cfg = _provider(trusted_email_domains=["Example.COM", "münchen.de"])
+    assert cfg.trusted_domain_set() == {"example.com", "xn--mnchen-3ya.de"}
+
+
+def test_trusted_domains_ignore_blank_entries():
+    cfg = _provider(trusted_email_domains=["", "  "])
+    assert cfg.trusted_domain_set() == set()
+
+
+def test_trusted_domains_reject_unusable_entries():
+    """An entry that cannot match any address is a config error, not a no-op."""
+    with pytest.raises((ValueError, ValidationError)):
+        _provider(trusted_email_domains=["*.example.com"])
 
 
 # ===== Section 3.2: name validation =====
