@@ -60,3 +60,8 @@ postgres = [
 
 [tool.ruff]
 exclude = ["alembic/versions"]
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+# Keep the pre-0.16 defaults.
+select = ["E4", "E7", "E9", "F"]

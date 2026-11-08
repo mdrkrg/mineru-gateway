@@ -275,11 +275,14 @@ async def test_task_stats_counts_by_status(app, client, admin_headers):
 # Patching date.today() forces the service's date-based computation to disagree
 # with the UTC clock, exposing any implementation that derives today_start from
 # the local calendar date instead of datetime.now(timezone.utc).
-@freeze_time("2026-07-01T12:00:00")
 async def test_task_stats_today_counts_are_utc_scoped(app, client, admin_headers):
-    today_start = datetime.now(timezone.utc).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    # FastAPI >= 0.137 builds route dependants lazily on the first request.
+    # Materialize them before freezing: freezegun rebinds ``datetime.date`` to
+    # ``FakeDate`` in every imported module, which Pydantic rejects while
+    # building the date query-param fields (fastapi#16034).
+    app.openapi()
+    # Fixed "now": July 1 2026 12:00 UTC, independent of the wall clock.
+    today_start = datetime(2026, 7, 1, tzinfo=timezone.utc)
     yesterday = today_start - timedelta(days=1)
 
     resp = await create_key(client, label="today-test")
@@ -291,7 +294,7 @@ async def test_task_stats_today_counts_are_utc_scoped(app, client, admin_headers
     # Today (July 1) completed tasks
     await _seed_task(app, api_key_id, "completed", completed_at=today_start)
     await _seed_task(
-        app, api_key_id, "completed", completed_at=datetime.now(timezone.utc)
+        app, api_key_id, "completed", completed_at=today_start + timedelta(hours=12)
     )
     # Yesterday (June 30) completed -- should NOT count in today_completed
     await _seed_task(app, api_key_id, "completed", completed_at=yesterday)
@@ -300,9 +303,12 @@ async def test_task_stats_today_counts_are_utc_scoped(app, client, admin_headers
     # Yesterday (June 30) failed -- should NOT count in today_failed
     await _seed_task(app, api_key_id, "failed", completed_at=yesterday)
 
-    with patch(
-        "datetime.date.today",
-        return_value=_date(2026, 7, 2),
+    with (
+        freeze_time("2026-07-01T12:00:00"),
+        patch(
+            "datetime.date.today",
+            return_value=_date(2026, 7, 2),
+        ),
     ):
         resp = await client.get("/v1/tasks/stats", headers={"X-API-Key": api_key_str})
     assert resp.status_code == 200
