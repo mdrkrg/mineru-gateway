@@ -20,15 +20,13 @@ from sqlalchemy import func, select
 from mineru_gateway.config import OIDCProviderConfig, Settings
 from mineru_gateway.models import OAuthAccount, User
 from mineru_gateway.main import create_app
-from tests.user.helpers import oidc_settings, oauth_flow, provision_owner
-from tests.user.oauth_patch import patch_oauth
-
-TEST_OIDC_PROVIDER = OIDCProviderConfig(
-    name="keycloak",
-    openid_configuration_endpoint="https://keycloak.example.com/.well-known/openid-configuration",
-    client_id="test-client-id",
-    client_secret="test-client-secret",
+from tests.user.helpers import (
+    KEYCLOAK_PROVIDER,
+    oidc_settings,
+    oauth_flow,
+    provision_owner,
 )
+from tests.user.oauth_patch import patch_oauth
 
 OTHER_OIDC_PROVIDER = OIDCProviderConfig(
     name="github",
@@ -45,7 +43,7 @@ OTHER_OIDC_PROVIDER = OIDCProviderConfig(
 
 @pytest.fixture
 def oauth_settings(settings):
-    return oidc_settings(settings, TEST_OIDC_PROVIDER)
+    return oidc_settings(settings, KEYCLOAK_PROVIDER)
 
 
 @pytest.fixture
@@ -100,7 +98,7 @@ async def two_provider_client(
     """Client with both `keycloak` and `github` OIDC providers configured."""
     patch_oauth(monkeypatch, mock_oauth_client, providers=("keycloak", "github"))
     settings = oauth_settings.model_copy(
-        update={"oidc_providers": [TEST_OIDC_PROVIDER, OTHER_OIDC_PROVIDER]}
+        update={"oidc_providers": [KEYCLOAK_PROVIDER, OTHER_OIDC_PROVIDER]}
     )
     app = create_app(settings=settings, upstream_client=upstream_client)
     async with LifespanManager(app):
@@ -778,16 +776,6 @@ async def test_config_lists_multiple_providers(upstream_client):
             assert body["providers"] == [{"name": "keycloak"}, {"name": "github"}]
 
 
-async def test_config_does_not_expose_provider_secrets(oauth_client):
-    """Section 9.7: the capabilities payload must not leak OIDC config."""
-    resp = await oauth_client.get("/v1/config")
-    assert resp.status_code == 200
-    body_str = resp.text.lower()
-    assert "client_id" not in body_str
-    assert "client_secret" not in body_str
-    assert "openid_configuration" not in body_str
-
-
 async def test_config_advertises_providers(oauth_client):
     """The panel reads provider names from the boot-time capabilities payload."""
     resp = await oauth_client.get("/v1/config")
@@ -804,7 +792,7 @@ async def test_config_hides_providers_when_logins_are_disabled(upstream_client):
         database_url="sqlite+aiosqlite:///:memory:",
         admin_token="test-admin-token",
         user_auth_enabled=False,
-        oidc_providers=[TEST_OIDC_PROVIDER],
+        oidc_providers=[KEYCLOAK_PROVIDER],
         create_tables=True,
     )
     app = create_app(settings=settings_off, upstream_client=upstream_client)

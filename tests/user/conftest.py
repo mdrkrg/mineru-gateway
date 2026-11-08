@@ -10,8 +10,9 @@ import httpx
 import pytest
 from asgi_lifespan import LifespanManager
 
-from mineru_gateway.config import OIDCProviderConfig, Settings
+from mineru_gateway.config import Settings
 from mineru_gateway.main import create_app
+from tests.user.helpers import KEYCLOAK_PROVIDER
 from tests.user.oauth_patch import patch_oauth
 
 
@@ -124,15 +125,6 @@ def mock_oauth_client():
 # attribute (mineru_gateway.email.service.send_verification_email) at call
 # time so monkeypatching intercepts it.
 
-_EMAIL_VERIFY_OIDC_PROVIDER = OIDCProviderConfig(
-    name="keycloak",
-    openid_configuration_endpoint=(
-        "https://keycloak.example.com/.well-known/openid-configuration"
-    ),
-    client_id="test-client-id",
-    client_secret="test-client-secret",
-)
-
 
 class EmailSenderStub:
     """Test double for email.service.send_verification_email (spec Section 5.2).
@@ -242,7 +234,7 @@ def smtp_oidc_settings(smtp_settings) -> Settings:
     """Spec Section 8.7: SMTP + OIDC provider without trusted domains."""
     return smtp_settings.model_copy(
         update={
-            "oidc_providers": [_EMAIL_VERIFY_OIDC_PROVIDER],
+            "oidc_providers": [KEYCLOAK_PROVIDER],
             "oauth_redirect_base_url": "http://testserver",
         }
     )

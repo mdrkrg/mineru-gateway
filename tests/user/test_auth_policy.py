@@ -18,16 +18,7 @@ from mineru_gateway.auth.policy import (
     oidc_link_decision,
     startup_violations,
 )
-from mineru_gateway.config import OIDCProviderConfig
-
-_PROVIDER = OIDCProviderConfig(
-    name="keycloak",
-    openid_configuration_endpoint=(
-        "https://keycloak.example.com/.well-known/openid-configuration"
-    ),
-    client_id="cid",
-    client_secret="secret",
-)
+from tests.user.helpers import KEYCLOAK_PROVIDER
 
 _ACTIVE_VERIFIED = LocalAccount(is_active=True, is_verified=True)
 _ACTIVE_UNVERIFIED = LocalAccount(is_active=True, is_verified=False)
@@ -42,7 +33,7 @@ def test_startup_reports_every_violation_in_spec_order(settings):
             "smtp_host": None,
             "allow_unverified_accounts": False,
             "open_registration": True,
-            "oidc_providers": [_PROVIDER],
+            "oidc_providers": [KEYCLOAK_PROVIDER],
         }
     )
     violations = startup_violations(configured)
@@ -60,7 +51,7 @@ def test_startup_refusals_require_the_login_stack(settings):
             "smtp_host": None,
             "allow_unverified_accounts": False,
             "open_registration": True,
-            "oidc_providers": [_PROVIDER],
+            "oidc_providers": [KEYCLOAK_PROVIDER],
         }
     )
     assert startup_violations(configured) == []

@@ -96,13 +96,13 @@ async def trusted_fallback_client(trusted_fallback_app):
 # ===== Section 3.2: trusted_email_domains config field =====
 
 
-async def test_trusted_email_domains_default_empty():
+def test_trusted_email_domains_default_empty():
     """Section 9.7: trusted_email_domains defaults to an empty list."""
     cfg = _make_provider()
     assert cfg.trusted_email_domains == []
 
 
-async def test_trusted_email_domains_parsed_from_config():
+def test_trusted_email_domains_parsed_from_config():
     """Section 3.2: trusted_email_domains is a settable string array."""
     cfg = _make_provider(trusted_email_domains=["idp.example.com", "Example.com"])
     assert cfg.trusted_email_domains == ["idp.example.com", "Example.com"]
@@ -111,18 +111,20 @@ async def test_trusted_email_domains_parsed_from_config():
 # ===== Section 4.5 step 3h / 9.7: trusted domain exception =====
 
 
-async def test_callback_claim_missing_trusted_domain_new_user_verified(
-    trusted_client, mock_oauth_client
+@pytest.mark.parametrize("claim", [None, False], ids=["claim-missing", "claim-false"])
+async def test_callback_trusted_domain_new_user_verified(
+    trusted_client, mock_oauth_client, claim
 ):
-    """Section 9.7: email_verified claim missing + domain in
-    trusted_email_domains -> new User is_verified=true."""
-    mock_oauth_client.get_profile = AsyncMock(
-        return_value={
-            "sub": "trusted-sub-1",
-            "email": "trusted-user@example.com",
-            "name": "Trusted User",
-        }
-    )
+    """Section 9.7 / step 3h: a trusted domain marks a new row verified whether
+    the claim is missing or explicitly false."""
+    profile = {
+        "sub": "trusted-sub-1",
+        "email": "trusted-user@example.com",
+        "name": "Trusted User",
+    }
+    if claim is not None:
+        profile["email_verified"] = claim
+    mock_oauth_client.get_profile = AsyncMock(return_value=profile)
 
     resp = await oauth_flow(trusted_client)
     assert resp.status_code == 200, resp.text
@@ -135,40 +137,22 @@ async def test_callback_claim_missing_trusted_domain_new_user_verified(
     assert me.json()["is_verified"] is True
 
 
-async def test_callback_claim_missing_trusted_domain_existing_user_linked(
-    trusted_client, mock_oauth_client
+@pytest.mark.parametrize("claim", [None, False], ids=["claim-missing", "claim-false"])
+async def test_callback_trusted_domain_existing_user_linked(
+    trusted_client, mock_oauth_client, claim
 ):
-    """Section 9.7: email_verified claim missing + domain in
-    trusted_email_domains -> existing User is linked (no 400)."""
+    """Section 9.7 / step 3h: a trusted domain links an existing verified row
+    whether the claim is missing or explicitly false (no 400/409)."""
     await provision_owner(trusted_client, "trusted-user@example.com")
 
-    mock_oauth_client.get_profile = AsyncMock(
-        return_value={
-            "sub": "trusted-sub-2",
-            "email": "trusted-user@example.com",
-            "name": "Trusted User",
-        }
-    )
-
-    resp = await oauth_flow(trusted_client)
-    assert resp.status_code == 200, resp.text
-
-
-async def test_callback_claim_false_trusted_domain_existing_user_linked(
-    trusted_client, mock_oauth_client
-):
-    """Section 9.7: email_verified=false + domain in trusted_email_domains
-    -> existing User is linked (no 409)."""
-    await provision_owner(trusted_client, "trusted-user@example.com")
-
-    mock_oauth_client.get_profile = AsyncMock(
-        return_value={
-            "sub": "trusted-sub-3",
-            "email": "trusted-user@example.com",
-            "name": "Trusted User",
-            "email_verified": False,
-        }
-    )
+    profile = {
+        "sub": "trusted-sub-2",
+        "email": "trusted-user@example.com",
+        "name": "Trusted User",
+    }
+    if claim is not None:
+        profile["email_verified"] = claim
+    mock_oauth_client.get_profile = AsyncMock(return_value=profile)
 
     resp = await oauth_flow(trusted_client)
     assert resp.status_code == 200, resp.text
