@@ -238,6 +238,11 @@ class Settings(BaseSettings):
     verify_email_token_lifetime_seconds: int = 3600
     verify_email_base_url: str = ""
 
+    @property
+    def mailbox_flow_enabled(self) -> bool:
+        """The verify routes exist and mail can be sent (login stack + SMTP)."""
+        return self.user_auth_enabled and self.smtp_host is not None
+
     # --- CORS ---
     cors_allow_origins: list[str] = ["*"]
     cors_allow_methods: list[str] = ["*"]

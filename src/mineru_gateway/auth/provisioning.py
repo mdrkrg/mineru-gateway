@@ -34,7 +34,7 @@ async def send_verification_email_after_create(
     - Send failures are swallowed by ``on_after_request_verify``, so the
       create result is unaffected.
     """
-    if not settings.user_auth_enabled or settings.smtp_host is None:
+    if not settings.mailbox_flow_enabled:
         return
     try:
         await user_manager.request_verify(user, request)
@@ -105,35 +105,23 @@ async def provision_owner(
     hashed and discarded, so the row can own keys and tasks but cannot sign in.
     Supplying a password creates a normal login account instead.
 
-    Without SMTP there is no mailbox flow, so the admin's assertion is the only
-    proof of ownership: the row is verified by default, and
-    ``is_verified=false`` is refused because nothing could ever verify it.
-
-    The same holds with the login stack off (``GATEWAY_USER_AUTH_ENABLED=false``):
-    the row can only own keys and tasks, and the verify routes are not
-    registered, so verification has no consumer either.
+    Without a mailbox flow the admin's assertion is the only proof, so the row
+    is verified and ``is_verified=false`` is refused (Section 2).
     """
-    is_verified = body.is_verified
+    blocker = None
     if not settings.user_auth_enabled:
-        if is_verified is False:
-            # No login stack means no verify route either, so nothing could
-            # ever flip the flag.
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "is_verified=false requires GATEWAY_USER_AUTH_ENABLED: "
-                    "without the login stack no verification flow exists"
-                ),
-            )
-        is_verified = True
+        blocker = "GATEWAY_USER_AUTH_ENABLED"
     elif settings.smtp_host is None:
+        blocker = "GATEWAY_SMTP_HOST"
+
+    is_verified = body.is_verified
+    if blocker is not None:
         if is_verified is False:
-            # Such a row could never be verified or linked to a provider login.
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "is_verified=false requires GATEWAY_SMTP_HOST: without a "
-                    "mailbox flow the owner could never verify the address"
+                    f"is_verified=false requires {blocker}: no verification "
+                    f"flow exists, so the address could never be verified"
                 ),
             )
         is_verified = True

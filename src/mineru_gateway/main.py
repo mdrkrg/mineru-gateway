@@ -216,10 +216,10 @@ def create_app(
         app.include_router(user_router)
         app.include_router(api_keys_me_router)
         app.include_router(oauth_router)
-        # Spec: email-verification.md Section 1/6.1 - verify routes are only
-        # registered when SMTP is configured (unset -> 404, matching the
+        # Spec: email-verification.md Section 1/6.1 - verify routes exist only
+        # when the mailbox flow does (unset SMTP -> 404, matching the
         # USER_AUTH_ENABLED=false pattern).
-        if settings.smtp_host:
+        if settings.mailbox_flow_enabled:
             from fastapi_users.router.verify import get_verify_router
 
             from .auth.manager import get_user_manager
