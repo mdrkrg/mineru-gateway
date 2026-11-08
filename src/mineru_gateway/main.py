@@ -17,6 +17,7 @@ from .auth.api_keys_me import router as api_keys_me_router
 from .auth.bootstrap import ensure_bootstrap_owner
 from .auth.jwt_routes import router as jwt_router
 from .auth.oauth.routes import router as oauth_router
+from .auth.policy import startup_violation
 from .auth.routes import router as auth_router
 from .auth.user_routes import router as user_router
 from .background import cleanup, retry, status_sync
@@ -59,53 +60,11 @@ def create_app(
         )
         sys.exit(1)
 
-    # Section 3.1: the admin plane mints owners and API keys, so the default
-    # token would hand every deployment that forgot to override it a public
-    # credential-minting oracle. Refuse to start instead of warning.
-    if settings.admin_token.strip() in {"", "change-me"}:
-        raise ValueError(
-            "GATEWAY_ADMIN_TOKEN must be set to a strong value: the admin plane "
-            "provisions owners and issues API keys"
-        )
-
-    # Section 3.1 / 7.1: validate jwt_secret when user_auth_enabled
-    if settings.user_auth_enabled and len(settings.jwt_secret) < 32:
-        raise ValueError(
-            "GATEWAY_JWT_SECRET must be at least 32 characters when "
-            "GATEWAY_USER_AUTH_ENABLED is true"
-        )
-
-    # Spec: email-verification.md Section 3.1: with user auth enabled and the
-    # verification gate closed, SMTP must be configured or unverified users
-    # have no verification path and are locked out of protected features.
-    if (
-        settings.user_auth_enabled
-        and not settings.allow_unverified_accounts
-        and settings.smtp_host is None
-    ):
-        raise ValueError(
-            "GATEWAY_USER_AUTH_ENABLED=true with "
-            "GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false requires GATEWAY_SMTP_HOST; "
-            "configure SMTP or set GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=true"
-        )
-
-    # Open registration plus a provider identity is only safe with a mailbox
-    # flow: whoever registers an address first holds the local row, provider
-    # logins refuse to link it (unverified), and the real owner has no way to
-    # prove the address. That is a permanent sign-in block, not a dead row.
-    if (
-        settings.user_auth_enabled
-        and settings.oidc_providers
-        and settings.open_registration
-        and settings.smtp_host is None
-    ):
-        raise ValueError(
-            "GATEWAY_OPEN_REGISTRATION=true with GATEWAY_OIDC_PROVIDERS requires "
-            "GATEWAY_SMTP_HOST: without a mailbox flow a registered address can "
-            "never be verified, so whoever registers it first can permanently "
-            "block the real owner's provider login. Configure SMTP or disable "
-            "GATEWAY_OPEN_REGISTRATION"
-        )
+    # Section 3.1 / 7.1: every boot refusal lives in auth/policy.py so the
+    # spec tables have one executable source of truth.
+    violation = startup_violation(settings)
+    if violation is not None:
+        raise ValueError(violation)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

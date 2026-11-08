@@ -9,7 +9,7 @@ import hashlib
 import hmac
 import logging
 import secrets
-from typing import Annotated
+from typing import Annotated, NoReturn
 from urllib.parse import urlencode
 
 import jwt
@@ -26,6 +26,7 @@ from ...utils.email import AsciiEmail
 from ..backend import issue_token_pair
 from ..dependencies import get_session, get_settings_dep
 from ..manager import UserManager, get_user_manager
+from ..policy import LinkDecision, LocalAccount, link_error, oidc_link_decision
 from ..schemas import TokenPair
 from . import base
 
@@ -59,22 +60,36 @@ def _get_provider_config(
     return None
 
 
-def _unverified_local_detail(*, has_smtp: bool) -> str:
-    """409 body for linking a provider login to an unverified local row.
+def _local_state(user: User | None) -> LocalAccount | None:
+    """Reduce a row to the state the linking rules read."""
+    if user is None:
+        return None
+    return LocalAccount(is_active=user.is_active, is_verified=user.is_verified)
 
-    Spec: user-management-and-oauth.md Section 4.5. The advice has to match the
-    deployment: without SMTP the verify routes are not registered, so telling
-    the user to verify the address would point at a 404.
+
+def _refuse_link(
+    decision: LinkDecision,
+    *,
+    provider: str,
+    user: User | None,
+    settings: Settings,
+) -> NoReturn:
+    """Raise the refusal for ``decision``.
+
+    A refusal on an unverified local row is the address-squatting signal, so it
+    is logged for operators; the other refusals are already self-explanatory.
     """
-    if has_smtp:
-        return (
-            "Email is registered but not verified; verify it, then retry the "
-            "provider login"
+    if decision is LinkDecision.REFUSE_LOCAL_UNVERIFIED and user is not None:
+        logger.warning(
+            "OAuth linking refused: local account is not verified",
+            extra={
+                "provider": provider,
+                "user_id": str(user.id),
+                "email": user.email,
+            },
         )
-    return (
-        "Email is registered but not verified, and this gateway has no email "
-        "verification flow; ask an administrator to verify or remove the account"
-    )
+    status_code, detail = link_error(decision, has_smtp=settings.smtp_host is not None)
+    raise HTTPException(status_code=status_code, detail=detail)
 
 
 def _decode_id_token(id_token: str) -> dict:
@@ -322,8 +337,13 @@ async def callback(
                 existing_oauth.user_id,
             )
             raise HTTPException(status_code=500, detail="User is missing")
-        if not user.is_active:
-            raise HTTPException(status_code=400, detail="User is inactive")
+        decision = oidc_link_decision(
+            has_oauth_account=True,
+            local=_local_state(user),
+            provider_verified=email_verified,
+        )
+        if decision is not LinkDecision.EXISTING_ACCOUNT:
+            _refuse_link(decision, provider=provider, user=user, settings=settings)
 
         existing_oauth.access_token = oidc_access_token or ""
         # Providers may omit these on re-consent; keep the stored values.
@@ -340,43 +360,12 @@ async def callback(
         except fu_exceptions.UserNotExists:
             existing_user = None
 
-        if existing_user is not None:
-            # Email exists -> check email_verified
-            if email_verified is True:
-                if not existing_user.is_active:
-                    raise HTTPException(status_code=400, detail="User is inactive")
-                # An unverified local row proves nothing about mailbox ownership:
-                # whoever registered it chose the password. Require verification
-                # (which needs SMTP) before linking.
-                if not existing_user.is_verified:
-                    # The 409 alone looks like a misconfigured account; log the
-                    # refusal so operators can see address squatting.
-                    logger.warning(
-                        "OAuth linking refused: local account is not verified",
-                        extra={
-                            "provider": provider,
-                            "user_id": str(existing_user.id),
-                            "email": existing_user.email,
-                        },
-                    )
-                    raise HTTPException(
-                        status_code=409,
-                        detail=_unverified_local_detail(
-                            has_smtp=settings.smtp_host is not None
-                        ),
-                    )
-                user = existing_user
-            elif email_verified is False:
-                raise HTTPException(
-                    status_code=409,
-                    detail="Email exists but not verified by provider",
-                )
-            else:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Email exists but email_verified claim missing",
-                )
-        else:
+        decision = oidc_link_decision(
+            has_oauth_account=False,
+            local=_local_state(existing_user),
+            provider_verified=email_verified,
+        )
+        if decision is LinkDecision.CREATE:
             # Create new User
             is_verified = bool(email_verified)
             random_pw = user_manager.password_helper.generate()
@@ -392,6 +381,12 @@ async def callback(
             await session.flush()
             # Log after flush so user.id is populated.
             await user_manager.on_after_register(user, request=request)
+        elif decision is LinkDecision.LINK:
+            user = existing_user
+        else:
+            _refuse_link(
+                decision, provider=provider, user=existing_user, settings=settings
+            )
 
         # Step 5: Create OAuthAccount
         oauth_account = OAuthAccount(
