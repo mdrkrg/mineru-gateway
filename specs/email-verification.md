@@ -7,7 +7,7 @@
 **目标**：在现有用户体系（email/password 注册 + OIDC 登录）之上增加**邮箱验证**功能：
 
 1. 配置 SMTP 后，网关能通过邮件服务发送验证邮件（使用 fastapi-mail，不自行实现 SMTP 协议）。
-2. **email/password 注册**（含管理员创建）的用户默认 `is_verified=false`，须验证邮箱后才能使用受保护功能。
+2. **email/password 注册**的用户恒为 `is_verified=false`；**管理员创建**（`POST /auth/users`）的默认值见 §2（未开启用户认证或未配置 SMTP 时恒为 `true`）。未验证用户须验证邮箱后才能使用受保护功能。
 3. **OIDC 登录**创建的用户，若提供商未返回 `email_verified` 声明或返回 `false`（且邮箱域名未命中该 provider 的 `trusted_email_domains`），同样为 `is_verified=false`，须验证邮箱后才能使用受保护功能。
 4. 受保护功能：**仅** `POST /me/api-keys`（用户自助创建 API Key）。未验证邮箱的用户调用返回 403（由 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS` 控制，定义见 `specs/user-management-and-oauth.md` §3.1）。
 5. 验证流程复用 fastapi-users 内置验证机制（验证 token + 验证接口），邮件发送层使用 fastapi-mail 库。
@@ -18,7 +18,7 @@
 
 - 重置密码 —— 依赖 SMTP 但不在本阶段范围。
 - 修改邮箱 —— `email` 不可通过 `PATCH /users/me` 修改，验证 token 与邮箱绑定，不受影响。
-- 管理员手动标记用户已验证 —— 不提供管理端点，`is_verified` 只能由验证流程置为 `true`。
+- 管理员手动标记用户已验证 —— 不提供管理端点，`is_verified` 只能由验证流程置为 `true`；因此 OIDC 本地未验证 409 的补救不是“管理员标记”，而是先配置 SMTP 再由邮箱主人自助验证，或由运维离线删除该行（见 `user-management-and-oauth.md` §4.5）。
 - 邮件正文的可视化编辑、营销类邮件与发送重试/队列 —— 仅发送验证邮件，发送为 best-effort，失败仅记录日志。
 - `POST /me/api-keys` 之外的任何端点拦截（任务提交、管理员端点等均不在此规约范围内）。
 
@@ -38,6 +38,8 @@
 - `GATEWAY_SMTP_HOST` 未配置时，验证相关路由**不注册**（访问返回 404，与 `GATEWAY_USER_AUTH_ENABLED=false` 的既有模式一致）。
 - `allow_unverified_accounts=false` 且 SMTP 未配置时验证路径不可用，未验证用户将永久无法使用受保护功能——该配置组合在启动时被拒绝（§3.1），杜绝此状态。
 - `is_verified` 为**单向**状态：只能由 `false` → `true`，任何路径都不将其降级回 `false`（与 `specs/user-management-and-oauth.md` §7.2 信任决策固化一致）。其全部取值来源见 §2 表格。
+- `GATEWAY_USER_AUTH_ENABLED=false` 时不存在验证流程（验证路由不注册）：管理员创建的 owner 恒为 `is_verified=true`（显式传 `false` → 400），且不发验证邮件（邮件里的链接会 404）。
+- 未配置 SMTP 但 `allow_unverified_accounts=true` 时，OIDC 创建出的未验证用户可继续用同一 provider 登录，但永远无法关联第二个 provider（验证路由不注册，也没有管理端点可补救，见 §0）。这是该部署形态的已知残留。
 
 ## 2. 数据模型
 
@@ -48,7 +50,7 @@
 | 创建/变更途径 | `is_verified` 初始值 | 说明 |
 |--------------|----------------------|------|
 | `POST /auth/register`（开放注册） | `false` | 请求体中的 `is_verified` 字段被忽略，恒为 `false` |
-| `POST /auth/users`（管理员创建） | 未配置 SMTP 时恒为 `true`（显式传 `false` → 400）；已配置 SMTP 时传密码 `false`、无密码 `true` | 无 SMTP 时管理员的断言是唯一所有权证明，`false` 的行永远无法验证、也无法被 OAuth 关联。无密码即凭据型 owner（不能登录），见 `specs/task-ownership.md` §3 |
+| `POST /auth/users`（管理员创建） | `GATEWAY_USER_AUTH_ENABLED=false` 时恒为 `true`；开启用户认证但未配置 SMTP 时恒为 `true`（显式传 `false` → 400）；已配置 SMTP 时传密码 `false`、无密码 `true` | 无 SMTP / 无登录栈时管理员的断言是唯一所有权证明，`false` 的行永远无法验证、也无法被 OAuth 关联。无密码即凭据型 owner（不能登录），见 `specs/task-ownership.md` §3 |
 | OIDC 回调创建新用户 | 按 §0 目标 3 规则 | `email_verified` 声明 + `trusted_email_domains` 例外 |
 | `POST /auth/verify` / `GET /auth/verify` | `false` → `true` | 验证 token 有效时置 `true`，单向 |
 
@@ -78,9 +80,14 @@
 - `GATEWAY_SMTP_FROM` 若配置，必须是合法邮箱地址。
 - `GATEWAY_SMTP_HOST` 已配置但发件地址不可确定（`GATEWAY_SMTP_FROM` 与 `GATEWAY_SMTP_USERNAME` 均未配置）→ 拒绝启动，提示配置 `GATEWAY_SMTP_FROM` 或 `GATEWAY_SMTP_USERNAME`（否则验证邮件将静默无法发送，未验证用户将永久无法使用受保护功能）。该校验与 `GATEWAY_USER_AUTH_ENABLED` 无关，只要 `GATEWAY_SMTP_HOST` 已配置即生效。
 - `GATEWAY_USER_AUTH_ENABLED=true` 且 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false`（默认，定义见 `specs/user-management-and-oauth.md` §3.1）且 `GATEWAY_SMTP_HOST` 未配置 → 拒绝启动，提示配置 SMTP 或设置 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=true`（否则未验证用户无验证路径，将永久无法使用受保护功能）。
-- `GATEWAY_USER_AUTH_ENABLED=true` 且已配置 `GATEWAY_OIDC_PROVIDERS` 且 `GATEWAY_OPEN_REGISTRATION=true` 且 `GATEWAY_SMTP_HOST` 未配置 → 拒绝启动（无 SMTP 时注册出的地址永远无法验证；provider 登录只关联已验证的本地账号，因此抢占者可用任意地址占位并**永久阻断真实主人的 OIDC 登录**——这是登录阻断而非“无用行”问题）。
+- `GATEWAY_USER_AUTH_ENABLED=true` 且已配置 `GATEWAY_OIDC_PROVIDERS` 且 `GATEWAY_OPEN_REGISTRATION=true` 且 `GATEWAY_SMTP_HOST` 未配置 → 拒绝启动（无 SMTP 时注册出的地址永远无法验证，抢占者可用任意地址**永久阻断真实主人的 OIDC 登录**）。
 
-> **升级影响**：`GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false` 是默认值。既有部署若已开启用户认证（`user_auth_enabled=true`）但未配置 `GATEWAY_SMTP_HOST`，升级后启动校验将拒绝启动——须在升级时配置 SMTP 或显式设置 `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=true`。同理，同时开启开放注册与 OIDC provider 但未配置 `GATEWAY_SMTP_HOST` 的部署也不再启动，须二选一：配置 SMTP，或关闭 `GATEWAY_OPEN_REGISTRATION`。已配置 `GATEWAY_SMTP_HOST` 但未配置任何发件地址（`GATEWAY_SMTP_FROM`、`GATEWAY_SMTP_USERNAME` 均无）的部署同样会被拒绝——须补配其一。
+> **升级影响**：以下配置在升级后拒绝启动，须逐项处理。
+>
+> - `GATEWAY_ALLOW_UNVERIFIED_ACCOUNTS=false`（默认）且未配置 SMTP：配置 SMTP，或显式设为 `true`。
+> - 同时开启开放注册与 OIDC provider 且未配置 SMTP：配置 SMTP，或关闭 `GATEWAY_OPEN_REGISTRATION`。
+> - SMTP 已配置但发件地址不可确定（`GATEWAY_SMTP_FROM`、`GATEWAY_SMTP_USERNAME` 均无）：至少补配其一。
+> - provider 配置了 `email_fallback_domain` 但未列入同一 provider 的 `trusted_email_domains`：补入信任列表（与 SMTP 无关，规则见 `user-management-and-oauth.md` §3.2）。
 
 **新增依赖**：`pyproject.toml` 增加 [`fastapi-mail>=1.6.5`](https://pypi.org/project/fastapi-mail/)（异步 SMTP 发送）与 [`jinja2`](https://pypi.org/project/Jinja2/)（邮件模板渲染）。
 
@@ -218,7 +225,8 @@ src/mineru_gateway/
 
 ### 8.2 注册与创建（`is_verified` 语义不变 + 自动发送）
 
-- 注册与管理员创建成功 → 201，`is_verified=false`（既有行为回归）。
+- 开放注册成功 → 201，`is_verified=false`（既有行为回归）。
+- 管理员创建：已配置 SMTP 且传密码 → 201，`is_verified=false`；未配置 SMTP 或未开启用户认证 → 201，`is_verified=true`（§2 表格）。
 - SMTP 已配置时注册/管理员创建 → 自动发送验证邮件（stub 捕获收件人 = 注册邮箱，token 可用于验证）；SMTP 未配置 → 不发送，仍 201。
 - SMTP 已配置但发送失败（stub 抛错）→ 注册/管理员创建仍 201（§4.4，失败仅记日志）。
 - 注册携带 `?locale=` → stub 捕获的 `locale` 与查询参数一致；无参数 → `None`（回退由发送层完成）；无法识别的 tag → 原样转发，注册仍 201。
@@ -258,6 +266,8 @@ fastapi-users 提供的库接口，其 200/400 语义不单独测试；验证可
 - `GATEWAY_USER_AUTH_ENABLED=false` → `/auth/request-verify-token`、`/auth/verify` 均 404。
 - `GATEWAY_USER_AUTH_ENABLED=true` + SMTP 未配置 + `allow_unverified_accounts=true` → 三个验证端点均 404（路由不注册），`POST /me/api-keys` 不拦截。
 - `GATEWAY_USER_AUTH_ENABLED=true` + SMTP 未配置 + `allow_unverified_accounts=false`（默认）→ 拒绝启动（配置校验）。
+- `GATEWAY_USER_AUTH_ENABLED=true` + 已配置 `GATEWAY_OIDC_PROVIDERS` + `GATEWAY_OPEN_REGISTRATION=true` + SMTP 未配置 → 拒绝启动；`GATEWAY_OPEN_REGISTRATION=false` 时同样组合允许启动。
+- 多条启动规则同时命中时全部报告（按 §3.1 顺序，无邮箱流程的规则在前），见 `tests/user/test_auth_policy.py`。
 
 ### 8.9 模板渲染与 locale 解析（`email/service.py`）
 

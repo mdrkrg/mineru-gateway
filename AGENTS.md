@@ -93,7 +93,7 @@ the same internal layout - **routes / service / schemas** is the canonical split
 | `schemas.py` | shared Pydantic schemas |
 | `middleware.py` | pure-ASGI `RequestLoggingMiddleware` (one JSON log per request, `x-request-id`) |
 | `logging_config.py` | structured JSON logging setup |
-| `auth/` | API keys + opt-in JWT/OAuth via `fastapi-users`; task principals resolve JWT or key to an owner |
+| `auth/` | API keys + opt-in JWT/OAuth via `fastapi-users`; `policy.py` owns every boot refusal and the OIDC linking decision; task principals resolve JWT or key to an owner |
 | `proxy/` | transparent passthrough of `/v1/file_parse` and `/v1/tasks`; streaming multipart parser for uploads |
 | `tasks/` | task CRUD + batch, `FileCache` for staged uploads, `CacheWriter` for streaming writes |
 | `background/` | `status_sync`, `retry`, `cleanup` asyncio loops |
@@ -114,6 +114,10 @@ the same internal layout - **routes / service / schemas** is the canonical split
   file in `alembic/versions/`. **Do not hand-edit existing migrations.**
 - New background loop? -> add in `background/`, then start it in `main.py`'s
   lifespan guarded by `settings.enable_background`.
+- New boot refusal or OIDC link rule? -> add it to `auth/policy.py`
+  (`_STARTUP_RULES` / `LinkDecision`) and pin it in
+  `tests/user/test_auth_policy.py`; do not add an `if` in `main.py` or the
+  OAuth callback.
 
 ## Conventions
 

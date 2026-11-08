@@ -181,8 +181,8 @@ User ──1:N──► ApiKey（通过 owner_id）
 | `userinfo_endpoint` | string | 否 | 模式 B | OIDC UserInfo 端点 URL。未设置时跳过 userinfo 调用，仅从 `id_token` 提取声明 |
 | `scopes` | array[string] | 否 | 全部 | 授权请求的作用域列表。默认 `["openid", "email"]` |
 | `user_info_mapping` | object | 否 | 全部 | 声明名到内部字段的映射，key 可选 `display_name`、`email`。默认 `{"display_name": "name", "email": "email"}` |
-| `email_fallback_domain` | string | 否 | 全部 | 当 OIDC 未返回 email 时，用 `<sub>@<domain>` 合成占位邮箱。未设置时不启用此回退，缺失 email 时报错。**必须同时列入同 provider 的 `trusted_email_domains`，否则拒绝启动**：合成地址收不到邮件，永远无法通过邮箱验证（见 [7.2](#72-oauth-csrf-保护与邮箱关联)） |
-| `trusted_email_domains` | array[string] | 否 | 全部 | 信任域名列表。邮箱域名（`@` 后部分）须**精确匹配**列表条目（大小写不敏感，子域名不命中，如 `sub.example.com` 不命中 `example.com`）时，即使 OIDC 未返回 `email_verified` 声明或返回 `false`，也视为已验证（`email_verified=true`）。**仅限可信 Provider 使用**（见 [7.2](#72-oauth-csrf-保护与邮箱关联)） |
+| `email_fallback_domain` | string | 否 | 全部 | 当 OIDC 未返回 email 时用 `<sub>@<domain>` 合成占位邮箱；未设置（或为空）时不启用。设置时该域**必须**同时列入 `trusted_email_domains`，否则拒绝启动（见模式规则与 [7.2](#72-oauth-csrf-保护与邮箱关联)） |
+| `trusted_email_domains` | array[string] | 否 | 全部 | 信任域名列表；条目须为合法域名，否则拒绝启动。邮箱域名**精确匹配**条目时视为已验证（`email_verified=true`，即使声明缺失或为 `false`）：大小写不敏感、按 IDN→punycode 规范化，子域名不命中（`sub.example.com` 不命中 `example.com`）。**仅限可信 Provider 使用**（见 [7.2](#72-oauth-csrf-保护与邮箱关联)） |
 
 > \* 模式 B 中 `authorization_endpoint`、`token_endpoint` 为必需；`userinfo_endpoint` 为可选。
 
@@ -376,6 +376,9 @@ Content-Type: application/json
   始终注册。
 - `password` 可省略；不传时创建**凭据型 owner**（不能登录），默认值语义见
   `specs/task-ownership.md` §3。
+- `is_verified` 可省略：未开启用户认证或未配置 SMTP 时恒为 `true`（显式 `false` →
+  400，没有任何路径能把它翻回 `true`）；已配置 SMTP 时显式 `true` 被采纳，省略时
+  随 `password`：有密码 `false`、无密码 `true`。见 `specs/email-verification.md` §2。
 
 ### 4.3 用户信息端点
 
@@ -587,8 +590,9 @@ Location: {frontend_redirect_url}#access_token=eyJ...&refresh_token=eyJ...&token
 - 400 — userinfo 端点请求失败（网络错误或 HTTP ≥ 400）。
 - 400 — email 已存在且 OIDC 提供商未返回 `email_verified` 声明（无法确认邮箱所有权，返回 400 防止账户接管）。
 - 409 — email 已存在且 OIDC 提供商返回 `email_verified=false`（明确声明的未验证邮箱，拒绝关联）。
-- 409 — email 已存在且本地账号 `is_verified=false`（本地凭据未经邮箱主人证明；本地账号验证邮箱后重试）。
+- 409 — email 已存在且本地账号 `is_verified=false`（本地凭据未经邮箱主人证明）。响应文案按部署区分，见步骤 4。
 - 400 — OIDC profile 缺少 email 且未配置 `email_fallback_domain`（无法获取用户邮箱）。
+- 400 — 已有的 OAuthAccount 关联用户已停用，或本地行已停用且 provider 断言邮箱已验证（无 `OAuthAccount` 的关联路径）。
 
 > 与 provider `email_verified` 声明相关的 400/409 在域名命中 `trusted_email_domains` 时不适用（步骤 3h）；本地 `is_verified=false` 的 409 不受此例外影响。
 
@@ -621,7 +625,10 @@ Location: {frontend_redirect_url}#access_token=eyJ...&refresh_token=eyJ...&token
    - 不存在 → 按 `email` 查找 User：
      - 存在 → 根据 `email_verified` 与本地 `is_verified` 决定：
        - `email_verified=true` 且本地 User 已 `is_verified=true` → 关联到已有 User。`is_verified` **不升级**。
-       - `email_verified=true` 但本地 User 未验证 → 返回 409，并记 `OAuth linking refused` 警告日志（`provider` / `user_id` / `email`）；本地账号验证邮箱后重试即可关联。
+       - `email_verified=true` 但本地 User 未验证 → 返回 409，并记 `OAuth linking refused` 警告日志（`provider` / `user_id` / `email`）。响应文案按部署区分：
+         - 已配置 SMTP：提示“验证邮箱后重试即可关联”。
+         - 未配置 SMTP：提示联系运维（该部署没有验证流程，验证路由不注册）。
+         - 补救只有两条：配置 `GATEWAY_SMTP_HOST` 后由邮箱主人自助验证，或由运维离线删除该行；本规约不提供管理端点（§0）。
        - `email_verified=false` → 返回 409，拒绝关联（提供商明确声明未验证邮箱）。
        - `email_verified` 缺失 → 返回 400，拒绝关联（保守安全，无法确认邮箱所有权）。
      - 不存在 → 创建新 User（`display_name` 填充，`is_verified` 从 `email_verified` 设置）。
@@ -762,7 +769,7 @@ src/mineru_gateway/auth/
   - 多个使用同一 fallback domain 的 Provider 之间 `sub` 命名空间互不冲突（否则相同 `sub` 会合成相同邮箱并相互关联）。
 - 对不可信或半可信的 Provider，应**不配置** `email_fallback_domain`，缺失 email 时拒绝登录（400）。
 - **配置强制**：`email_fallback_domain` 必须同时列入同 provider 的 `trusted_email_domains`，否则拒绝加载配置（启动失败）——合成地址收不到邮件，无此约束时该行会永远停留在 `is_verified=false`（因而永远无法关联其他 provider）。
-- **`trusted_email_domains` 是信任决策，而非验证机制**：域名命中即放行账户关联，等同于信任 Provider 对该域名下邮箱所有权的声明。仅当运营者完全信任 Provider（如自建 IdP，`sub` 稳定且 email 不可被用户任意控制）时才应配置。信任决策在用户创建时固化：`is_verified=true` 一经写入不会降级，之后移除信任域名不影响已创建用户。
+- **`trusted_email_domains` 是信任决策，而非验证机制**：域名命中只把 Provider 的 `email_verified` 视为 `true`（步骤 3h），等同于信任 Provider 对该域名下邮箱所有权的声明；本地行仍须 `is_verified=true` 才可关联，本地未验证照旧返回 409（§4.5）。仅当运营者完全信任 Provider（如自建 IdP，`sub` 稳定且 email 不可被用户任意控制）时才应配置。信任决策在用户创建时固化：`is_verified=true` 一经写入不会降级，之后移除信任域名不影响已创建用户。
 
 ### 7.3 令牌安全
 
@@ -873,6 +880,7 @@ curl -X POST http://localhost:8000/auth/keys \
 - 密码包含 email → 400。
 - `OPEN_REGISTRATION=false` 时注册 → 403。
 - 管理员创建用户（`POST /auth/users`）不受 `OPEN_REGISTRATION` 影响 → 成功。
+- 管理员创建用户：未开启用户认证或未配置 SMTP → `is_verified=true`（传 `false` → 400）；已配置 SMTP → 传密码默认 `false`、无密码默认 `true`、显式传值被采纳。
 - 管理员创建用户时 `X-Admin-Token` 无效 → 401。
 
 ### 9.2 登录
@@ -924,6 +932,8 @@ curl -X POST http://localhost:8000/auth/keys \
 - 回调端点：首次登录 → 创建新 User + OAuthAccount → 返回令牌对。
 - 回调端点：已有 OAuthAccount → 更新令牌 → 返回令牌对。
 - 回调端点：email 已存在且 `email_verified=true` 且本地已验证 → 关联到已有 User；本地未验证 → 409，且不创建 `OAuthAccount`。
+- 回调端点：本地未验证 409 的文案随 `GATEWAY_SMTP_HOST` 区分——已配置时提示“验证后重试”，未配置时不得指向验证流程（该部署路由未注册），只能指向运维介入。
+- 回调端点：`email_verified` 缺失/`false` + 域名命中 `trusted_email_domains`，但本地账号 `is_verified=false` → 仍返回 409（信任例外只作用于 provider 声明，不作用于本地 `is_verified`）。
 - 回调端点：email 已存在且 `email_verified=false` → 409（提供商明确声明未验证邮箱）。
 - 回调端点：email 已存在且 `email_verified` 缺失 → 400（保守安全，无法确认邮箱所有权）。
 - OAuth 创建的用户，`display_name` 从 userinfo 的 `name` 声明填充（userinfo 模拟应返回 `name`、`preferred_username`、`given_name` 等字段以验证回退链）。
