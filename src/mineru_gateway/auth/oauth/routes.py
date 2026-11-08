@@ -14,8 +14,8 @@ from urllib.parse import urlencode
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from pydantic import TypeAdapter, ValidationError
 from fastapi_users import exceptions as fu_exceptions
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse, RedirectResponse
@@ -67,28 +67,9 @@ def _local_state(user: User | None) -> LocalAccount | None:
     return LocalAccount(is_active=user.is_active, is_verified=user.is_verified)
 
 
-def _refuse_link(
-    decision: LinkDecision,
-    *,
-    provider: str,
-    user: User | None,
-    settings: Settings,
-) -> NoReturn:
-    """Raise the refusal for ``decision``.
-
-    A refusal on an unverified local row is the address-squatting signal, so it
-    is logged for operators; the other refusals are already self-explanatory.
-    """
-    if decision is LinkDecision.REFUSE_LOCAL_UNVERIFIED and user is not None:
-        logger.warning(
-            "OAuth linking refused: local account is not verified",
-            extra={
-                "provider": provider,
-                "user_id": str(user.id),
-                "email": user.email,
-            },
-        )
-    status_code, detail = link_error(decision, has_smtp=settings.smtp_host is not None)
+def _refuse_link(decision: LinkDecision, *, has_smtp: bool) -> NoReturn:
+    """Raise the HTTP refusal for ``decision``."""
+    status_code, detail = link_error(decision, has_smtp=has_smtp)
     raise HTTPException(status_code=status_code, detail=detail)
 
 
@@ -281,6 +262,8 @@ async def callback(
     # 3f: email fallback chain
     email = raw_email
     sub = id_token_claims.get("sub") or userinfo_claims.get("sub") or ""
+    if not sub:
+        raise HTTPException(status_code=400, detail="OIDC profile missing sub")
     if not email:
         if email_fallback_domain:
             email = f"{sub}@{email_fallback_domain}"
@@ -313,9 +296,6 @@ async def callback(
         if trusted_domains and email.rsplit("@", 1)[-1].lower() in trusted_domains:
             email_verified = True
 
-    if not sub:
-        raise HTTPException(status_code=400, detail="OIDC profile missing sub")
-
     # Step 4: Lookup existing OAuthAccount by (oauth_name, account_id)
     existing_oauth = (
         await session.execute(
@@ -343,7 +323,7 @@ async def callback(
             provider_verified=email_verified,
         )
         if decision is not LinkDecision.EXISTING_ACCOUNT:
-            _refuse_link(decision, provider=provider, user=user, settings=settings)
+            _refuse_link(decision, has_smtp=settings.smtp_host is not None)
 
         existing_oauth.access_token = oidc_access_token or ""
         # Providers may omit these on re-consent; keep the stored values.
@@ -366,7 +346,6 @@ async def callback(
             provider_verified=email_verified,
         )
         if decision is LinkDecision.CREATE:
-            # Create new User
             is_verified = bool(email_verified)
             random_pw = user_manager.password_helper.generate()
             user = User(
@@ -384,9 +363,17 @@ async def callback(
         elif decision is LinkDecision.LINK:
             user = existing_user
         else:
-            _refuse_link(
-                decision, provider=provider, user=existing_user, settings=settings
-            )
+            # A refusal only happens for a matched row, so the user is set.
+            if decision is LinkDecision.REFUSE_LOCAL_UNVERIFIED:
+                logger.warning(
+                    "OAuth linking refused: local account is not verified",
+                    extra={
+                        "provider": provider,
+                        "user_id": str(existing_user.id),
+                        "email": existing_user.email,
+                    },
+                )
+            _refuse_link(decision, has_smtp=settings.smtp_host is not None)
 
         # Step 5: Create OAuthAccount
         oauth_account = OAuthAccount(

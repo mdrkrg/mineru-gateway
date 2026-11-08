@@ -12,13 +12,14 @@ from fastapi import HTTPException, Request
 from fastapi_users import exceptions
 
 from ..config import Settings
+from ..models import User
 from ..utils.email import AsciiEmail
 from .manager import UserManager
 from .schemas import AdminUserCreate, UserCreate, UserRead
 
 
 async def send_verification_email_after_create(
-    user,
+    user: User,
     user_manager: UserManager,
     settings: Settings,
     request: Request,
