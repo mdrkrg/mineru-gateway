@@ -2,7 +2,6 @@ import * as stylex from '@stylexjs/stylex';
 import { For, Show } from 'solid-js';
 import { Link, useMatchRoute } from '@tanstack/solid-router';
 import {
-  Download,
   KeyRound,
   LayoutDashboard,
   ListTodo,
@@ -30,7 +29,6 @@ const NAV_ITEMS: NavItem[] = [
   { to: ROUTES.home, labelKey: 'nav.dashboard', icon: LayoutDashboard },
   { to: ROUTES.tasks, labelKey: 'nav.tasks', icon: ListTodo },
   { to: ROUTES.upload, labelKey: 'nav.upload', icon: Upload },
-  { to: ROUTES.download, labelKey: 'nav.download', icon: Download },
   { to: ROUTES.apiKeys, labelKey: 'nav.apiKeys', icon: KeyRound },
   { to: ROUTES.profile, labelKey: 'nav.profile', icon: User },
 ];

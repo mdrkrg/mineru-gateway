@@ -102,6 +102,8 @@ Build-time deployment paths are configured by `VITE_APP_BASE_PATH` and
   resolves to the same owner (see `../specs/task-ownership.md`).
 - Admin endpoints take the gateway admin token from `useAdminToken()`,
   gated by `<AdminTokenGate/>`.
+- `/tasks` owns both task views: the default list and `?view=results` for
+  downloadable results; the sidebar exposes one Tasks entry.
 
 ### Styling
 

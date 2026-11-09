@@ -5,6 +5,7 @@ import {
   ROUTES,
   TASK_STATUSES,
   isActiveTaskStatus,
+  taskViewFromSearch,
 } from '../../src/utils/constants';
 import { MINERU_TIERS } from '../../src/api/schemas/mineru-options';
 import { mineruTierLabel, taskStatusLabel } from '../../src/i18n/labels';
@@ -41,6 +42,13 @@ describe('constants', () => {
 
   it('taskDetail builds the detail route path', () => {
     expect(ROUTES.taskDetail('abc-123')).toBe('/tasks/abc-123');
+  });
+
+  it('normalizes the task view search param', () => {
+    expect(taskViewFromSearch('results')).toBe('results');
+    expect(taskViewFromSearch('all')).toBe('all');
+    expect(taskViewFromSearch(undefined)).toBe('all');
+    expect(taskViewFromSearch('unknown')).toBe('all');
   });
 
   it('provides a label for every MinerU tier', () => {

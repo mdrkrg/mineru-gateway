@@ -18,7 +18,6 @@ const EXACT_TITLES: Record<string, DictKey> = {
   [ROUTES.home]: 'nav.dashboard',
   [ROUTES.tasks]: 'nav.tasks',
   [ROUTES.upload]: 'nav.upload',
-  [ROUTES.download]: 'nav.download',
   [ROUTES.keyEntry]: 'keyEntry.title',
   [ROUTES.apiKeys]: 'nav.apiKeys',
   [ROUTES.profile]: 'nav.profile',

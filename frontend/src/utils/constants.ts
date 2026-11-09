@@ -13,12 +13,21 @@ export const ROUTES = {
   tasks: '/tasks',
   taskDetail: (id: string) => `/tasks/${id}`,
   upload: '/upload',
+  /** Legacy alias; redirects to `/tasks?view=results`. */
   download: '/download',
   apiKeys: '/api-keys',
   profile: '/profile',
   adminKeys: '/admin/keys',
   adminUsers: '/admin/users',
 } as const;
+
+/** The two task-list views backed by `/tasks?view=…`. */
+export type TaskView = 'all' | 'results';
+
+/** Normalize an untrusted `view` search param. Absent/unknown means `all`. */
+export function taskViewFromSearch(value: unknown): TaskView {
+  return value === 'results' ? 'results' : 'all';
+}
 
 /** All task statuses in display order (mirrors `TaskStatus` union). */
 export const TASK_STATUSES: readonly TaskStatus[] = [

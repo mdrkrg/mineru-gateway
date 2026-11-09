@@ -74,7 +74,6 @@ export const en = {
   'nav.dashboard': 'Dashboard',
   'nav.tasks': 'Tasks',
   'nav.upload': 'Upload',
-  'nav.download': 'Download',
   'nav.apiKeys': 'My API Keys',
   'nav.profile': 'Profile',
   'nav.adminKeys': 'All API Keys',
@@ -143,17 +142,33 @@ export const en = {
   'upload.errNoOutputFormat': 'Choose at least one artifact format to return',
 
   // Task list
+  'tasks.viewsLabel': 'Task views',
+  'tasks.tabAll': 'All tasks',
+  'tasks.tabResults': 'Results',
   'tasks.filterStatus': 'Status',
   'tasks.filterAll': 'All',
   'tasks.filterFileName': 'File name',
   'tasks.searchPlaceholder': 'Search by file name',
   'tasks.search': 'Search',
   'tasks.batchCancel': 'Batch cancel ({{count}})',
+  'tasks.pack': 'Download ZIP ({{count}})',
   'tasks.empty': 'No tasks match the filters.',
+  'tasks.emptyNoTasks': 'No tasks yet.',
+  'tasks.resultsEmpty':
+    'No results yet. Completed and partially completed tasks appear here.',
+  'tasks.uploadCta': 'Upload files',
+  'tasks.viewAll': 'View all tasks',
+  'tasks.retryCount': 'Retries: {{count}}',
+  'tasks.downloadAction': 'Download',
+  'tasks.downloadHint': 'Select tasks to download as a ZIP.',
+  'tasks.notDownloadable':
+    'Some tasks cannot be downloaded: {{failed}}. Deselect them and retry.',
+  'tasks.unknownReason': 'unknown reason',
   'tasks.thStatus': 'Status',
   'tasks.thTier': 'Tier',
   'tasks.thFiles': 'Files',
   'tasks.thCreatedAt': 'Created At',
+  'tasks.thCompletedAt': 'Completed At',
   'tasks.thRetries': 'Retries',
   'tasks.thActions': 'Actions',
   'tasks.cancel': 'Cancel',
@@ -187,20 +202,6 @@ export const en = {
   'taskDetail.downloadRawHint': 'Metadata and inline text',
   'taskDetail.confirmCancel': 'Cancel this task?',
   'taskDetail.partialResultHint': 'Some files failed; successfully parsed files are available.',
-
-  // Result download page
-  'download.description':
-    'All completed and partially completed tasks are listed here. Download them one by one, or select several and download them as a ZIP.',
-  'download.pack': 'Download ZIP ({{count}})',
-  'download.empty': 'No tasks with downloadable results yet.',
-  'download.thFiles': 'Files',
-  'download.thStatus': 'Status',
-  'download.thCompletedAt': 'Completed At',
-  'download.thActions': 'Actions',
-  'download.one': 'Download',
-  'download.notDownloadable':
-    'Some tasks cannot be downloaded: {{failed}}. Deselect them and retry.',
-  'download.unknownReason': 'unknown reason',
 
   // API key table (shared by /api-keys and /admin/keys)
   'keyTable.prefix': 'Prefix',
@@ -357,6 +358,7 @@ export const en = {
   'dashboard.welcomeNamed': 'Welcome, {{name}}',
   'dashboard.statusSection': 'Task Status',
   'dashboard.resultsAvailable': 'Results Available',
+  'dashboard.viewResults': 'View results →',
   'dashboard.allStatuses': 'All Statuses',
   'dashboard.retryPendingHint': '{{count}} waiting to retry',
   'dashboard.partialHint': '{{count}} partially completed',
@@ -366,7 +368,7 @@ export const en = {
   'dashboard.todayFailed': 'Failed Today',
   'dashboard.totalBytes': 'Total Data Processed',
   'dashboard.avgDuration': 'Average Duration',
-  'dashboard.footerPrefix': 'See the',
+  'dashboard.footerPrefix': 'See the ',
   'dashboard.tasksLink': 'task list',
   'dashboard.footerSuffix': ' for details on each task.',
 

@@ -15,7 +15,6 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedApiKeysRouteImport } from './routes/_authenticated/api-keys'
-import { Route as AuthenticatedDownloadRouteImport } from './routes/_authenticated/download'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedUploadRouteImport } from './routes/_authenticated/upload'
 import { Route as OauthCallbackRouteImport } from './routes/oauth/callback'
@@ -51,11 +50,6 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
 const AuthenticatedApiKeysRoute = AuthenticatedApiKeysRouteImport.update({
   id: '/api-keys',
   path: '/api-keys',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedDownloadRoute = AuthenticatedDownloadRouteImport.update({
-  id: '/download',
-  path: '/download',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
@@ -100,7 +94,6 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/api-keys': typeof AuthenticatedApiKeysRoute
-  '/download': typeof AuthenticatedDownloadRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/upload': typeof AuthenticatedUploadRoute
   '/oauth/callback': typeof OauthCallbackRoute
@@ -114,7 +107,6 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/api-keys': typeof AuthenticatedApiKeysRoute
-  '/download': typeof AuthenticatedDownloadRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/upload': typeof AuthenticatedUploadRoute
   '/oauth/callback': typeof OauthCallbackRoute
@@ -131,7 +123,6 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/_authenticated/api-keys': typeof AuthenticatedApiKeysRoute
-  '/_authenticated/download': typeof AuthenticatedDownloadRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/upload': typeof AuthenticatedUploadRoute
   '/oauth/callback': typeof OauthCallbackRoute
@@ -149,7 +140,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/api-keys'
-    | '/download'
     | '/profile'
     | '/upload'
     | '/oauth/callback'
@@ -163,7 +153,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/api-keys'
-    | '/download'
     | '/profile'
     | '/upload'
     | '/oauth/callback'
@@ -179,7 +168,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/_authenticated/api-keys'
-    | '/_authenticated/download'
     | '/_authenticated/profile'
     | '/_authenticated/upload'
     | '/oauth/callback'
@@ -242,13 +230,6 @@ declare module '@tanstack/solid-router' {
       preLoaderRoute: typeof AuthenticatedApiKeysRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/download': {
-      id: '/_authenticated/download'
-      path: '/download'
-      fullPath: '/download'
-      preLoaderRoute: typeof AuthenticatedDownloadRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/profile': {
       id: '/_authenticated/profile'
       path: '/profile'
@@ -303,7 +284,6 @@ declare module '@tanstack/solid-router' {
 
 interface AuthenticatedRouteChildren {
   AuthenticatedApiKeysRoute: typeof AuthenticatedApiKeysRoute
-  AuthenticatedDownloadRoute: typeof AuthenticatedDownloadRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedUploadRoute: typeof AuthenticatedUploadRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
@@ -315,7 +295,6 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedApiKeysRoute: AuthenticatedApiKeysRoute,
-  AuthenticatedDownloadRoute: AuthenticatedDownloadRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedUploadRoute: AuthenticatedUploadRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,

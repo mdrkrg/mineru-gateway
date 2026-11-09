@@ -33,6 +33,8 @@ interface StatCard {
   label: string;
   value: string;
   hint?: string;
+  /** The results counter opens the filtered task list. */
+  linkToResults?: boolean;
 }
 
 const styles = stylex.create({
@@ -77,6 +79,19 @@ const styles = stylex.create({
   statHint: {
     marginTop: space.px4,
   },
+  statLink: {
+    display: 'block',
+    color: 'inherit',
+    textDecorationLine: 'none',
+    cursor: 'pointer',
+    ':hover': {
+      backgroundColor: colors.blue50,
+    },
+  },
+  statLinkHint: {
+    marginTop: space.px4,
+    color: colors.blue600,
+  },
   failedBadge: {
     borderRadius: radius.px4,
     paddingInline: space.px6,
@@ -106,6 +121,27 @@ const styles = stylex.create({
     fontWeight: 600,
   },
 });
+
+function StatCardContent(props: { card: StatCard }) {
+  return (
+    <>
+      <p {...stylex.attrs(typography.metaMuted, layout.mb4)}>
+        {props.card.label}
+      </p>
+      <p {...stylex.attrs(styles.statValue)}>{props.card.value}</p>
+      <Show when={props.card.hint}>
+        {(hint) => (
+          <p {...stylex.attrs(typography.metaMuted, styles.statHint)}>{hint()}</p>
+        )}
+      </Show>
+      <Show when={props.card.linkToResults}>
+        <p {...stylex.attrs(typography.metaMuted, styles.statLinkHint)}>
+          {t('dashboard.viewResults')}
+        </p>
+      </Show>
+    </>
+  );
+}
 
 function DashboardPage() {
   const auth = useAuth();
@@ -157,6 +193,7 @@ function DashboardPage() {
           s.partial > 0
             ? t('dashboard.partialHint', { count: s.partial })
             : undefined,
+        linkToResults: true,
       },
     ];
   };
@@ -276,21 +313,28 @@ function DashboardPage() {
             </div>
             <div {...stylex.attrs(styles.statusGrid)}>
               {statusCards().map((card) => (
-                <div {...stylex.attrs(controls.card, styles.statCard)}>
-                  <p {...stylex.attrs(typography.metaMuted, layout.mb4)}>
-                    {card.label}
-                  </p>
-                  <p {...stylex.attrs(styles.statValue)}>{card.value}</p>
-                  <Show when={card.hint}>
-                    {(hint) => (
-                      <p
-                        {...stylex.attrs(typography.metaMuted, styles.statHint)}
-                      >
-                        {hint()}
-                      </p>
-                    )}
-                  </Show>
-                </div>
+                <Show
+                  when={card.linkToResults}
+                  fallback={
+                    <div {...stylex.attrs(controls.card, styles.statCard)}>
+                      <StatCardContent card={card} />
+                    </div>
+                  }
+                >
+                  <Link
+                    to={ROUTES.tasks}
+                    search={{ view: 'results' }}
+                    class={
+                      stylex.attrs(
+                        controls.card,
+                        styles.statCard,
+                        styles.statLink,
+                      ).class
+                    }
+                  >
+                    <StatCardContent card={card} />
+                  </Link>
+                </Show>
               ))}
             </div>
           </section>
