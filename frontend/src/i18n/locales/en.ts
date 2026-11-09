@@ -106,6 +106,10 @@ export const en = {
   'status.failed': 'Failed',
   'status.cancelled': 'Cancelled',
 
+  // Compact labels for dense mobile lists (only where the wording differs)
+  'status.short.retry_pending': 'Retrying',
+  'status.short.partial': 'Partial',
+
   // MinerU 4.0 quality tiers
   'mineruTier.label.flash': 'Flash',
   'mineruTier.label.basic': 'Basic',
@@ -152,13 +156,14 @@ export const en = {
   'tasks.search': 'Search',
   'tasks.batchCancel': 'Batch cancel ({{count}})',
   'tasks.pack': 'Download ZIP ({{count}})',
+  'tasks.selectedCount': '{{count}} selected',
+  'tasks.batchActions': 'Batch actions',
   'tasks.empty': 'No tasks match the filters.',
   'tasks.emptyNoTasks': 'No tasks yet.',
   'tasks.resultsEmpty':
     'No results yet. Completed and partially completed tasks appear here.',
   'tasks.uploadCta': 'Upload files',
   'tasks.viewAll': 'View all tasks',
-  'tasks.retryCount': 'Retries: {{count}}',
   'tasks.downloadAction': 'Download',
   'tasks.downloadHint': 'Select tasks to download as a ZIP.',
   'tasks.notDownloadable':

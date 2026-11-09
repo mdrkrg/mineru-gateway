@@ -9,20 +9,59 @@ import { t } from '@/i18n';
 /** Placeholder shown when a value is missing. */
 export const EMPTY_PLACEHOLDER = '—';
 
+/** Zero-pads a number to two digits. */
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/** Parses an ISO timestamp; `null` for missing or unparseable input. */
+function parseIso(iso: string | null | undefined): Date | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 /**
  * Formats an ISO 8601 timestamp as a local date-time string
  * (`YYYY-MM-DD HH:mm:ss`). Returns the placeholder for null/undefined
  * or unparseable input.
  */
 export function formatDateTime(iso: string | null | undefined): string {
-  if (!iso) return EMPTY_PLACEHOLDER;
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return EMPTY_PLACEHOLDER;
-  const pad = (n: number) => String(n).padStart(2, '0');
+  const date = parseIso(iso);
+  if (!date) return EMPTY_PLACEHOLDER;
   return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
-    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+    `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ` +
+    `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`
   );
+}
+
+/**
+ * Formats a timestamp for dense task lists without the seconds/year noise.
+ *
+ * - Today: `HH:mm`
+ * - Same year: `MM-DD HH:mm`
+ * - Older: `YYYY-MM-DD`
+ *
+ * `now` is injectable so tests do not depend on the wall clock. Local time is
+ * used, matching {@link formatDateTime}.
+ */
+export function formatCompactDateTime(
+  iso: string | null | undefined,
+  now: Date = new Date(),
+): string {
+  const date = parseIso(iso);
+  if (!date) return EMPTY_PLACEHOLDER;
+
+  const time = `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  if (sameDay) return time;
+
+  const monthDay = `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+  if (date.getFullYear() === now.getFullYear()) return `${monthDay} ${time}`;
+  return `${date.getFullYear()}-${monthDay}`;
 }
 
 /**
@@ -66,9 +105,9 @@ export function formatDuration(
   endIso?: string | null,
   now?: Date,
 ): string {
-  const start = new Date(startIso).getTime();
-  const end = endIso ? new Date(endIso).getTime() : (now ?? new Date()).getTime();
-  if (Number.isNaN(start) || Number.isNaN(end)) return EMPTY_PLACEHOLDER;
+  const start = parseIso(startIso)?.getTime();
+  const end = endIso ? parseIso(endIso)?.getTime() : (now ?? new Date()).getTime();
+  if (start === undefined || end === undefined) return EMPTY_PLACEHOLDER;
   const ms = end - start;
   if (ms < 0) return EMPTY_PLACEHOLDER;
   return composeDuration(Math.floor(ms / 1000));
@@ -93,4 +132,12 @@ export function formatMilliseconds(ms: number): string {
  */
 export function shortTaskId(taskId: string): string {
   return taskId.slice(-8);
+}
+
+/**
+ * `#xxxxxxxx` reference for a task UUID, as shown in list meta rows and
+ * confirmation dialogs. See {@link shortTaskId} for why the suffix is used.
+ */
+export function taskIdRef(taskId: string): string {
+  return `#${shortTaskId(taskId)}`;
 }

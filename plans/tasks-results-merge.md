@@ -50,12 +50,17 @@ Rejected alternatives:
 
 - Desktop/tablet (>= 40rem): the existing table, with the results view using
   Completed At instead of Tier/Created/Retries.
-- Phone (< 40rem): stacked task cards with filename, short id, status, tier,
-  timestamp, and the relevant actions. No horizontal scrolling.
+- Phone (< 40rem): one list surface with one row per task (no per-row card
+  chrome). Filename is a single truncated line; a compact meta line carries a
+  status dot + short label, compact timestamp, and short id. The relevant
+  action sits at the trailing edge.
+- On phones, selecting a row replaces the top batch button with a fixed bottom
+  action bar (`Cancel selected` or `Download ZIP`) above the navigation FAB.
 
 ## Verification
 
 - `pnpm test`, `pnpm typecheck`, `pnpm build`.
 - Browser checks: dashboard deep link, batch ZIP, row download, back-button
-  view state.
+  view state, and the mobile batch bar appearing, clearing, downloading, and
+  hiding after success.
 - Desktop and phone screenshots in `tmp/tasks-results-screenshots/`.

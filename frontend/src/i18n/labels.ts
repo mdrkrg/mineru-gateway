@@ -12,6 +12,21 @@ export function taskStatusLabel(status: TaskStatus): string {
   return t(`status.${status}`);
 }
 
+/**
+ * Short labels for dense lists. Only statuses whose compact wording differs
+ * from {@link taskStatusLabel} need an entry; the rest fall back to it.
+ */
+const SHORT_STATUS_LABEL_KEYS: Partial<Record<TaskStatus, DictKey>> = {
+  retry_pending: 'status.short.retry_pending',
+  partial: 'status.short.partial',
+};
+
+/** Compact task status label for dense lists (for example "Partial"). */
+export function taskStatusShortLabel(status: TaskStatus): string {
+  const key = SHORT_STATUS_LABEL_KEYS[status];
+  return key ? t(key) : taskStatusLabel(status);
+}
+
 const MINERU_TIER_LABEL_KEYS: Record<MineruTier, DictKey> = {
   flash: 'mineruTier.label.flash',
   basic: 'mineruTier.label.basic',

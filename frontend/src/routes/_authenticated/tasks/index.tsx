@@ -12,7 +12,6 @@ import { Link, createFileRoute } from '@tanstack/solid-router';
 import { Download, Package, X } from 'lucide-solid';
 import {
   batchCancelTasks,
-  cancelTask,
   downloadResultZip,
   downloadTaskResult,
   listTasks,
@@ -33,15 +32,20 @@ import {
   TASK_POLL_INTERVAL_MS,
   TASK_STATUSES,
   isActiveTaskStatus,
-  taskViewFromSearch,
 } from '@/utils/constants';
 import {
   downloadResultFile,
   filenameFromContentDisposition,
   saveBlob,
 } from '@/utils/download';
-import { formatDateTime, shortTaskId } from '@/utils/format';
+import {
+  formatCompactDateTime,
+  formatDateTime,
+  shortTaskId,
+  taskIdRef,
+} from '@/utils/format';
 import { createPolling } from '@/utils/polling';
+import { nonDownloadableMessage, runTaskCancel } from '@/utils/task-actions';
 import { actions } from '@/styles/actions.stylex';
 import { controls } from '@/styles/controls.stylex';
 import { forms } from '@/styles/forms.stylex';
@@ -51,6 +55,8 @@ import { table } from '@/styles/table.stylex';
 import {
   breakpoint,
   colors,
+  fontSize,
+  lineHeight,
   motion,
   radius,
   shadow,
@@ -114,59 +120,142 @@ const styles = stylex.create({
     alignItems: 'center',
     gap: space.px12,
   },
+  batchDesktop: {
+    display: { default: 'none', [breakpoint.sm]: 'inline-flex' },
+  },
+  pageWithBatchBar: {
+    paddingBottom: { default: space.px72, [breakpoint.sm]: 0 },
+  },
+  batchBar: {
+    position: 'fixed',
+    left: space.px16,
+    right: space.px16,
+    bottom: space.px72,
+    zIndex: 35,
+    display: { default: 'flex', [breakpoint.sm]: 'none' },
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.px8,
+    paddingInline: space.px12,
+    paddingBlock: space.px8,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: colors.gray200,
+    borderRadius: radius.px8,
+    boxShadow: shadow.lg,
+  },
+  batchBarCount: {
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+  },
+  batchBarActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: space.px8,
+    flexShrink: 0,
+  },
+  batchBarClear: {
+    minHeight: space.px40,
+    paddingInline: space.px4,
+    color: colors.gray600,
+  },
   tableWrap: {
     display: { default: 'none', [breakpoint.sm]: 'block' },
   },
-  cardList: {
-    display: { default: 'flex', [breakpoint.sm]: 'none' },
-    flexDirection: 'column',
-    gap: space.px12,
-  },
-  taskCard: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: space.px12,
-    padding: space.px16,
+  mobileList: {
+    display: { default: 'block', [breakpoint.sm]: 'none' },
     backgroundColor: colors.white,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: colors.gray200,
     borderRadius: radius.px8,
-    boxShadow: shadow.base,
+    overflow: 'hidden',
   },
-  cardHeader: {
+  mobileRow: {
     display: 'flex',
     alignItems: 'flex-start',
     gap: space.px12,
+    paddingInline: space.px12,
+    paddingBlock: space.px12,
+    borderBottomWidth: 1,
+    borderBottomStyle: 'solid',
+    borderBottomColor: colors.gray100,
   },
-  cardCheck: {
+  mobileRowLast: {
+    borderBottomWidth: 0,
+  },
+  mobileCheck: {
     marginTop: space.px2,
     flexShrink: 0,
   },
-  cardBody: {
+  mobileBody: {
     display: 'flex',
     flexDirection: 'column',
-    gap: space.px4,
+    gap: space.px2,
     flex: 1,
     minWidth: 0,
   },
-  cardTop: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    gap: space.px4,
-  },
-  cardFile: {
+  mobileFile: {
     minWidth: 0,
-    overflowWrap: 'anywhere',
+    overflow: 'hidden',
+    whiteSpace: 'nowrap',
+    textOverflow: 'ellipsis',
   },
-  cardMeta: {
+  mobileMetaRow: {
     display: 'flex',
-    flexWrap: 'wrap',
-    columnGap: space.px12,
-    rowGap: space.px4,
-  },
-  cardActions: {
-    display: 'flex',
-    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: space.px8,
+    minWidth: 0,
+  },
+  mobileMeta: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    columnGap: space.px8,
+    rowGap: space.px2,
+    minWidth: 0,
+  },
+  mobileMetaText: {
+    whiteSpace: 'nowrap',
+  },
+  mobileActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: space.px4,
+    flexShrink: 0,
+  },
+  /** 40px hit area for the phone row; colours come from the shared actions. */
+  mobileCancel: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: space.px4,
+    minHeight: space.px40,
+    paddingInline: space.px4,
+    fontSize: fontSize.px12,
+    lineHeight: lineHeight.px16,
+  },
+  mobileDownload: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: space.px40,
+    height: space.px40,
+    borderWidth: 0,
+    borderRadius: radius.px4,
+    cursor: {
+      default: 'pointer',
+      ':disabled': 'not-allowed',
+    },
+    color: colors.blue600,
+    backgroundColor: {
+      default: colors.blue50,
+      ':hover:not(:disabled)': colors.blue100,
+    },
+    opacity: {
+      ':disabled': 0.4,
+    },
   },
   rowActions: {
     display: 'flex',
@@ -182,6 +271,141 @@ const styles = stylex.create({
     padding: space.px24,
   },
 });
+
+interface BatchActionProps {
+  isResults: boolean;
+  count: number;
+  disabled: boolean;
+  /** Phone bar: compact padding on the primary ZIP button. */
+  compact?: boolean;
+  onCancel: () => void;
+  onZip: () => void;
+}
+
+/** The one batch action a view offers: cancel tasks, or ZIP the results. */
+function BatchAction(props: BatchActionProps) {
+  return (
+    <Show
+      when={props.isResults}
+      fallback={
+        <button
+          type="button"
+          disabled={props.disabled}
+          onClick={() => props.onCancel()}
+          {...stylex.attrs(
+            controls.button,
+            controls.buttonOutline,
+            actions.outlineDanger,
+            actions.outlineCompact,
+          )}
+        >
+          {t('tasks.batchCancel', { count: props.count })}
+        </button>
+      }
+    >
+      <button
+        type="button"
+        disabled={props.disabled}
+        onClick={() => props.onZip()}
+        {...stylex.attrs(
+          controls.button,
+          controls.buttonPrimary,
+          actions.disabled40,
+          props.compact ? actions.outlineCompact : null,
+        )}
+      >
+        <Package class={stylex.attrs(icons.sm).class} />
+        {t('tasks.pack', { count: props.count })}
+      </button>
+    </Show>
+  );
+}
+
+interface RowActionsProps {
+  task: TaskListItem;
+  isResults: boolean;
+  disabled: boolean;
+  /** Phone rows: hit-area sized controls instead of text actions. */
+  compact?: boolean;
+  onCancel: () => void;
+  onDownload: () => void;
+}
+
+/** Per-row actions; the eligibility rules live here for both layouts. */
+function RowActions(props: RowActionsProps) {
+  const canCancel = () =>
+    !props.isResults && isActiveTaskStatus(props.task.status);
+
+  return (
+    <Show
+      when={props.compact}
+      fallback={
+        <div {...stylex.attrs(styles.rowActions)}>
+          <Show when={canCancel()}>
+            <button
+              type="button"
+              disabled={props.disabled}
+              onClick={() => props.onCancel()}
+              {...stylex.attrs(
+                actions.text,
+                actions.textDanger,
+                actions.disabled40,
+              )}
+            >
+              {t('tasks.cancel')}
+            </button>
+          </Show>
+          <Show when={props.task.hasResult}>
+            <button
+              type="button"
+              disabled={props.disabled}
+              onClick={() => props.onDownload()}
+              {...stylex.attrs(
+                actions.text,
+                actions.textPrimary,
+                actions.disabled40,
+              )}
+            >
+              <Download class={stylex.attrs(icons.xs).class} />
+              {t('tasks.downloadAction')}
+            </button>
+          </Show>
+        </div>
+      }
+    >
+      <div {...stylex.attrs(styles.mobileActions)}>
+        <Show when={canCancel()}>
+          <button
+            type="button"
+            disabled={props.disabled}
+            onClick={() => props.onCancel()}
+            {...stylex.attrs(
+              actions.text,
+              actions.textDanger,
+              actions.disabled40,
+              styles.mobileCancel,
+            )}
+          >
+            <X class={stylex.attrs(icons.xs).class} />
+            {t('tasks.cancel')}
+          </button>
+        </Show>
+        <Show when={props.task.hasResult}>
+          <button
+            type="button"
+            disabled={props.disabled}
+            aria-label={t('tasks.downloadAction')}
+            title={t('tasks.downloadAction')}
+            onClick={() => props.onDownload()}
+            {...stylex.attrs(styles.mobileDownload)}
+          >
+            <Download class={stylex.attrs(icons.sm).class} />
+          </button>
+        </Show>
+      </div>
+    </Show>
+  );
+}
 
 function TaskListPage() {
   const toast = useToast();
@@ -199,8 +423,7 @@ function TaskListPage() {
   const [selected, setSelected] = createSignal<Set<string>>(new Set());
   const [isActing, setIsActing] = createSignal(false);
 
-  const view = () => taskViewFromSearch(search().view);
-  const isResults = () => view() === 'results';
+  const isResults = () => search().view === 'results';
 
   const statusOptions = createMemo(() =>
     TASK_STATUSES.map((status) => ({ value: status, label: taskStatusLabel(status) })),
@@ -210,8 +433,7 @@ function TaskListPage() {
     return isResults() || isActiveTaskStatus(task.status);
   }
 
-  const selectableTasks = () =>
-    isResults() ? items() : items().filter((task) => isActiveTaskStatus(task.status));
+  const selectableTasks = () => items().filter((task) => isSelectable(task));
 
   const hasFilters = () =>
     Boolean(appliedFilters().status || appliedFilters().fileName.trim());
@@ -242,10 +464,9 @@ function TaskListPage() {
         // A silent poll can move a selected task into a terminal state; drop
         // it so the contextual batch action never sends an ineligible id.
         const eligible = new Set(
-          (isResults()
-            ? result.value.items
-            : result.value.items.filter((task) => isActiveTaskStatus(task.status))
-          ).map((task) => task.taskId),
+          result.value.items
+            .filter((task) => isSelectable(task))
+            .map((task) => task.taskId),
         );
         setSelected(
           (current) => new Set([...current].filter((id) => eligible.has(id))),
@@ -275,7 +496,7 @@ function TaskListPage() {
   // of keeping a selection that belongs to the other tab's action.
   createEffect(
     on(
-      view,
+      isResults,
       () => {
         setStatusFilter('');
         setAppliedFilters((current) => ({ ...current, status: '' }));
@@ -318,28 +539,25 @@ function TaskListPage() {
     );
   }
 
-  async function handleCancel(task: TaskListItem) {
-    const confirmed = await confirm.ask({
-      title: t('tasks.confirmCancelTitle'),
-      description: t('tasks.confirmCancel', { shortId: shortTaskId(task.taskId) }),
-      confirmText: t('taskDetail.cancel'),
-      variant: 'danger',
-    });
-    if (!confirmed) return;
+  function clearSelection() {
+    setSelected(new Set<string>());
+  }
 
-    setIsActing(true);
-    setError(null);
-    const result = await cancelTask(task.taskId);
-    if (result.isErr()) {
-      setError(errorMessage(result.error));
-    } else {
-      toast.show(t('tasks.cancelledToast'), 'success');
-    }
+  async function handleCancel(task: TaskListItem) {
+    const cancelled = await runTaskCancel({
+      confirm,
+      toast,
+      taskId: task.taskId,
+      description: t('tasks.confirmCancel', {
+        shortId: shortTaskId(task.taskId),
+      }),
+      setError,
+      setActing: setIsActing,
+      reload: () => load(page(), { silent: true }),
+    });
     // Silent refresh keeps the list mounted; clear the selection explicitly
     // since `load` only resets it on non-silent loads.
-    await load(page(), { silent: true });
-    setSelected(new Set<string>());
-    setIsActing(false);
+    if (cancelled) setSelected(new Set<string>());
   }
 
   async function handleBatchCancel() {
@@ -398,17 +616,9 @@ function TaskListPage() {
     if (result.isErr()) {
       const err = result.error;
       if (isHttpError(err) && err.status === 409) {
-        const data = err.data as
-          | { detail?: string; nonDownloadable?: { taskId: string; reason: string }[] }
-          | undefined;
-        const failed = data?.nonDownloadable
-          ?.map((item) => `…${shortTaskId(item.taskId)}(${item.reason})`)
-          .join(t('common.listSeparator'));
-        setError(
-          t('tasks.notDownloadable', {
-            failed: failed ?? data?.detail ?? t('tasks.unknownReason'),
-          }),
-        );
+        // `downloadResultZip` already validated this body against
+        // `NonDownloadableErrorSchema`, so `err.data` is typed here.
+        setError(nonDownloadableMessage(err.data));
       } else {
         setError(errorMessage(err));
       }
@@ -417,6 +627,7 @@ function TaskListPage() {
         filenameFromContentDisposition(result.value.headers.get('Content-Disposition')) ??
         'results.zip';
       saveBlob(result.value.blob, filename);
+      setSelected(new Set<string>());
     }
     setIsActing(false);
   }
@@ -427,7 +638,12 @@ function TaskListPage() {
   }
 
   return (
-    <div {...stylex.attrs(layout.stack16)}>
+    <div
+      {...stylex.attrs(
+        layout.stack16,
+        selected().size > 0 ? styles.pageWithBatchBar : null,
+      )}
+    >
       {/* The two views are links, not client-only tabs: the URL stays
           shareable and the browser back button switches views naturally. */}
       <nav
@@ -504,38 +720,15 @@ function TaskListPage() {
       {/* One contextual batch action per view, so cancel and ZIP can never be
           mixed up. */}
       <div {...stylex.attrs(styles.actionRow)}>
-        <Show
-          when={isResults()}
-          fallback={
-            <button
-              type="button"
-              disabled={selected().size === 0 || isActing()}
-              onClick={handleBatchCancel}
-              {...stylex.attrs(
-                controls.button,
-                controls.buttonOutline,
-                actions.outlineDanger,
-                actions.outlineCompact,
-              )}
-            >
-              {t('tasks.batchCancel', { count: selected().size })}
-            </button>
-          }
-        >
-          <button
-            type="button"
+        <div {...stylex.attrs(styles.batchDesktop)}>
+          <BatchAction
+            isResults={isResults()}
+            count={selected().size}
             disabled={selected().size === 0 || isActing()}
-            onClick={handleDownloadZip}
-            {...stylex.attrs(
-              controls.button,
-              controls.buttonPrimary,
-              actions.disabled40,
-            )}
-          >
-            <Package class={stylex.attrs(icons.sm).class} />
-            {t('tasks.pack', { count: selected().size })}
-          </button>
-        </Show>
+            onCancel={handleBatchCancel}
+            onZip={handleDownloadZip}
+          />
+        </div>
         <button
           type="button"
           onClick={() => load()}
@@ -678,37 +871,13 @@ function TaskListPage() {
                           <td {...stylex.attrs(table.td)}>{task.retryCount}</td>
                         </Show>
                         <td {...stylex.attrs(table.td)}>
-                          <div {...stylex.attrs(styles.rowActions)}>
-                            <Show when={!isResults() && isActiveTaskStatus(task.status)}>
-                              <button
-                                type="button"
-                                disabled={isActing()}
-                                onClick={() => handleCancel(task)}
-                                {...stylex.attrs(
-                                  actions.text,
-                                  actions.textDanger,
-                                  actions.disabled40,
-                                )}
-                              >
-                                {t('tasks.cancel')}
-                              </button>
-                            </Show>
-                            <Show when={task.hasResult}>
-                              <button
-                                type="button"
-                                disabled={isActing()}
-                                onClick={() => handleDownloadOne(task)}
-                                {...stylex.attrs(
-                                  actions.text,
-                                  actions.textPrimary,
-                                  actions.disabled40,
-                                )}
-                              >
-                                <Download class={stylex.attrs(icons.xs).class} />
-                                {t('tasks.downloadAction')}
-                              </button>
-                            </Show>
-                          </div>
+                          <RowActions
+                            task={task}
+                            isResults={isResults()}
+                            disabled={isActing()}
+                            onCancel={() => handleCancel(task)}
+                            onDownload={() => handleDownloadOne(task)}
+                          />
                         </td>
                       </tr>
                     )}
@@ -718,90 +887,70 @@ function TaskListPage() {
             </div>
           </div>
 
-          {/* Phone cards: keep the primary action visible without a
-              horizontally scrolling table. */}
-          <div {...stylex.attrs(styles.cardList)}>
+          {/* Phone rows: one list surface, two lines per task, with the
+              action at the trailing edge instead of a full-width button. */}
+          <div {...stylex.attrs(styles.mobileList)}>
             <For each={items()}>
-              {(task) => (
-                <article {...stylex.attrs(styles.taskCard)}>
-                  <div {...stylex.attrs(styles.cardHeader)}>
-                    <input
-                      type="checkbox"
-                      disabled={!isSelectable(task)}
-                      checked={selected().has(task.taskId)}
-                      onChange={(e) =>
-                        toggleSelect(task.taskId, e.currentTarget.checked)
-                      }
-                      {...stylex.attrs(styles.cardCheck)}
-                    />
-                    <div {...stylex.attrs(styles.cardBody)}>
-                      <div {...stylex.attrs(styles.cardTop)}>
-                        <div {...stylex.attrs(styles.cardFile)}>
-                          <TaskFileCell
-                            taskId={task.taskId}
-                            fileNames={task.fileNames}
-                          />
-                        </div>
-                        <StatusBadge status={task.status} />
-                      </div>
+              {(task, index) => (
+                <div
+                  {...stylex.attrs(
+                    styles.mobileRow,
+                    index() === items().length - 1 ? styles.mobileRowLast : null,
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    disabled={!isSelectable(task)}
+                    checked={selected().has(task.taskId)}
+                    onChange={(e) =>
+                      toggleSelect(task.taskId, e.currentTarget.checked)
+                    }
+                    {...stylex.attrs(styles.mobileCheck)}
+                  />
+                  <div {...stylex.attrs(styles.mobileBody)}>
+                    <div {...stylex.attrs(styles.mobileFile)}>
+                      <TaskFileCell
+                        taskId={task.taskId}
+                        fileNames={task.fileNames}
+                        compact
+                      />
+                    </div>
+                    <div {...stylex.attrs(styles.mobileMetaRow)}>
                       <div
-                        {...stylex.attrs(typography.metaMuted, styles.cardMeta)}
+                        {...stylex.attrs(typography.metaMuted, styles.mobileMeta)}
                       >
-                        <span>{taskTierLabel(task.tier)}</span>
-                        <span>
-                          {formatDateTime(
+                        <StatusBadge status={task.status} compact />
+                        <span {...stylex.attrs(styles.mobileMetaText)}>
+                          {formatCompactDateTime(
                             isResults() ? task.completedAt : task.createdAt,
                           )}
+                          {' · '}
+                          {taskIdRef(task.taskId)}
                         </span>
-                        <Show when={!isResults() && task.retryCount > 0}>
-                          <span>{t('tasks.retryCount', { count: task.retryCount })}</span>
+                        <Show
+                          when={
+                            !isResults() &&
+                            task.tier !== null &&
+                            task.tier !== 'standard'
+                          }
+                        >
+                          <span {...stylex.attrs(styles.mobileMetaText)}>
+                            · {taskTierLabel(task.tier)}
+                          </span>
                         </Show>
                       </div>
+
+                      <RowActions
+                        task={task}
+                        isResults={isResults()}
+                        disabled={isActing()}
+                        compact
+                        onCancel={() => handleCancel(task)}
+                        onDownload={() => handleDownloadOne(task)}
+                      />
                     </div>
                   </div>
-
-                  <Show
-                    when={
-                      (!isResults() && isActiveTaskStatus(task.status)) ||
-                      task.hasResult
-                    }
-                  >
-                    <div {...stylex.attrs(styles.cardActions)}>
-                      <Show when={!isResults() && isActiveTaskStatus(task.status)}>
-                        <button
-                          type="button"
-                          disabled={isActing()}
-                          onClick={() => handleCancel(task)}
-                          {...stylex.attrs(
-                            controls.button,
-                            controls.buttonOutline,
-                            actions.outlineDanger,
-                            actions.outlineCompact,
-                          )}
-                        >
-                          <X class={stylex.attrs(icons.sm).class} />
-                          {t('tasks.cancel')}
-                        </button>
-                      </Show>
-                      <Show when={task.hasResult}>
-                        <button
-                          type="button"
-                          disabled={isActing()}
-                          onClick={() => handleDownloadOne(task)}
-                          {...stylex.attrs(
-                            controls.button,
-                            controls.buttonPrimary,
-                            actions.outlineCompact,
-                            actions.disabled40,
-                          )}
-                        >
-                          <Download class={stylex.attrs(icons.sm).class} />
-                          {t('tasks.downloadAction')}
-                        </button>
-                      </Show>
-                    </div>
-                  </Show>
-                </article>
+                </div>
               )}
             </For>
           </div>
@@ -814,6 +963,41 @@ function TaskListPage() {
         total={total()}
         onChange={(p) => load(p)}
       />
+
+      {/* On phones the batch action follows the selection instead of sitting
+          above a long list where it is out of reach. */}
+      <Show when={selected().size > 0}>
+        <div
+          role="region"
+          aria-label={t('tasks.batchActions')}
+          {...stylex.attrs(styles.batchBar)}
+        >
+          <span {...stylex.attrs(typography.body, styles.batchBarCount)}>
+            {t('tasks.selectedCount', { count: selected().size })}
+          </span>
+          <div {...stylex.attrs(styles.batchBarActions)}>
+            <button
+              type="button"
+              onClick={clearSelection}
+              {...stylex.attrs(
+                actions.clear,
+                typography.meta,
+                styles.batchBarClear,
+              )}
+            >
+              {t('common.clear')}
+            </button>
+            <BatchAction
+              isResults={isResults()}
+              count={selected().size}
+              disabled={selected().size === 0 || isActing()}
+              compact
+              onCancel={handleBatchCancel}
+              onZip={handleDownloadZip}
+            />
+          </div>
+        </div>
+      </Show>
     </div>
   );
 }

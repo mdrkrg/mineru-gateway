@@ -40,4 +40,18 @@ export const badges = stylex.create({
     backgroundColor: colors.gray100,
     color: colors.gray600,
   },
+
+  /** Compact status dot for dense lists; colours pair with the pills above. */
+  dotBase: {
+    width: space.px6,
+    height: space.px6,
+    borderRadius: '50%',
+    flexShrink: 0,
+  },
+  dotYellow: { backgroundColor: colors.yellow700 },
+  dotBlue: { backgroundColor: colors.blue500 },
+  dotOrange: { backgroundColor: colors.orange700 },
+  dotGreen: { backgroundColor: colors.green600 },
+  dotRed: { backgroundColor: colors.red600 },
+  dotGray: { backgroundColor: colors.gray400 },
 });

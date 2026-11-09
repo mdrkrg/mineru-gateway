@@ -109,6 +109,10 @@ export const zhCN: Dict = {
   'status.failed': '失败',
   'status.cancelled': '已取消',
 
+  // Compact labels for dense mobile lists (the rest reuse the full label)
+  'status.short.retry_pending': '待重试',
+  'status.short.partial': '部分完成',
+
   // MinerU 4.0 quality tiers
   'mineruTier.label.flash': '快速解析（flash）',
   'mineruTier.label.basic': '基础解析（basic）',
@@ -154,12 +158,13 @@ export const zhCN: Dict = {
   'tasks.search': '查询',
   'tasks.batchCancel': '批量取消（{{count}}）',
   'tasks.pack': '打包下载（{{count}}）',
+  'tasks.selectedCount': '已选 {{count}} 项',
+  'tasks.batchActions': '批量操作',
   'tasks.empty': '没有符合条件的任务。',
   'tasks.emptyNoTasks': '还没有任务。',
   'tasks.resultsEmpty': '还没有可下载的结果。已完成和部分完成的任务会显示在这里。',
   'tasks.uploadCta': '上传文件',
   'tasks.viewAll': '查看全部任务',
-  'tasks.retryCount': '重试：{{count}} 次',
   'tasks.downloadAction': '下载',
   'tasks.downloadHint': '勾选任务后可打包下载 ZIP。',
   'tasks.notDownloadable': '部分任务不可下载：{{failed}}。请取消勾选后重试。',

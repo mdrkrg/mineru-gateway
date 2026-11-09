@@ -1,11 +1,13 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   EMPTY_PLACEHOLDER,
+  formatCompactDateTime,
   formatDateTime,
   formatDuration,
   formatFileSize,
   formatMilliseconds,
   shortTaskId,
+  taskIdRef,
 } from '../../src/utils/format';
 import { setLocale } from '../../src/i18n/locale';
 
@@ -28,6 +30,27 @@ describe('formatDateTime', () => {
     const result = formatDateTime('2026-07-29T10:05:03');
     expect(result).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
     expect(result).toContain('2026-07-29');
+  });
+});
+
+describe('formatCompactDateTime', () => {
+  const now = new Date(2026, 6, 29, 15, 30);
+
+  it('returns placeholder for missing or unparseable input', () => {
+    expect(formatCompactDateTime(null, now)).toBe(EMPTY_PLACEHOLDER);
+    expect(formatCompactDateTime('not-a-date', now)).toBe(EMPTY_PLACEHOLDER);
+  });
+
+  it('shows only the time for today', () => {
+    expect(formatCompactDateTime('2026-07-29T10:05:00', now)).toBe('10:05');
+  });
+
+  it('shows month, day and time within the same year', () => {
+    expect(formatCompactDateTime('2026-03-02T10:05:00', now)).toBe('03-02 10:05');
+  });
+
+  it('shows the full date for older years', () => {
+    expect(formatCompactDateTime('2025-03-02T10:05:00', now)).toBe('2025-03-02');
   });
 });
 
@@ -108,5 +131,11 @@ describe('formatMilliseconds', () => {
 describe('shortTaskId', () => {
   it('keeps the random suffix of a UUIDv7 task id', () => {
     expect(shortTaskId('01a19193-54a2-712c-9109-886b3fba7bba')).toBe('3fba7bba');
+  });
+});
+
+describe('taskIdRef', () => {
+  it('prefixes the short id with a hash', () => {
+    expect(taskIdRef('01a19193-54a2-712c-9109-886b3fba7bba')).toBe('#3fba7bba');
   });
 });

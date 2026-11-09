@@ -3,7 +3,6 @@ import { For, Show, createSignal, onMount } from 'solid-js';
 import { Link, createFileRoute } from '@tanstack/solid-router';
 import { ArrowLeft } from 'lucide-solid';
 import {
-  cancelTask,
   downloadTaskResult,
   getRawTaskResult,
   getTaskDetail,
@@ -21,6 +20,7 @@ import { downloadResultFile } from '@/utils/download';
 import type { ResultFetcher } from '@/utils/download';
 import { formatDateTime, formatDuration } from '@/utils/format';
 import { createPolling } from '@/utils/polling';
+import { runTaskCancel } from '@/utils/task-actions';
 import { actions } from '@/styles/actions.stylex';
 import { controls } from '@/styles/controls.stylex';
 import { icons } from '@/styles/icons.stylex';
@@ -146,25 +146,15 @@ function TaskDetailPage() {
   async function handleCancel() {
     const cur = task();
     if (!cur) return;
-    const confirmed = await confirm.ask({
-      title: t('tasks.confirmCancelTitle'),
+    await runTaskCancel({
+      confirm,
+      toast,
+      taskId: cur.taskId,
       description: t('taskDetail.confirmCancel'),
-      confirmText: t('taskDetail.cancel'),
-      variant: 'danger',
+      setError,
+      setActing: setIsActing,
+      reload: () => load({ silent: true }),
     });
-    if (!confirmed) return;
-
-    setIsActing(true);
-    setError(null);
-    const result = await cancelTask(cur.taskId);
-    if (result.isErr()) {
-      setError(errorMessage(result.error));
-    } else {
-      toast.show(t('tasks.cancelledToast'), 'success');
-    }
-    // Silent refresh keeps the detail view mounted while the status flips.
-    await load({ silent: true });
-    setIsActing(false);
   }
 
   async function runDownload(fetchResult: ResultFetcher) {

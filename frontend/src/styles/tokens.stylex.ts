@@ -67,6 +67,7 @@ export const space = stylex.defineConsts({
   px20: '1.25rem',
   px24: '1.5rem',
   px32: '2rem',
+  px40: '2.5rem',
   px56: '3.5rem',
   px72: '4.5rem',
   px224: '14rem',

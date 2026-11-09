@@ -2,7 +2,7 @@ import * as stylex from '@stylexjs/stylex';
 import { Show } from 'solid-js';
 import { Link } from '@tanstack/solid-router';
 import { ROUTES } from '@/utils/constants';
-import { shortTaskId } from '@/utils/format';
+import { taskIdRef } from '@/utils/format';
 import { controls } from '@/styles/controls.stylex';
 import { colors, fontSize, lineHeight, space } from '@/styles/tokens.stylex';
 import { typography } from '@/styles/typography.stylex';
@@ -25,7 +25,7 @@ const styles = stylex.create({
 });
 
 /**
- * Files cell shared by the task list and the result download list.
+ * Files cell shared by the task list's table and its phone rows.
  *
  * The file name is the human entry point into the task detail. UUIDv7 task
  * ids share a timestamp prefix, so the list shows the random suffix instead
@@ -34,6 +34,8 @@ const styles = stylex.create({
 export default function TaskFileCell(props: {
   taskId: string;
   fileNames: readonly string[];
+  /** Hide the short id line; dense lists show it in their meta row. */
+  compact?: boolean;
 }) {
   const primaryName = () => props.fileNames[0] ?? '—';
 
@@ -49,9 +51,11 @@ export default function TaskFileCell(props: {
       <Show when={props.fileNames.length > 1}>
         <span {...stylex.attrs(styles.count)}>+{props.fileNames.length - 1}</span>
       </Show>
-      <span {...stylex.attrs(styles.shortId)} title={props.taskId}>
-        #{shortTaskId(props.taskId)}
-      </span>
+      <Show when={!props.compact}>
+        <span {...stylex.attrs(styles.shortId)} title={props.taskId}>
+          {taskIdRef(props.taskId)}
+        </span>
+      </Show>
     </>
   );
 }

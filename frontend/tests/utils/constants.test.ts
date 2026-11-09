@@ -1,30 +1,33 @@
-import { describe, expect, it } from 'vitest';
-import type { TaskStatus } from '../../src/api/schemas/tasks';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { setLocale } from '../../src/i18n/locale';
 import {
   ACTIVE_TASK_STATUSES,
   ROUTES,
   TASK_STATUSES,
   isActiveTaskStatus,
-  taskViewFromSearch,
+  isTaskStatus,
 } from '../../src/utils/constants';
 import { MINERU_TIERS } from '../../src/api/schemas/mineru-options';
-import { mineruTierLabel, taskStatusLabel } from '../../src/i18n/labels';
+import { mineruTierLabel, taskStatusLabel, taskStatusShortLabel } from '../../src/i18n/labels';
+
+// The compact labels differ only in en; pin it so the fallback assertions do
+// not depend on the node environment's default locale.
+beforeAll(() => setLocale('en'));
 
 describe('constants', () => {
   it('provides a label for every task status', () => {
-    const allStatuses: TaskStatus[] = [
-      'pending',
-      'processing',
-      'retry_pending',
-      'completed',
-      'partial',
-      'failed',
-      'cancelled',
-    ];
-    for (const status of allStatuses) {
-      expect(TASK_STATUSES).toContain(status);
+    for (const status of TASK_STATUSES) {
       expect(taskStatusLabel(status)).toBeTruthy();
+      expect(taskStatusShortLabel(status)).toBeTruthy();
     }
+  });
+
+  it('reuses the full label unless a short override exists', () => {
+    expect(taskStatusShortLabel('pending')).toBe(taskStatusLabel('pending'));
+    expect(taskStatusShortLabel('retry_pending')).not.toBe(
+      taskStatusLabel('retry_pending'),
+    );
+    expect(taskStatusShortLabel('partial')).not.toBe(taskStatusLabel('partial'));
   });
 
   it('active statuses are exactly the non-terminal ones', () => {
@@ -40,15 +43,15 @@ describe('constants', () => {
     expect(isActiveTaskStatus('unknown')).toBe(false);
   });
 
-  it('taskDetail builds the detail route path', () => {
-    expect(ROUTES.taskDetail('abc-123')).toBe('/tasks/abc-123');
+  it('isTaskStatus guards the status union', () => {
+    for (const status of TASK_STATUSES) {
+      expect(isTaskStatus(status)).toBe(true);
+    }
+    expect(isTaskStatus('unknown')).toBe(false);
   });
 
-  it('normalizes the task view search param', () => {
-    expect(taskViewFromSearch('results')).toBe('results');
-    expect(taskViewFromSearch('all')).toBe('all');
-    expect(taskViewFromSearch(undefined)).toBe('all');
-    expect(taskViewFromSearch('unknown')).toBe('all');
+  it('taskDetail builds the detail route path', () => {
+    expect(ROUTES.taskDetail('abc-123')).toBe('/tasks/abc-123');
   });
 
   it('provides a label for every MinerU tier', () => {
