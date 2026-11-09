@@ -100,6 +100,10 @@ export const zhCN: Dict = {
   'nav.openMenu': '打开导航',
   'nav.closeMenu': '关闭导航',
 
+  // Footer (layout/AppFooter)
+  'footer.source': '源代码',
+  'footer.license': '许可证：AGPL-3.0',
+
   // Task statuses (StatusBadge, filters, dashboard)
   'status.pending': '排队中',
   'status.processing': '处理中',

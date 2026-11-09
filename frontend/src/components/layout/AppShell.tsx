@@ -3,6 +3,7 @@ import { Show, createEffect, createSignal, onCleanup, onMount, type JSX } from '
 import { useLocation } from '@tanstack/solid-router';
 import { Popover } from '@kobalte/core/popover';
 import { Menu, X } from 'lucide-solid';
+import AppFooter from '@/components/layout/AppFooter';
 import Header from '@/components/layout/Header';
 import Sidebar, { SidebarNav } from '@/components/layout/Sidebar';
 import { t } from '@/i18n';
@@ -40,6 +41,11 @@ const styles = stylex.create({
     flex: 1,
   },
   main: {
+    display: 'flex',
+    flexDirection: 'column',
+    overflowY: 'auto',
+  },
+  page: {
     paddingInline: {
       default: space.px16,
       [breakpoint.sm]: space.px24,
@@ -52,7 +58,6 @@ const styles = stylex.create({
       default: space.px72,
       [breakpoint.lg]: space.px24,
     },
-    overflowY: 'auto',
   },
   fab: {
     position: 'fixed',
@@ -164,7 +169,12 @@ export default function AppShell(props: { children: JSX.Element }) {
       </Show>
       <div {...stylex.attrs(styles.content)}>
         <Header />
-        <main {...stylex.attrs(layout.flex1, styles.main)}>{props.children}</main>
+        <main {...stylex.attrs(layout.flex1, styles.main)}>
+          <div {...stylex.attrs(layout.flex1, styles.page)}>{props.children}</div>
+          {/* In the scroll flow: pinned to the viewport while the page is
+              short, revealed at the end once it scrolls. */}
+          <AppFooter />
+        </main>
       </div>
     </div>
   );

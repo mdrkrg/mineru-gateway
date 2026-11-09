@@ -97,6 +97,10 @@ export const en = {
   'nav.openMenu': 'Open navigation',
   'nav.closeMenu': 'Close navigation',
 
+  // Footer (layout/AppFooter)
+  'footer.source': 'Source code',
+  'footer.license': 'License: AGPL-3.0',
+
   // Task statuses (StatusBadge, filters, dashboard)
   'status.pending': 'Pending',
   'status.processing': 'Processing',

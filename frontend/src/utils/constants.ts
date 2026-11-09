@@ -19,6 +19,12 @@ export const ROUTES = {
   adminUsers: '/admin/users',
 } as const;
 
+/** Upstream repository, linked from the app footer. */
+export const SOURCE_URL = 'https://github.com/mdrkrg/mineru-gateway';
+
+/** Canonical AGPL-3.0 license text. */
+export const LICENSE_URL = 'https://www.gnu.org/licenses/agpl-3.0.html';
+
 /** All task statuses in display order (mirrors `TaskStatus` union). */
 export const TASK_STATUSES: readonly TaskStatus[] = [
   'pending',
